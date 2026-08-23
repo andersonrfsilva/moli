@@ -208,7 +208,12 @@ For a crawl rather than a single lookup:
 ## Request State and Policy
 
 - Add initial navigation headers with repeated `-H 'Name: Value'`.
-- Import cookie files with repeated `--cookie-file`.
+- Read cookies before fetching with repeated `--cookie FILE` (`-b`);
+  `--cookie-file` remains an alias.
+- Write final unpartitioned cookies as an interoperable Netscape file with
+  `--cookie-jar FILE` (`-c`). The output can be imported by a later `--cookie`;
+  use `--profile-dir` when partitioned cookies or richer browser state must be
+  preserved.
 - Use `--profile-dir` when state must persist across invocations; it also
   provides the default HTTP cache location unless `--http-cache-dir` is set.
 - Use `--http-proxy`, `--http-no-proxy`, or

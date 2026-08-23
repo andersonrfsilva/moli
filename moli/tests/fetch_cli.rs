@@ -1679,6 +1679,59 @@ fn cli_cookie_file_imports_netscape_cookie_before_fetch() -> Result<()> {
 }
 
 #[test]
+fn cli_cookie_jar_writes_set_cookie_for_later_import() -> Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let server = runtime.block_on(FixtureServer::spawn())?;
+    let url = server.url("/cookie");
+    for output_flag in ["--cookie-jar", "-c"] {
+        let cookie_jar = unique_temp_file_path("cookie-jar-writeback", "cookies.txt")?;
+        let cookie_jar_arg = cookie_jar.to_string_lossy().into_owned();
+
+        let first =
+            run_fetch_cli_with_dump_and_args(&url, "html", &[output_flag, &cookie_jar_arg])?;
+        assert!(
+            first.status.success(),
+            "{output_flag}: first fetch failed: stdout={}\nstderr={}",
+            String::from_utf8_lossy(&first.stdout),
+            String::from_utf8_lossy(&first.stderr)
+        );
+        let first_stdout = clean_output(&first.stdout);
+        assert!(
+            first_stdout.contains("<main>cookie=missing</main>"),
+            "stdout={first_stdout}"
+        );
+        let jar_contents = std::fs::read_to_string(&cookie_jar)?;
+        assert!(jar_contents.starts_with("# Netscape HTTP Cookie File\n"));
+        assert!(
+            jar_contents.contains("\tsession\tfixture\n"),
+            "cookie jar={jar_contents}"
+        );
+
+        for input_flag in ["--cookie", "-b", "--cookie-file"] {
+            let second = run_fetch_cli_with_dump_and_args(
+                &url,
+                "html",
+                &[input_flag, &cookie_jar_arg, output_flag, &cookie_jar_arg],
+            )?;
+            assert!(
+                second.status.success(),
+                "{input_flag}/{output_flag}: second fetch failed: stdout={}\nstderr={}",
+                String::from_utf8_lossy(&second.stdout),
+                String::from_utf8_lossy(&second.stderr)
+            );
+            let second_stdout = clean_output(&second.stdout);
+            assert!(
+                second_stdout.contains("<main>cookie=seen</main>"),
+                "stdout={second_stdout}"
+            );
+            assert!(std::fs::read_to_string(&cookie_jar)?.contains("\tsession\tfixture\n"));
+        }
+    }
+    runtime.block_on(server.shutdown());
+    Ok(())
+}
+
+#[test]
 fn cli_profile_dir_persists_cookies_after_successful_fetch() -> Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     let server = runtime.block_on(FixtureServer::spawn())?;

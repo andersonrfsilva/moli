@@ -144,6 +144,10 @@ pub struct FetchArgs {
     #[arg(short = 'H', long = "header", value_name = "HEADER", value_parser = parse_request_header_arg)]
     pub headers: Vec<RequestHeaderArg>,
 
+    /// Write final unpartitioned cookies to a Netscape cookie file.
+    #[arg(short = 'c', long, value_name = "FILE")]
+    pub cookie_jar: Option<String>,
+
     /// Disable page-authored JavaScript before the Document starts parsing.
     /// Stylesheets still load; automation expressions remain available.
     #[arg(
@@ -612,7 +616,13 @@ pub struct CommonArgs {
     )]
     pub scrollbars: bool,
 
-    #[arg(short, long = "cookie-file")]
+    /// Read initial cookies from a Netscape/curl cookie file. May be repeated.
+    #[arg(
+        short = 'b',
+        long = "cookie",
+        visible_alias = "cookie-file",
+        value_name = "FILE"
+    )]
     pub cookie_file: Vec<String>,
 
     #[arg(long)]
@@ -1027,8 +1037,10 @@ mod tests {
             "--layout",
             "--image",
             "--font",
-            "--cookie-file",
+            "--cookie",
             "jar.txt",
+            "--cookie-jar",
+            "final-jar.txt",
             "--profile-dir",
             "/tmp/p",
             "--user-agent",
@@ -1051,8 +1063,10 @@ mod tests {
             "-l",
             "--image",
             "--font",
-            "-c",
+            "-b",
             "jar.txt",
+            "-c",
+            "final-jar.txt",
             "-P",
             "/tmp/p",
             "-A",
