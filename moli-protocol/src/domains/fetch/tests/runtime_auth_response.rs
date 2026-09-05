@@ -471,8 +471,12 @@ async fn runtime_child_frame_fetch_subresource_interception_uses_child_frame_att
     let child_url = format!("http://{addr}/child");
     let api_url = format!("http://{addr}/api");
     let mut ctx = TestContext::new();
-    with_loaded_http_document(&mut ctx, &top_url, "SID-1", "TID-1").await;
+    ctx.conn
+        .install_browser_context_fixture_for_test(attached_browser_context());
+    // Subscribe before loading: a fast child may commit during fixture setup.
     ctx.enable_page_events_for_test(Some("SID-1"));
+    ctx.install_navigation_fixture_for_session_owner(&top_url, Some("SID-1"))
+        .await;
     ctx.conn
         .browser_context
         .as_mut()
@@ -481,8 +485,21 @@ async fn runtime_child_frame_fetch_subresource_interception_uses_child_frame_att
         .devtools_sessions[moli_page_types::DevToolsSessionKey::Primary]
         .runtime_session_state
         .inspector_enabled = true;
-    ctx.sent.clear();
     let child_frame_id = child_frame_id_for_single_iframe_async(&mut ctx, 36_400).await;
+
+    // Consume this lifecycle boundary before enabling interception or calling
+    // enable_runtime_async(), which clears the collected event queue.
+    wait_until_message(
+        &mut ctx,
+        "SID-1",
+        "child frame navigated before child fetch",
+        |message| {
+            message["method"] == json!("Page.frameNavigated")
+                && message["params"]["frame"]["id"] == json!(child_frame_id)
+                && message["params"]["frame"]["url"] == json!(child_url)
+        },
+    )
+    .await;
 
     ctx.process_async(json!({
         "id": 36_401,
@@ -499,18 +516,6 @@ async fn runtime_child_frame_fetch_subresource_interception_uses_child_frame_att
     }))
     .await;
     ctx.expect_result(36_402, json!({}), Some("SID-1"));
-    // The Runtime.enable helper clears collected events. Consume the child
-    // navigation first, even when it finishes during the preceding commands.
-    wait_until_message(
-        &mut ctx,
-        "SID-1",
-        "child frame navigated before child fetch",
-        |message| {
-            message["method"] == json!("Page.frameNavigated")
-                && message["params"]["frame"]["id"] == json!(child_frame_id)
-        },
-    )
-    .await;
     enable_runtime_async(&mut ctx, "SID-1", 36_403).await;
 
     ctx.process_async(json!({
