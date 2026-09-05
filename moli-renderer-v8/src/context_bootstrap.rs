@@ -831,14 +831,6 @@ struct WorkerGlobalScopeCryptoPrototypeDeclaration {
     crypto: (),
 }
 
-pub(crate) fn initialize_worker_fetch_realm_state<'s>(
-    scope: &mut v8::PinScope<'s, '_>,
-    _global: v8::Local<'s, v8::Object>,
-) -> Result<()> {
-    crate::network_host::initialize_fetch_realm_helpers(scope)?;
-    Ok(())
-}
-
 pub(crate) fn initialize_worker_performance_realm_state<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     global: v8::Local<'s, v8::Object>,

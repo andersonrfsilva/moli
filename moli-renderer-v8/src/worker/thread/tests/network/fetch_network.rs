@@ -2,6 +2,50 @@
 use super::*;
 
 #[tokio::test]
+async fn worker_fetch_stream_helpers_remain_private_under_trusted_types() {
+    ensure_v8();
+    let mut handle = spawn_test_worker_with_options(
+        WorkerSpawnOptions::new(
+            r#"
+            (async () => {
+                const evalResult = () => {
+                    try { eval('1 + 1'); return 'allowed'; }
+                    catch (error) { return error.name; }
+                };
+                const before = evalResult();
+                const names = ['__lmConsumeReadableStreamBody', '__lmTeeReadableStreamBody', '__moliFetchBodyStreamHelpers'];
+                const exposed = names.some(name => Object.hasOwn(self, name));
+                let reads = 0;
+                for (const name of names) {
+                    Object.defineProperty(self, name, {
+                        get() { reads++; throw new Error('author slot read'); }
+                    });
+                }
+                const response = new Response(new ReadableStream({
+                    start(controller) {
+                        controller.enqueue(new Uint8Array([111, 107]));
+                        controller.close();
+                    }
+                }));
+                // Tee is the first helper needed in this Worker realm.
+                const clone = response.clone();
+                const texts = await Promise.all([response.text(), clone.text()]);
+                postMessage([before, exposed, ...texts, reads, evalResult()]);
+            })().catch(error => postMessage({error: String(error)})).finally(() => close());
+            "#
+            .into(),
+            "https://worker-fetch-helpers.test/worker.js".into(),
+        )
+        .with_content_security_policies(vec!["require-trusted-types-for 'script'".into()]),
+    );
+    assert_eq!(
+        recv_post_json(&mut handle).await,
+        r#"["EvalError",false,"ok","ok",0,"EvalError"]"#
+    );
+    handle.terminate_and_join();
+}
+
+#[tokio::test]
 async fn worker_fetch_uses_worker_script_base_url_and_resolves_response_text() {
     ensure_v8();
     let (base_url, server) = spawn_path_response_http_server(vec![(

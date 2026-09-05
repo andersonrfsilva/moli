@@ -1,6 +1,7 @@
 use super::*;
 
 mod eval;
+mod fetch;
 mod rebind;
 mod seeds;
 mod url_alias;

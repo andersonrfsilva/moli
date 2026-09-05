@@ -1455,11 +1455,10 @@ fn consume_readable_body_stream<'s>(
     kind: NetworkBodyConsumptionKind,
     chunk_callback: Option<v8::Local<'s, v8::Function>>,
 ) -> (NetworkBodyConsumption<'s>, Option<v8::Global<v8::Object>>) {
-    let global = scope.get_current_context().global(scope);
-    let Some(consumer) = global
-        .get(scope, v8str(scope, BODY_STREAM_CONSUMER_SLOT).into())
-        .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-    else {
+    let Some(consumer) = super::body_stream_helpers::get(
+        scope,
+        super::body_stream_helpers::BodyStreamHelper::Consume,
+    ) else {
         return (NetworkBodyConsumption::Failed, None);
     };
     let (kind_name, mime_type) = body_stream_consumer_args(&kind);
