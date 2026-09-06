@@ -11,14 +11,15 @@ use super::{
 
 impl CdpConnection {
     pub(crate) fn invalidate_resource_runtime(&mut self) {
-        self.active_navigation_engine_mut()
-            .reset_resource_runtime_without_loaded_page();
+        if let Some(engine) = self.active_navigation_engine_if_materialized_mut() {
+            engine.reset_resource_runtime_without_loaded_page();
+        }
     }
 
     pub(crate) async fn invalidate_resource_runtime_async(&mut self) {
-        self.active_navigation_engine_mut()
-            .reset_resource_runtime_async(None)
-            .await;
+        if let Some(engine) = self.active_navigation_engine_if_materialized_mut() {
+            engine.reset_resource_runtime_async(None).await;
+        }
     }
 
     pub(crate) fn resource_storage_handles(&self) -> BrowserContextResourceStorageHandles {
@@ -184,10 +185,9 @@ impl CdpConnection {
                 .await;
             return;
         }
-        self.standalone_navigation_engine
-            .ensure_mut()
-            .reset_resource_runtime_async(None)
-            .await;
+        if let Some(engine) = self.standalone_navigation_engine.engine.get_mut() {
+            engine.reset_resource_runtime_async(None).await;
+        }
     }
 
     pub(crate) async fn rebuild_resource_runtime_for_loaded_page_async(&mut self) {
@@ -204,14 +204,15 @@ impl CdpConnection {
                     slot.loaded_page_mut(),
                 )
                 .await
-        } else {
-            self.standalone_navigation_engine
-                .ensure_mut()
+        } else if let Some(engine) = self.standalone_navigation_engine.engine.get_mut() {
+            engine
                 .rebuild_resource_runtime_for_page_with_storage_async(
                     storage.into_navigation_storage(),
                     None,
                 )
                 .await
+        } else {
+            return;
         };
         if rebuild_result.is_err() {
             if let Some((engine, slot)) = self
@@ -223,11 +224,8 @@ impl CdpConnection {
                 engine
                     .reset_resource_runtime_async(slot.loaded_page_mut())
                     .await;
-            } else {
-                self.standalone_navigation_engine
-                    .ensure_mut()
-                    .reset_resource_runtime_async(None)
-                    .await;
+            } else if let Some(engine) = self.standalone_navigation_engine.engine.get_mut() {
+                engine.reset_resource_runtime_async(None).await;
             }
         }
     }

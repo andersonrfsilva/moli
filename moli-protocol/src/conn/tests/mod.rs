@@ -169,8 +169,8 @@ async fn creating_a_target_preserves_the_published_default_as_a_placeholder() {
 
     assert_ne!(created_target_id, conn.default_target_id());
     assert!(
-        conn.standalone_navigation_engine.is_materialized(),
-        "creating a real Page target is the first operation that needs the renderer runtime"
+        !conn.standalone_navigation_engine.is_materialized(),
+        "the Page-owned engine must not also materialize the standalone fallback"
     );
     assert!(
         conn.browser_context
@@ -238,6 +238,7 @@ fn idle_navigation_engine_reset_preserves_mock_layout_policy() {
     let reset = conn.release_idle_navigation_engine_memory_if_idle();
 
     assert!(reset.reset);
+    assert!(!conn.standalone_navigation_engine.is_materialized());
     assert_eq!(
         conn.standalone_navigation_engine.layout_policy(),
         LayoutPolicy::Mock
@@ -272,6 +273,224 @@ async fn hidden_scrollbars_survive_idle_reset_and_browser_context_removal() {
             .runtime_config()
             .scrollbars_hidden()
     );
+}
+
+#[tokio::test]
+async fn deferred_standalone_settings_preserve_config_without_starting_runtime() {
+    let mut conn = CdpConnection::new_with_deferred_navigation_runtime(
+        crate::CdpInitialStoragePartition::memory(),
+        NavigationRuntimeConfig::new(
+            FetchConfig::default(),
+            OptionalResourceFetchMask::NONE,
+            false,
+            LayoutPolicy::Mock,
+        ),
+    );
+    conn.base_http_no_proxy = Some("localhost,.test".to_owned());
+    conn.set_user_agent_override_async("base-agent/1").await;
+    conn.set_global_browser_identity_override_from_user_agent(Some("global-agent/1".to_owned()));
+    conn.set_http_proxy_override_async(Some("http://127.0.0.1:9".to_owned()))
+        .await;
+    conn.set_tls_verify_host_async(false).await;
+    conn.invalidate_resource_runtime();
+    conn.invalidate_resource_runtime_async().await;
+    conn.reset_resource_runtime_async().await;
+
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert_eq!(conn.fetch_config().user_agent(), "global-agent/1");
+    assert_eq!(conn.fetch_config().http_proxy(), Some("http://127.0.0.1:9"));
+    assert_eq!(conn.fetch_config().http_no_proxy(), Some("localhost,.test"));
+    assert!(!conn.fetch_config().tls_verify_host());
+
+    // A real consumer still explicitly creates the runtime from those settings.
+    let engine = conn.active_navigation_engine_mut();
+    let owner = engine.renderer_owner_id_for_diagnostics();
+    assert_eq!(engine.fetch_config().user_agent(), "global-agent/1");
+    assert_eq!(
+        engine.fetch_config().http_proxy(),
+        Some("http://127.0.0.1:9")
+    );
+    assert_eq!(
+        engine.fetch_config().http_no_proxy(),
+        Some("localhost,.test")
+    );
+    assert!(!engine.tls_verify_host());
+    assert_eq!(
+        engine.optional_resource_fetch_mask(),
+        OptionalResourceFetchMask::NONE
+    );
+    assert!(!engine.subframe_loading_enabled());
+    assert_eq!(engine.layout_policy(), LayoutPolicy::Mock);
+
+    conn.set_global_browser_identity_override_from_user_agent(None);
+    conn.set_tls_verify_host_async(true).await;
+    assert_eq!(conn.fetch_config().user_agent(), "base-agent/1");
+    assert!(conn.fetch_config().tls_verify_host());
+    assert_eq!(
+        conn.active_navigation_engine()
+            .renderer_owner_id_for_diagnostics(),
+        owner
+    );
+}
+
+#[tokio::test]
+async fn deferred_standalone_empty_context_switch_and_removal_do_not_start_runtime() {
+    let mut conn = deferred_default_connection();
+    let mut first = BrowserContext::new("CTX-deferred-first".to_owned());
+    first.default_tls_verify_host_override = Some(false);
+    first.default_http_proxy_override = Some("http://127.0.0.1:9".to_owned());
+    conn.insert_browser_context(first);
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert!(!conn.fetch_config().tls_verify_host());
+    assert_eq!(conn.fetch_config().http_proxy(), Some("http://127.0.0.1:9"));
+
+    conn.insert_browser_context(BrowserContext::new("CTX-deferred-second".to_owned()));
+    assert!(conn.activate_browser_context_by_id("CTX-deferred-second"));
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert!(conn.fetch_config().tls_verify_host());
+    assert_eq!(conn.fetch_config().http_proxy(), None);
+
+    assert!(
+        conn.remove_browser_context_by_id_restoring_active_async(
+            "CTX-deferred-second",
+            Some("CTX-deferred-first"),
+        )
+        .await
+        .is_some()
+    );
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert!(!conn.fetch_config().tls_verify_host());
+    assert!(
+        conn.remove_browser_context_by_id_restoring_active_async("CTX-deferred-first", None,)
+            .await
+            .is_some()
+    );
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert!(conn.fetch_config().tls_verify_host());
+    assert_eq!(conn.fetch_config().http_proxy(), None);
+}
+
+#[test]
+fn deferred_standalone_idle_release_preserves_effective_config_and_transport() {
+    let mut conn = CdpConnection::new_with_initial_storage_partition_and_runtime_config(
+        crate::CdpInitialStoragePartition::memory(),
+        NavigationRuntimeConfig::new(
+            FetchConfig::default(),
+            OptionalResourceFetchMask::NONE,
+            false,
+            LayoutPolicy::Mock,
+        ),
+    );
+    let (sender, _receiver) = moli_core::renderer_output_transport_channel();
+    conn.set_renderer_publication_sender(sender.clone());
+    let engine = conn.standalone_navigation_engine.ensure_mut();
+    let old_owner = engine.renderer_owner_id_for_diagnostics();
+    engine.set_user_agent_override("updated-live-agent/1");
+    engine.set_http_proxy_override(Some("http://127.0.0.1:9".to_owned()));
+    engine.set_http_no_proxy_override(Some("localhost,.test".to_owned()));
+    engine.set_tls_verify_host(false);
+
+    let release = conn.release_idle_navigation_engine_memory_if_idle();
+    assert!(release.reset);
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert_eq!(conn.fetch_config().user_agent(), "updated-live-agent/1");
+    assert!(
+        conn.standalone_navigation_engine
+            .renderer_publication_sender
+            .as_ref()
+            .unwrap()
+            .same_channel(&sender)
+    );
+    let no_op = conn.release_idle_navigation_engine_memory_if_idle();
+    assert!(!no_op.reset);
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+
+    let engine = conn.standalone_navigation_engine.ensure();
+    assert_ne!(engine.renderer_owner_id_for_diagnostics(), old_owner);
+    assert_eq!(engine.fetch_config().user_agent(), "updated-live-agent/1");
+    assert_eq!(
+        engine.fetch_config().http_proxy(),
+        Some("http://127.0.0.1:9")
+    );
+    assert_eq!(
+        engine.fetch_config().http_no_proxy(),
+        Some("localhost,.test")
+    );
+    assert!(!engine.tls_verify_host());
+    assert_eq!(
+        engine.optional_resource_fetch_mask(),
+        OptionalResourceFetchMask::NONE
+    );
+    assert!(!engine.subframe_loading_enabled());
+    assert_eq!(engine.layout_policy(), LayoutPolicy::Mock);
+    assert!(
+        engine.browser_context_runtime().moli_memory_diagnostics()["rendererOutputTransport"]
+            .is_object()
+    );
+}
+
+#[test]
+fn deferred_standalone_idle_release_keeps_a_never_created_slot_empty() {
+    let mut conn = deferred_default_connection();
+    let result = conn.release_idle_navigation_engine_memory_if_idle();
+    assert!(!result.reset);
+    assert!(!conn.standalone_navigation_engine.is_materialized());
+    assert!(conn.default_target_lifecycle.is_placeholder());
+}
+
+#[test]
+fn deferred_standalone_idle_release_does_not_replace_engine_with_a_live_target() {
+    let mut conn = CdpConnection::new();
+    let old_owner = conn
+        .standalone_navigation_engine
+        .ensure()
+        .renderer_owner_id_for_diagnostics();
+    let mut context = BrowserContext::new("CTX-release-live-target".to_owned());
+    context.set_active_target_id("TID-release-live-target");
+    conn.insert_browser_context(context);
+    let result = conn.release_idle_navigation_engine_memory_if_idle();
+    assert!(!result.reset);
+    assert_eq!(result.reason, "not-idle");
+    assert_eq!(
+        conn.standalone_navigation_engine
+            .ensure()
+            .renderer_owner_id_for_diagnostics(),
+        old_owner
+    );
+}
+
+#[tokio::test]
+async fn deferred_standalone_target_create_close_recreate_keeps_fallback_empty() {
+    let mut conn = deferred_default_connection();
+    for round in 0..2 {
+        let create_id = 10 + round * 2;
+        let messages = conn.process_message_messages_only_for_test(&json!({
+            "id": create_id, "method": "Target.createTarget", "params": {"url": "about:blank"},
+        }).to_string()).await;
+        let target_id = messages
+            .iter()
+            .find(|m| m["id"] == json!(create_id))
+            .and_then(|m| m["result"]["targetId"].as_str())
+            .expect("createTarget result")
+            .to_owned();
+        assert!(!conn.standalone_navigation_engine.is_materialized());
+        assert!(
+            conn.browser_context
+                .as_ref()
+                .and_then(|bc| bc.page_navigation_engine(&target_id))
+                .is_some()
+        );
+        let close_id = create_id + 1;
+        let messages = conn.process_message_messages_only_for_test(&json!({
+            "id": close_id, "method": "Target.closeTarget", "params": {"targetId": target_id},
+        }).to_string()).await;
+        assert!(
+            messages
+                .iter()
+                .any(|m| m["id"] == json!(close_id) && m["result"]["success"] == json!(true))
+        );
+        assert!(!conn.standalone_navigation_engine.is_materialized());
+    }
 }
 
 #[tokio::test]
