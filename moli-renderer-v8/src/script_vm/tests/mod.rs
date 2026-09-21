@@ -2477,3 +2477,4 @@ mod xml_serializer_receivers;
 
 mod webtransport_stream_interface_exposure;
 mod window_restricted_accessors;
+mod window_scheduling_receivers;
