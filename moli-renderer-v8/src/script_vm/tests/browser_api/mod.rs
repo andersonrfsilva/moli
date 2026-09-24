@@ -1,4 +1,6 @@
 mod document_node_factory_realms;
+mod event_constructor_type;
+
 use super::*;
 
 mod abort_controller_receivers;
@@ -25,7 +27,7 @@ mod crypto_subtle_x25519;
 mod date_locale;
 mod details;
 mod document_open_navigation_abort;
-mod event_constructor_type;
+mod document_open_origin;
 mod event_handlers;
 mod event_listener_options;
 mod events_selection_storage;
