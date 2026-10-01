@@ -249,7 +249,7 @@ impl JsContextHost {
     pub(crate) fn retained_live_stylesheet_rule_wrapper_snapshot_for_detach(
         &self,
         id: crate::live_stylesheet::StylesheetRuleWrapperLeaseId,
-    ) -> Option<moli_css_parse::CssRuleSnapshot> {
+    ) -> Option<crate::live_stylesheet::RetainedStylesheetRuleSnapshot> {
         self.live_stylesheets
             .retained_rule_wrapper_snapshot_for_detach(id)
     }
