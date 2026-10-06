@@ -2522,5 +2522,6 @@ mod window_scroll_methods;
 mod window_sync_method_receivers;
 
 mod rectangle_receivers;
+mod svg_hyperlinks;
 mod svg_transform_lists;
 mod svg_value_lists;
