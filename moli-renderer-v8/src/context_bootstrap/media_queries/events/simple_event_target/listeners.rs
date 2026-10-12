@@ -286,6 +286,12 @@ fn simple_object_event_target_register_resolved_listener<'s>(
             options.capture,
         );
     }
+    crate::context_bootstrap::media_queries::realtime_media_query_listeners_changed(
+        scope,
+        target,
+        slot_name,
+        &event_type,
+    );
     if event_type == "message" {
         crate::context_bootstrap::flush_pending_worker_messages_for_listener(scope, target);
     }
@@ -721,6 +727,9 @@ fn simple_object_event_remove_listener_from_registry<'s>(
             remove_simple_object_event_type_order(scope, registry, event_type);
         }
     }
+    crate::context_bootstrap::media_queries::realtime_media_query_listeners_changed(
+        scope, target, slot_name, event_type,
+    );
 }
 
 fn unregister_simple_object_event_listener_abort_algorithm<'s>(
