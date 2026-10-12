@@ -1310,11 +1310,15 @@ impl JsContextHost {
     ) -> Result<(), CssCustomPropertyRegistrationError> {
         self.clear_layout_rect_cache();
         let base_url = self.style_base_url_for_document(document);
-        self.style_engine.register_css_custom_property_for_document(
+        let result = self.style_engine.register_css_custom_property_for_document(
             document,
             registration,
             base_url,
-        )
+        );
+        if result.is_ok() {
+            self.note_realtime_layout_input_change();
+        }
+        result
     }
 
     pub(crate) fn validate_css_custom_property_registration_for_document(
@@ -1897,6 +1901,9 @@ impl JsContextHost {
         previous: Option<DomHandle>,
         next: Option<DomHandle>,
     ) {
+        if previous != next {
+            self.note_realtime_layout_input_change();
+        }
         let dom_host = self.dom_host() as *const _;
         let emulated_media = self.emulated_media().clone();
         let viewport = self.style_viewport();
@@ -1915,6 +1922,7 @@ impl JsContextHost {
         next: Option<DomHandle>,
         previous_focus_within: Option<Vec<DomHandle>>,
     ) {
+        self.note_realtime_layout_input_change();
         let dom_host = self.dom_host() as *const _;
         let emulated_media = self.emulated_media().clone();
         let viewport = self.style_viewport();
@@ -1934,6 +1942,9 @@ impl JsContextHost {
         previous: Option<DomHandle>,
         next: Option<DomHandle>,
     ) {
+        if previous != next {
+            self.note_realtime_layout_input_change();
+        }
         let dom_host = self.dom_host() as *const _;
         let emulated_media = self.emulated_media().clone();
         let viewport = self.style_viewport();
@@ -1953,6 +1964,11 @@ impl JsContextHost {
         state: StyloElementState,
         old_state: Option<StyloElementState>,
     ) {
+        if self.layout_policy().is_realtime()
+            && (old_state.is_none() || old_state != self.retained_current_element_state(element))
+        {
+            self.note_realtime_layout_input_change();
+        }
         let dom_host = self.dom_host() as *const _;
         let emulated_media = self.emulated_media().clone();
         let viewport = self.style_viewport();
@@ -2019,6 +2035,9 @@ impl JsContextHost {
         state_names: Vec<String>,
         old_custom_states: Vec<String>,
     ) {
+        if !state_names.is_empty() {
+            self.note_realtime_layout_input_change();
+        }
         let dom_host = self.dom_host() as *const _;
         let emulated_media = self.emulated_media().clone();
         let viewport = self.style_viewport();
@@ -2351,6 +2370,9 @@ impl JsContextHost {
     }
 
     pub(crate) fn note_style_mutation_effects(&mut self, effects: &[StyleMutationEffect]) {
+        if !effects.is_empty() {
+            self.note_realtime_layout_input_change();
+        }
         if style_mutation_effects_affect_layout_metric(effects) {
             self.clear_layout_rect_cache();
         }
@@ -2386,6 +2408,7 @@ impl JsContextHost {
     }
 
     pub(crate) fn note_element_inline_style_subtree_activity(&mut self, root: DomHandle) {
+        self.note_realtime_layout_input_change();
         self.clear_layout_rect_cache();
         let dom_host = self.dom_host() as *const _;
         self.style_engine
@@ -2393,6 +2416,7 @@ impl JsContextHost {
     }
 
     pub(crate) fn note_style_subtree_context_change(&mut self, root: DomHandle) {
+        self.note_realtime_layout_input_change();
         self.clear_layout_rect_cache();
         let dom_host = self.dom_host() as *const _;
         self.style_engine
