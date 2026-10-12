@@ -1,6 +1,7 @@
 //! Screenshot and screencast requests, replies and pixel capture.
 
 use crate::native_bridge::LayoutPublicationRequest;
+use crate::style_engine::StyloStyleEnvironment;
 use moli_layout::{
     LayoutRect, LayoutTransform2D, PaintCaptureRegion, PaintCaptureRequest, PaintCaptureSurface,
     PaintViewport,
@@ -225,6 +226,7 @@ impl PageVm {
             paint_capture,
             moli_layout::LayoutFlushReason::Screenshot,
             LayoutPublicationRequest::Screen,
+            None,
         )
         .map(RendererImageCaptureOutcome::into_screenshot_reply)
     }
@@ -286,6 +288,7 @@ impl PageVm {
             paint_capture,
             moli_layout::LayoutFlushReason::Screencast,
             LayoutPublicationRequest::Screen,
+            None,
         )? {
             RendererImageCaptureOutcome::Captured(image) => image,
             RendererImageCaptureOutcome::LayoutDisabled => {
@@ -319,6 +322,7 @@ impl PageVm {
         paint_capture: PaintCaptureRequest,
         reason: moli_layout::LayoutFlushReason,
         publication: LayoutPublicationRequest,
+        environment_override: Option<StyloStyleEnvironment>,
     ) -> anyhow::Result<RendererImageCaptureOutcome> {
         let profile_enabled = moli_trace::cpu_profile_enabled();
         let total_started = profile_enabled.then(Instant::now);
@@ -337,6 +341,7 @@ impl PageVm {
             reason,
             paint_capture,
             publication,
+            environment_override,
         )?
         else {
             return Ok(RendererImageCaptureOutcome::NoDocument);

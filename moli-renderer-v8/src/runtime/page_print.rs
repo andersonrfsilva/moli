@@ -48,7 +48,7 @@ impl PageVm {
         );
         let result = self
             .vm_mut()
-            .paint_layout_snapshot_with_capture_in_environment(
+            .paint_layout_snapshot_with_capture(
                 viewport,
                 moli_layout::LayoutFlushReason::Print,
                 PaintCaptureRequest {
