@@ -363,7 +363,7 @@ impl JsContextHost {
         document: DomHandle,
         request: LayoutPassRequest,
     ) -> Result<Option<LayoutPassResult<DomHandle>>, LayoutError> {
-        self.build_layout_pass_for_document_in_environment(document, request, None)
+        self.build_layout_pass_for_document_in_environment(document, request, None, None)
     }
 
     pub(crate) fn build_layout_pass_for_document_in_environment(
@@ -371,6 +371,7 @@ impl JsContextHost {
         document: DomHandle,
         request: LayoutPassRequest,
         environment_override: Option<StyloStyleEnvironment>,
+        working_sets: Option<&mut crate::layout_renderer::NativeLayoutWorkingSetPass>,
     ) -> Result<Option<LayoutPassResult<DomHandle>>, LayoutError> {
         let request = if self.layout_policy.is_realtime() {
             request.with_frame_coverage(moli_layout::LayoutFrameCoverage::AllLayoutBoxes)
@@ -402,6 +403,7 @@ impl JsContextHost {
                         embedded_document_services,
                         request,
                         environment_override,
+                        working_sets,
                     )
                 },
             )?

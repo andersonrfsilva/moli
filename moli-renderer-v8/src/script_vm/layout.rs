@@ -227,8 +227,8 @@ impl ScriptVm {
         // environment: temporary media must not prune screen registrations. CSS image
         // URLs come back from the actual box-construction traversal below.
         // Once the guard is entered, layout performs no JS, event-loop,
-        // observer, or resource completion work and owns no state beyond this
-        // call.
+        // observer, or resource completion work. Realtime may retain owned
+        // computation state only after this screen publication is validated.
         if environment_override.is_none() {
             self.reconcile_document_web_fonts_for_layout();
         }
@@ -236,7 +236,7 @@ impl ScriptVm {
         let (document, publishes_layout, result) = {
             let context_host = self._context_host.borrow();
             let document = context_host.document_handle();
-            let publication =
+            let mut publication =
                 context_host.prepare_layout_publication(document, request.viewport, publication)?;
             let publishes_layout = publication.publishes_screen();
             let result = context_host
@@ -244,6 +244,7 @@ impl ScriptVm {
                     document,
                     request,
                     environment_override,
+                    publication.working_sets_for_pass(),
                 )
                 .and_then(|pass| {
                     let Some(mut pass) = pass else {
@@ -558,6 +559,7 @@ impl ScriptVm {
             &mut services,
             &mut embedded_document_services,
             request,
+            None,
             None,
         )
     }
