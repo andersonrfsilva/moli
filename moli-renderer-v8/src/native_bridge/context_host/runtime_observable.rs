@@ -530,6 +530,7 @@ impl JsContextHost {
     ) -> bool {
         self.retire_font_face_loads_for_execution_context_owner(owner);
         self.retire_realtime_animation_frame_owner(owner);
+        self.retire_realtime_media_query_owner(owner);
         self.retire_event_callbacks_for_execution_context(owner);
         crate::observer_runtime::retire_execution_context_owner(self, owner);
         let retired = self.window_execution_contexts.remove(&owner);
@@ -563,6 +564,7 @@ impl JsContextHost {
     ) -> usize {
         self.retire_font_face_loads_for_context_token(context_token);
         self.retire_realtime_animation_frame_realm(context_token);
+        self.retire_realtime_media_query_realm(context_token);
         crate::observer_runtime::retire_context_token(self, context_token);
         let indexed_db_retirement = self.retire_indexed_db_context(context_token);
         let retired_indexed_db_connections = indexed_db_retirement.retired_connections.len();
@@ -615,6 +617,7 @@ impl JsContextHost {
     ) -> usize {
         self.retire_font_face_loads_for_context_token(context_token);
         self.retire_realtime_animation_frame_realm(context_token);
+        self.retire_realtime_media_query_realm(context_token);
         crate::observer_runtime::retire_context_token(self, context_token);
         let indexed_db_retirement = self.retire_indexed_db_context(context_token);
         indexed_db_retirement.finish(self.indexed_db_manager.as_ref());
