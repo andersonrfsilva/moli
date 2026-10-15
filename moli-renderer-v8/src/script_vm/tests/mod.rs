@@ -2274,6 +2274,7 @@ mod document_implementation_realm;
 mod svg_animated_value_native_receivers;
 
 mod native_exception_stack_capture;
+mod native_node_event_outcomes;
 mod no_cors_header_fill;
 mod node_event_worlds;
 
