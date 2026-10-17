@@ -100,7 +100,7 @@ impl InlineMeasurements {
             .iter()
             .position(|result| result.inputs == inputs && result.style == *style)?;
         let result = results.remove(index);
-        let output = result.output;
+        let output = result.output.clone();
         if result.restored {
             self.retained_hits = self.retained_hits.saturating_add(1);
         }

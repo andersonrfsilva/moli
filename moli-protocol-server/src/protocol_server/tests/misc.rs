@@ -64,6 +64,7 @@ fn serve_roots_initialize_layout_working_set_budget_only_for_realtime() {
             partition,
             config,
             crate::config::DEFAULT_SCREENCAST_INTERVAL_MS,
+            BrowserInstanceControl::new(),
         )
         .unwrap();
         let server_pool = server.navigation_runtime_config.layout_working_set_budget();
@@ -103,6 +104,7 @@ fn serve_preserves_one_layout_working_set_budget_with_the_complete_runtime_confi
         partition,
         server_clone.navigation_runtime_config.clone(),
         crate::config::DEFAULT_SCREENCAST_INTERVAL_MS,
+        BrowserInstanceControl::new(),
     )
     .unwrap();
     let state_clone = state.clone();

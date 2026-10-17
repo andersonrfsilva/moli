@@ -289,7 +289,6 @@ fn simple_object_event_target_register_resolved_listener<'s>(
     crate::context_bootstrap::media_queries::realtime_media_query_listeners_changed(
         scope,
         target,
-        slot_name,
         &event_type,
     );
     if event_type == "message" {
@@ -703,6 +702,7 @@ fn simple_object_event_remove_listener_from_registry<'s>(
     listener: v8::Local<'s, v8::Value>,
     capture: bool,
 ) {
+    let target = registry.1;
     let registry = registry.0;
     let Some(current) = object_property_as_array(scope, registry, event_type) else {
         return;
@@ -728,7 +728,7 @@ fn simple_object_event_remove_listener_from_registry<'s>(
         }
     }
     crate::context_bootstrap::media_queries::realtime_media_query_listeners_changed(
-        scope, target, slot_name, event_type,
+        scope, target, event_type,
     );
 }
 

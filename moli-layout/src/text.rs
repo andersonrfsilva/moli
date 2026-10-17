@@ -879,6 +879,16 @@ struct RegisteredWebFont {
     membership: WebFontMembership,
 }
 
+impl PartialEq for RegisteredWebFont {
+    fn eq(&self, other: &Self) -> bool {
+        self.face == other.face
+            && self.source_key == other.source_key
+            && self.membership == other.membership
+            && (self.sfnt_bytes.id() == other.sfnt_bytes.id()
+                || self.sfnt_bytes.as_ref() == other.sfnt_bytes.as_ref())
+    }
+}
+
 impl RegisteredWebFont {
     fn priority(&self, slot: &str, order: &WebFontOrder) -> WebFontPriority {
         order.get(slot).copied().unwrap_or_else(|| {
@@ -898,6 +908,7 @@ impl RegisteredWebFont {
 pub(crate) struct LayoutFontInputs {
     system_font_policy: SystemFontPolicy,
     web_fonts: BTreeMap<String, RegisteredWebFont>,
+    web_font_order: WebFontOrder,
 }
 
 impl LayoutFontInputs {
@@ -909,10 +920,11 @@ impl LayoutFontInputs {
         let entry_charge = std::mem::size_of::<(String, RegisteredWebFont)>()
             .saturating_mul(2)
             .saturating_add(4 * std::mem::size_of::<usize>());
-        self.web_fonts.iter().fold(0usize, |bytes, (slot, font)| {
+        let fonts = self.web_fonts.iter().fold(0usize, |bytes, (slot, font)| {
             bytes
                 .saturating_add(entry_charge)
                 .saturating_add(slot.capacity())
+                .saturating_add(font.source_key.as_ref().map_or(0, String::capacity))
                 .saturating_add(font.face.family_name.capacity())
                 .saturating_add(
                     font.face
@@ -920,6 +932,14 @@ impl LayoutFontInputs {
                         .capacity()
                         .saturating_mul(std::mem::size_of::<WebFontUnicodeRange>()),
                 )
+        });
+        let order_charge = std::mem::size_of::<(String, WebFontPriority)>()
+            .saturating_mul(2)
+            .saturating_add(4 * std::mem::size_of::<usize>());
+        self.web_font_order.iter().fold(fonts, |bytes, (slot, _)| {
+            bytes
+                .saturating_add(order_charge)
+                .saturating_add(slot.capacity())
         })
     }
 }
@@ -974,6 +994,7 @@ impl DocumentLayoutServices {
         LayoutFontInputs {
             system_font_policy: self.system_font_policy,
             web_fonts: self.web_fonts.clone(),
+            web_font_order: self.web_font_order.clone(),
         }
     }
 

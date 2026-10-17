@@ -49,9 +49,9 @@ fn inputs() -> LayoutInput {
             width: Some(60.0),
             height: Some(20.0),
         },
-        definite_dimensions: Size {
-            width: Some(60.0),
-            height: Some(20.0),
+        known_dimensions_are_definite: Size {
+            width: true,
+            height: true,
         },
         parent_size: Size {
             width: Some(240.0),
@@ -111,8 +111,8 @@ fn inline_measurement_baselines_and_purposes_do_not_alias_final_layout() {
         "known-size shortcuts must not allocate measurement storage"
     );
     let baseline = measure(&mut world, inputs(), true);
-    assert!(plain.first_baselines.y.is_none());
-    assert!(baseline.first_baselines.y.is_some());
+    assert!(plain.baselines.first.is_none());
+    assert!(baseline.baselines.first.is_some());
     assert_ne!(plain, baseline);
     world.inline_numeric_reuse.as_mut().unwrap().reset_hits();
     assert_eq!(measure(&mut world, inputs(), true), baseline);
@@ -136,7 +136,10 @@ fn inline_measurement_baselines_and_purposes_do_not_alias_final_layout() {
         for purpose in [SizingPurpose::IntrinsicContribution, SizingPurpose::Layout] {
             let probe = LayoutInput {
                 known_dimensions: Size::NONE,
-                definite_dimensions: Size::NONE,
+                known_dimensions_are_definite: Size {
+                    width: false,
+                    height: false,
+                },
                 available_space: Size {
                     width,
                     height: AvailableSpace::MaxContent,
@@ -178,7 +181,10 @@ fn inline_measurements_revalidate_full_constraints_and_numeric_style() {
             ..base
         },
         LayoutInput {
-            definite_dimensions: Size::NONE,
+            known_dimensions_are_definite: Size {
+                width: false,
+                height: false,
+            },
             ..base
         },
         LayoutInput {
@@ -218,7 +224,7 @@ fn inline_measurements_revalidate_full_constraints_and_numeric_style() {
                 world.boxes[0].style.taffy.min_size.width = taffy::style_helpers::length(80.0);
                 cold.boxes[0].style.taffy.min_size.width = taffy::style_helpers::length(80.0);
             } else {
-                world.boxes[0].style.taffy.min_size.width = taffy::Dimension::auto();
+                world.boxes[0].style.taffy.min_size.width = taffy::style_helpers::auto();
             }
             let expected = measure(&mut cold, probe, baselines);
             assert_eq!(measure(&mut world, probe, baselines), expected);
@@ -303,7 +309,10 @@ fn inline_measurement_fixed_width_survives_unused_parent_width_changes() {
             ..wide
         },
         LayoutInput {
-            definite_dimensions: Size::NONE,
+            known_dimensions_are_definite: Size {
+                width: false,
+                height: false,
+            },
             ..wide
         },
         LayoutInput {
@@ -338,7 +347,7 @@ fn inline_measurement_width_dependencies_remain_in_the_key() {
         let mut narrow = inputs();
         if dependency == 0 {
             narrow.known_dimensions.width = None;
-            narrow.definite_dimensions.width = None;
+            narrow.known_dimensions_are_definite.width = false;
         } else {
             for world in [&mut world, &mut cold] {
                 let style = &mut world.boxes[0].style.taffy;
@@ -386,8 +395,8 @@ fn numeric_cache_growth_keeps_box_viewport_and_invalidation_owners_distinct() {
     };
     let root = world.root().to_taffy();
     assert_eq!(world.cache_get(root, &input), None);
-    world.cache_store(root, &input, output);
-    assert_eq!(world.cache_get(root, &input), Some(output));
+    world.cache_store(root, &input, output.clone());
+    assert_eq!(world.cache_get(root, &input), Some(output.clone()));
     assert_eq!(
         world.cache_get(
             root,
@@ -402,22 +411,28 @@ fn numeric_cache_growth_keeps_box_viewport_and_invalidation_owners_distinct() {
     // The old viewport ID becomes a real box ID when numeric preparation
     // appends a box. Its cache must start empty, without losing viewport work.
     let sibling = world.viewport_taffy_node();
-    let mut viewport_output = output;
+    let mut viewport_output = output.clone();
     viewport_output.size.width += 10.0;
-    world.cache_store(sibling, &input, viewport_output);
+    world.cache_store(sibling, &input, viewport_output.clone());
     let mut extra = text_world(false).boxes.remove(0);
     extra.source = Some(1);
     world.boxes.push(extra);
     assert_eq!(world.cache_get(sibling, &input), None);
     let viewport = world.viewport_taffy_node();
-    assert_eq!(world.cache_get(viewport, &input), Some(viewport_output));
+    assert_eq!(
+        world.cache_get(viewport, &input),
+        Some(viewport_output.clone())
+    );
 
     let mut sibling_output = output;
     sibling_output.size.width += 20.0;
-    world.cache_store(sibling, &input, sibling_output);
+    world.cache_store(sibling, &input, sibling_output.clone());
     world.cache_clear(root);
     assert_eq!(world.cache_get(root, &input), None);
-    assert_eq!(world.cache_get(sibling, &input), Some(sibling_output));
+    assert_eq!(
+        world.cache_get(sibling, &input),
+        Some(sibling_output.clone())
+    );
     assert_eq!(world.cache_get(viewport, &input), Some(viewport_output));
     world.cache_clear(viewport);
     assert_eq!(world.cache_get(viewport, &input), None);
@@ -459,15 +474,18 @@ fn many_flattened_boxes() -> (LayoutWorld<u8>, LayoutBoxId, LayoutInput, LayoutO
 #[test]
 fn numeric_cache_allocation_follows_actual_stores_in_a_large_flattened_tree() {
     let (mut world, sibling, input, output) = many_flattened_boxes();
-    world.cache_store(world.root().to_taffy(), &input, output);
-    world.cache_store(sibling.to_taffy(), &input, output);
+    world.cache_store(world.root().to_taffy(), &input, output.clone());
+    world.cache_store(sibling.to_taffy(), &input, output.clone());
     assert_eq!(
         world.cache_get(world.root().to_taffy(), &input),
-        Some(output)
+        Some(output.clone())
     );
-    assert_eq!(world.cache_get(sibling.to_taffy(), &input), Some(output));
+    assert_eq!(
+        world.cache_get(sibling.to_taffy(), &input),
+        Some(output.clone())
+    );
     let bytes = world.box_caches.capacity() * std::mem::size_of::<taffy::Cache>()
-        + world.box_cache_slots.capacity() * std::mem::size_of::<usize>();
+        + world.boxes.capacity() * std::mem::size_of::<Option<std::num::NonZeroU32>>();
     eprintln!(
         "numeric-cache boxes={} initialized={} allocated_slots={} visible_capacity_bytes={bytes}",
         world.len(),
@@ -496,5 +514,9 @@ fn numeric_hidden_cache_store_does_not_allocate_measurement_storage() {
     world.cache_store(world.root().to_taffy(), &input, output);
     assert_eq!(world.cache_get(world.root().to_taffy(), &input), None);
     assert_eq!(world.box_caches.capacity(), 0);
-    assert_eq!(world.box_cache_slots.capacity(), 0);
+    assert!((0..world.len()).all(|index| {
+        world
+            .numeric_cache(LayoutBoxId::from_index(index))
+            .is_none()
+    }));
 }

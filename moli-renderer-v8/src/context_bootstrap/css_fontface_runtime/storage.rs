@@ -204,16 +204,20 @@ fn resolve_document_font_face_set_ready(
     if host.document_web_fonts_have_pending_requests(document) {
         return;
     }
-    let Some(document) = crate::util::node_wrapper_from_handle(scope, document) else {
+    let Some(document_wrapper) = crate::util::node_wrapper_from_handle(scope, document) else {
         return;
     };
-    let Some(fonts) = document
+    let Some(fonts) = document_wrapper
         .get(scope, crate::util::v8str(scope, "__moliFonts").into())
         .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
     else {
         return;
     };
-    super::events::finish_font_set_if_idle(scope, fonts);
+    if host.realtime_document_fonts_ready(document).is_some() {
+        super::events::finish_document_font_readiness(scope, fonts);
+    } else {
+        super::events::finish_font_set_if_idle(scope, fonts);
+    }
 }
 
 pub(crate) fn sync_realtime_document_font_face_set(
@@ -234,7 +238,10 @@ pub(crate) fn sync_realtime_document_font_face_set(
     else {
         return;
     };
-    super::events::font_face_set_loading_started(scope, fonts);
+    if host.document_web_fonts_have_pending_requests(document) {
+        super::events::font_face_set_loading_started(scope, fonts);
+    }
+    super::events::ensure_pending_font_face_set_ready(scope, fonts);
 }
 
 /// The font task may discover new loads while updating style and layout.

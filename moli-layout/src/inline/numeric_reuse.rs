@@ -243,7 +243,7 @@ impl InlineNumericReuse {
         if entry.restored {
             self.retained_hits = self.retained_hits.saturating_add(1);
         }
-        Some(entry.output)
+        Some(entry.output.clone())
     }
 
     pub(crate) fn remove(&mut self, owner: LayoutBoxId) {

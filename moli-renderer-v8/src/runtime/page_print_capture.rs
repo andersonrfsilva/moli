@@ -1,7 +1,9 @@
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow, ensure};
-use moli_layout::{LayoutFlushReason, LayoutViewport, WebFontRegistrationError};
+use moli_layout::{
+    LayoutFlushReason, LayoutViewport, WebFontRegistration, WebFontRegistrationError,
+};
 
 use crate::{
     capture_layout_resources::CaptureLayoutDiscovery,
@@ -225,7 +227,12 @@ impl PageVm {
                         .context("print font declaration is missing")?;
                     match job.overlay.register_font(
                         entry.spec.identity,
-                        font.registration(bytes.to_vec()),
+                        WebFontRegistration::new(
+                            font.registration_slot(),
+                            font.face().as_ref().clone(),
+                            bytes.to_vec(),
+                        )
+                        .with_source_key(Some(font.resource_key().to_owned())),
                         MAX_CAPTURE_FONT_DECODED_BYTES,
                         MAX_CAPTURE_TOTAL_FONT_DECODED_BYTES,
                     ) {
@@ -290,11 +297,14 @@ impl PageVm {
                 let available = member
                     .available_font_slots
                     .iter()
-                    .any(|slot| slot == font.slot());
+                    .any(|slot| slot == font.registration_slot());
+                let Some(url) = resource.request_url().cloned() else {
+                    continue;
+                };
                 let spec = CaptureResourceSpec {
                     identity: member.identity,
                     kind: CaptureResourceKind::Font,
-                    url: resource.request_url().clone(),
+                    url,
                     font: Some(font.clone()),
                 };
                 added |= admit_print_resource_entry(job, spec, available)?;

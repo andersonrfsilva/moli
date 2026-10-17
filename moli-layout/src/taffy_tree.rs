@@ -2487,12 +2487,12 @@ where
             {
                 // A known-size shortcut does no text work. Storing it would
                 // allocate and charge a cache to avoid a few scalar operations.
-                reuse.store_measurement(id, measurement_inputs, style, output);
+                reuse.store_measurement(id, measurement_inputs, style, output.clone());
             } else if final_layout_requested
                 && measurement_was_produced
                 && let Some(numeric_inputs) = final_numeric_inputs
             {
-                reuse.store(id, numeric_inputs, style, output);
+                reuse.store(id, numeric_inputs, style, output.clone());
             }
         }
         self.inline_layouts[id.index()] = Some(inline_context);
@@ -3610,9 +3610,9 @@ mod tests {
                 width: Some(60.0),
                 height: None,
             },
-            definite_dimensions: Size {
-                width: Some(60.0),
-                height: None,
+            known_dimensions_are_definite: Size {
+                width: true,
+                height: true,
             },
             parent_size: Size {
                 width: Some(240.0),
@@ -3642,7 +3642,10 @@ mod tests {
             run_mode: RunMode::ComputeSize,
             sizing_purpose: SizingPurpose::IntrinsicContribution,
             known_dimensions: Size::NONE,
-            definite_dimensions: Size::NONE,
+            known_dimensions_are_definite: Size {
+                width: false,
+                height: false,
+            },
             available_space: Size {
                 width: AvailableSpace::MaxContent,
                 height: AvailableSpace::MaxContent,
@@ -3669,10 +3672,6 @@ mod tests {
         // even though the preceding intrinsic probe left scratch lines behind.
         let changed = LayoutInput {
             known_dimensions: Size {
-                width: Some(180.0),
-                height: None,
-            },
-            definite_dimensions: Size {
                 width: Some(180.0),
                 height: None,
             },
@@ -3704,7 +3703,7 @@ mod tests {
         numeric_style.padding.top = taffy::LengthPercentage::length(7.0);
         numeric_style.padding.bottom = taffy::LengthPercentage::length(11.0);
         numeric_style.padding.left = taffy::LengthPercentage::length(13.0);
-        numeric_style.align_content = Some(taffy::AlignContent::END);
+        numeric_style.align_content = taffy::AlignContent::END;
         assert!(style::servo_arc::Arc::ptr_eq(
             &computed,
             world.boxes[0].style.stylo_computed_values().unwrap(),

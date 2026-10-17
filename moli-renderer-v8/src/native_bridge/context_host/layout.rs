@@ -206,6 +206,12 @@ impl JsContextHost {
         &self,
         frames: impl IntoIterator<Item = DomHandle>,
     ) {
+        // Realtime source invalidation already makes the screen layout stale.
+        // Preserve the last used viewport for a connected, hidden child until
+        // its next layout publishes a replacement.
+        if self.layout_policy().is_realtime() {
+            return;
+        }
         let frames = frames.into_iter().collect::<Vec<_>>();
         if frames.is_empty() {
             return;
@@ -352,6 +358,8 @@ impl JsContextHost {
         // A real font registration change invalidates sampled glyph advances.
         // Unchanged registration and read-only projections retain the tree.
         self.note_realtime_layout_input_change();
+        self.note_realtime_font_loading(document);
+        self.queue_realtime_font_readiness(document);
         self.clear_layout_rect_cache();
         self.document_layout_state
             .borrow_mut()
@@ -815,7 +823,9 @@ impl JsContextHost {
             self.document_handle(),
             resource,
         );
-        if prepared.fonts_changed {
+        if prepared.fonts_changed
+            && (!self.layout_policy().is_realtime() || prepared.font_inputs_changed)
+        {
             self.invalidate_document_font_layout(document);
         }
         if prepared.request.is_some() {

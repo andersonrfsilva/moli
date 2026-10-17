@@ -1,29 +1,40 @@
 use super::*;
 use crate::{
     css_resource_urls::{
-        CompletedStylesheetWebFont, StylesheetLoadBlockingResource,
-        stylesheet_load_blocking_font_resources,
+        BoundStylesheetWebFont, CompletedStylesheetWebFont, StylesheetLoadBlockingResource,
+        StylesheetSubresourceRequest, StylesheetSubresourceTarget,
     },
     protocol_types::OptionalResourceFetchMask,
     script_vm::web_fonts::DocumentWebFontCompletion,
 };
 use moli_page_types::LayoutPolicy;
 
-fn font_resource() -> StylesheetLoadBlockingResource {
-    stylesheet_load_blocking_font_resources(
-        "@font-face{font-family:RealtimeSourceFont;src:url(font.woff2)}",
-        &Url::parse("https://realtime-font.test/style.css").unwrap(),
-        OptionalResourceFetchMask::FONT,
-    )
-    .into_iter()
-    .next()
-    .unwrap()
+fn font_resource(
+    host: &crate::native_bridge::JsContextHost,
+    document: crate::document_runtime::DomHandle,
+) -> StylesheetLoadBlockingResource {
+    let root = host
+        .dom_host()
+        .dom()
+        .document_element_handle_for_document(document)
+        .unwrap();
+    crate::native_bridge::element::ComputedStyleRead::new(host, root)
+        .stylesheet_resource_snapshot()
+        .unwrap()
+        .web_fonts()[0]
+        .clone()
 }
 
-fn font_response(resource: &StylesheetLoadBlockingResource) -> CompletedStylesheetWebFont {
-    let (_, request) = resource.clone().into_parts();
+fn font_request(resource: &StylesheetSubresourceRequest) -> &BoundStylesheetWebFont {
+    let StylesheetSubresourceTarget::Font(font) = resource.target() else {
+        panic!("fixture must prepare a font request");
+    };
+    font
+}
+
+fn font_response(resource: &StylesheetSubresourceRequest) -> CompletedStylesheetWebFont {
     CompletedStylesheetWebFont::response(
-        request.unwrap(),
+        font_request(resource).clone(),
         include_bytes!("../../../../moli-layout/tests/fixtures/moli-ahem.woff2").to_vec(),
     )
 }
@@ -36,10 +47,11 @@ fn realtime_layout_font_completion_and_revocation_refresh_without_dom_writes() {
     );
     vm.set_layout_policy(LayoutPolicy::Realtime);
     let document = vm._context_host.borrow().document_handle();
+    let declaration = font_resource(&vm._context_host.borrow(), document);
     let resource = vm
         ._context_host
         .borrow()
-        .admit_document_web_font(document, font_resource())
+        .admit_document_web_font(document, declaration)
         .unwrap();
     let fallback = vm.eval("String(target.offsetWidth)").unwrap();
     assert_ne!(
@@ -67,7 +79,7 @@ fn realtime_layout_font_completion_and_revocation_refresh_without_dom_writes() {
         vm._context_host
             .borrow()
             .complete_document_web_font(document, font_response(&resource)),
-        DocumentWebFontCompletion::Registered(moli_layout::WebFontRegistrationOutcome::Unchanged)
+        DocumentWebFontCompletion::Stale
     ));
     assert_eq!(vm.eval("String(target.offsetWidth)").unwrap(), "48");
     assert_eq!(vm.layout_pass_observability_for_test().1, before + 1);
@@ -132,9 +144,8 @@ fn child_web_font_document_open_retires_registrations_and_rejects_old_owner() {
         let binding = host
             .accept_current_stylesheet_subresource_load_delay_for_document(document)
             .unwrap();
-        let resource = host
-            .admit_document_web_font(document, font_resource())
-            .unwrap();
+        let declaration = font_resource(&host, document);
+        let resource = host.admit_document_web_font(document, declaration).unwrap();
         (document, binding, resource)
     };
     let fallback = vm.eval("String(childTarget.offsetWidth)").unwrap();
@@ -161,14 +172,13 @@ fn child_web_font_document_open_retires_registrations_and_rejects_old_owner() {
         let binding = host
             .accept_current_stylesheet_subresource_load_delay_for_document(document)
             .unwrap();
-        let resource = host
-            .admit_document_web_font(document, font_resource())
-            .unwrap();
+        let declaration = font_resource(&host, document);
+        let resource = host.admit_document_web_font(document, declaration).unwrap();
         (binding, resource)
     };
     assert_eq!(
-        resource.web_font().unwrap().request_id(),
-        replacement_resource.web_font().unwrap().request_id()
+        font_request(&resource).request_id(),
+        font_request(&replacement_resource).request_id()
     );
     let before = vm.layout_pass_observability_for_test().1;
     vm.complete_document_web_font(binding, font_response(&resource));

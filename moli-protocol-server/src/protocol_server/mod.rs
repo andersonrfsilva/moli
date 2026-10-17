@@ -564,7 +564,6 @@ fn is_websocket_upgrade_request(request: &Request<Body>) -> bool {
 #[derive(Clone)]
 struct AppState {
     control: BrowserInstanceControl,
-    debugger_enabled: bool,
     browser_ws_url: String,
     page_ws_url: String,
     bidi_ws_url: String,
@@ -643,7 +642,6 @@ impl AppState {
         Self {
             control,
             browser_ws_url: format!("ws://{addr}/devtools/browser/{DEFAULT_BROWSER_ID}"),
-            debugger_enabled: navigation_runtime_config.debugger_enabled(),
             page_ws_url: format!("ws://{addr}/devtools/page/{DEFAULT_TARGET_ID}"),
             bidi_ws_url: format!("ws://{addr}/session"),
             bidi_session_registry: SharedBidiSessionRegistry::default(),

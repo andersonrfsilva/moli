@@ -135,8 +135,11 @@ impl CaptureResourceSpec {
         self.identity == other.identity
             && self.kind == other.kind
             && self.url == other.url
-            && self.font.as_ref().map(StylesheetWebFont::slot)
-                == other.font.as_ref().map(StylesheetWebFont::slot)
+            && self.font.as_ref().map(StylesheetWebFont::registration_slot)
+                == other
+                    .font
+                    .as_ref()
+                    .map(StylesheetWebFont::registration_slot)
     }
 }
 

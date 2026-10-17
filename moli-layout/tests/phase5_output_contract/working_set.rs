@@ -198,6 +198,9 @@ fn retained_work_updates_selection_and_inline_image_sizes() {
 #[test]
 fn retained_work_tracks_active_stylesheet_fonts_across_temporary_services() {
     let (source, mut styles, mut services) = fixture();
+    // Memberships are cumulative: retire the fixture's manual registration
+    // before testing a face that is available only through its stylesheet.
+    assert!(services.remove_web_font("fixed"));
     services
         .register_web_font(
             WebFontRegistration::new(

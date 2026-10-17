@@ -91,10 +91,12 @@ async fn spawn_realtime_cast_server() -> (std::net::SocketAddr, tokio::task::Joi
         storage,
         config,
         CAST_INTERVAL_MS,
+        BrowserInstanceControl::new(),
     )
     .unwrap();
     let server = tokio::spawn(async move {
-        axum::serve(listener, build_router(state)).await.unwrap();
+        let service = axum::ServiceExt::<Request<Body>>::into_make_service(build_router(state));
+        axum::serve(listener, service).await.unwrap();
     });
     (addr, server)
 }
