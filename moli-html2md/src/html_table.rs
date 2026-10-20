@@ -77,8 +77,8 @@ pub(crate) fn has_cells<D: Dom + ?Sized>(
 }
 
 enum Task<Id> {
-    Node(Id, usize),
-    Siblings(Option<Id>, usize),
+    Node(Id, usize, bool),
+    Siblings(Option<Id>, usize, bool),
     Close(String),
     Literal(&'static str),
 }
@@ -95,7 +95,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
 ) -> String {
     let mut output = String::new();
     let mut emitted_anchors = HashSet::new();
-    let mut tasks = vec![Task::Node(root, depth)];
+    let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
         match task {
             Task::Literal(value) => output.push_str(value),
@@ -104,15 +104,19 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 output.push_str(&tag);
                 output.push('>');
             }
-            Task::Siblings(None, _) => {}
-            Task::Siblings(Some(node), depth) => {
-                tasks.push(Task::Siblings(dom.next_sibling(node), depth));
-                tasks.push(Task::Node(node, depth));
+            Task::Siblings(None, _, _) => {}
+            Task::Siblings(Some(node), depth, code) => {
+                tasks.push(Task::Siblings(dom.next_sibling(node), depth, code));
+                tasks.push(Task::Node(node, depth, code));
             }
-            Task::Node(node, depth) => {
+            Task::Node(node, depth, code) => {
                 if depth >= limit {
                     continue;
                 }
+                if code && crate::content::is_code_control(dom, node) {
+                    continue;
+                }
+                let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
                 if matches!(dom.node_kind(node), NodeKind::Element(_)) {
                     if dom.has_block_layout(node) {
                         output.push_str("<div>");
@@ -154,7 +158,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         if let Some(value) = crate::form::textarea_text(dom, node) {
                             escape(&value, &mut output);
                         } else {
-                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1));
+                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
                         }
                     }
                     NodeKind::Element(tag) => {
@@ -246,12 +250,12 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             {
                                 escape(&label, &mut output);
                             } else {
-                                tasks.push(Task::Siblings(dom.first_child(node), depth + 1));
+                                tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
                             }
                         }
                     }
                     NodeKind::Document => {
-                        tasks.push(Task::Siblings(dom.first_child(node), depth + 1))
+                        tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code))
                     }
                 }
             }

@@ -421,15 +421,15 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         "presentation" | "none"
                     )
                 });
-                if (!presentation
-                    && crate::html_table::needed(self.dom, node, depth, self.options.max_depth))
-                    || (!self.anchor_targets.is_empty()
-                        && crate::anchors::contains(
-                            self.dom,
-                            node,
-                            self.options.max_depth - depth,
-                            &self.anchor_targets,
-                        ))
+                if !presentation
+                    && (crate::html_table::needed(self.dom, node, depth, self.options.max_depth)
+                        || (!self.anchor_targets.is_empty()
+                            && crate::anchors::contains(
+                                self.dom,
+                                node,
+                                self.options.max_depth - depth,
+                                &self.anchor_targets,
+                            )))
                 {
                     let html = crate::html_table::render(
                         self.dom,
@@ -440,6 +440,13 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
+                }
+                if presentation {
+                    for id in self.anchor_targets.targets(self.dom, node) {
+                        if self.emitted_anchors.insert(id.to_owned()) {
+                            self.writer().inline_html(&crate::anchors::markup(id));
+                        }
+                    }
                 }
                 if let Some(mut table) =
                     Table::from_dom(self.dom, node, depth, self.options.max_depth)
@@ -633,14 +640,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         if nonrendered_serialized_state(self.dom, node) {
             return;
         }
-        if matches!(
-            self.dom.node_kind(node),
-            NodeKind::Element("button" | "input" | "select" | "textarea")
-        ) || self
-            .dom
-            .attribute(node, "role")
-            .is_some_and(|role| role.eq_ignore_ascii_case("button"))
-        {
+        if crate::content::is_code_control(self.dom, node) {
             return;
         }
         match self.dom.node_kind(node) {

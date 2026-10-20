@@ -102,3 +102,13 @@ pub(crate) fn image_label<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> &str {
         })
         .unwrap_or_default()
 }
+
+/// Interactive descendants of code are UI controls, not source text.
+pub(crate) fn is_code_control<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> bool {
+    matches!(
+        dom.node_kind(node),
+        NodeKind::Element("button" | "input" | "select" | "textarea")
+    ) || dom
+        .attribute(node, "role")
+        .is_some_and(|role| role.eq_ignore_ascii_case("button"))
+}

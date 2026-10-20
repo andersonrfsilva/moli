@@ -182,6 +182,58 @@ fn formulas_keep_their_order_across_output_boundaries() {
 }
 
 #[test]
+fn code_controls_are_omitted_in_both_markdown_and_html_paths() {
+    for source in [
+        "<pre><code>run();<a href='/api'>call()</a><button>Copy</button></code></pre>",
+        "<table><tr><td colspan='2'><pre><code>run();<a href='/api'>call()</a><button>Copy</button></code></pre></td></tr></table>",
+    ] {
+        let result = markdown(source);
+        assert!(result.contains("run();"), "{result}");
+        assert!(result.contains("call()"), "{result}");
+        assert!(result.contains("/api"), "{result}");
+        assert!(!result.contains("Copy"), "{result}");
+    }
+}
+
+#[test]
+fn referenced_targets_do_not_turn_presentational_tables_into_data_tables() {
+    let result = markdown(
+        "<a href='#details'>Details</a><table role='presentation' id='details'>\
+         <tr><td><h2>Heading</h2></td><td>Content</td></tr></table>",
+    );
+    assert!(!result.contains("<table"), "{result}");
+    assert!(result.contains("id=\"details\""), "{result}");
+    assert!(result.contains("Heading"), "{result}");
+    assert!(result.contains("Content"), "{result}");
+}
+
+#[test]
+fn anchored_nested_tables_keep_linear_dom_work() {
+    let count = |depth| {
+        let source = format!(
+            "<a href='#target'>Target</a>{}<span id='target'>Value</span>{}",
+            "<table><tr><td>".repeat(depth),
+            "</td></tr></table>".repeat(depth)
+        );
+        let dom = Counted {
+            tree: Tree::parse(&source),
+            visits: Cell::new(0),
+        };
+        let result = moli_html2md::Converter::new(moli_html2md::Options {
+            max_depth: usize::MAX,
+            ..Default::default()
+        })
+        .convert(&dom, dom.tree.root);
+        assert!(result.contains("id=\"target\""), "{result}");
+        assert_eq!(result.matches("Value").count(), 1);
+        dom.visits.get()
+    };
+    let small = count(32);
+    let large = count(128);
+    assert!(large <= small * 5, "{small} -> {large}");
+}
+
+#[test]
 fn textarea_uses_its_content_not_a_nonstandard_value_attribute() {
     for value in ["unrelated", ""] {
         let result = markdown(&format!(
