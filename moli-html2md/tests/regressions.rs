@@ -980,7 +980,7 @@ fn math_preserves_structure_attributes_and_inert_text() {
 #[test]
 fn code_excludes_embedded_copy_controls_and_scripts() {
     let result = markdown(
-        "<pre><code class='language-java'>run();<span class='copy-code-btn'>Copy code</span><script>advert()</script></code></pre>",
+        "<pre><code class='language-java'>run();<button class='copy-code-btn'>Copy code</button><script>advert()</script></code></pre>",
         false,
     );
     assert!(result.contains("run();"), "{result}");

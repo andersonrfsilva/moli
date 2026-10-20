@@ -4,27 +4,6 @@ use moli_html2md::{Converter, Dom, Options, convert};
 use std::cell::Cell;
 use support::{Tree, rendered_html};
 
-struct Counted {
-    tree: Tree,
-    visits: Cell<usize>,
-}
-impl moli_html2md::Dom for Counted {
-    type NodeId = usize;
-    fn node_kind(&self, node: usize) -> moli_html2md::NodeKind<'_> {
-        self.visits.set(self.visits.get() + 1);
-        self.tree.node_kind(node)
-    }
-    fn first_child(&self, node: usize) -> Option<usize> {
-        self.tree.first_child(node)
-    }
-    fn next_sibling(&self, node: usize) -> Option<usize> {
-        self.tree.next_sibling(node)
-    }
-    fn attribute(&self, node: usize, name: &str) -> Option<&str> {
-        self.tree.attribute(node, name)
-    }
-}
-
 fn markdown(html: &str) -> String {
     let tree = Tree::parse(html);
     convert(&tree, tree.root)
@@ -133,6 +112,26 @@ fn image_buttons_keep_alternative_names_without_using_submission_values() {
 
 #[test]
 fn nested_accessible_labels_do_not_rescan_the_whole_tree() {
+    struct Counted {
+        tree: Tree,
+        visits: Cell<usize>,
+    }
+    impl moli_html2md::Dom for Counted {
+        type NodeId = usize;
+        fn node_kind(&self, node: usize) -> moli_html2md::NodeKind<'_> {
+            self.visits.set(self.visits.get() + 1);
+            self.tree.node_kind(node)
+        }
+        fn first_child(&self, node: usize) -> Option<usize> {
+            self.tree.first_child(node)
+        }
+        fn next_sibling(&self, node: usize) -> Option<usize> {
+            self.tree.next_sibling(node)
+        }
+        fn attribute(&self, node: usize, name: &str) -> Option<&str> {
+            self.tree.attribute(node, name)
+        }
+    }
     let count = |depth| {
         let html = format!(
             "{}Readable terminal{}",
@@ -149,6 +148,36 @@ fn nested_accessible_labels_do_not_rescan_the_whole_tree() {
     let small = count(100);
     let large = count(400);
     assert!(large <= small * 5, "{small} -> {large}");
+}
+
+#[test]
+fn code_excludes_interactive_controls_without_guessing_class_names() {
+    let result = markdown(
+        "<pre><code>run();<button>Copy</button><span role='button'>Copy again</span>\
+         <span class='copy-button'>literal_code</span><button class='unrelated'>Menu</button>\
+         </code></pre>",
+    );
+    assert!(result.contains("run();literal_code"), "{result}");
+    for excluded in ["Copy", "Menu"] {
+        assert!(!result.contains(excluded), "{result}");
+    }
+}
+
+#[test]
+fn formulas_keep_their_order_across_output_boundaries() {
+    let result = markdown(
+        r"<p>$a_1$<img src='/plot.png' alt='Plot'>$b_2$<code>literal</code>\
+           $c_3$<a href='/target'>Link</a>$d_4$<br>$e_5$</p><blockquote>$f_6$</blockquote>",
+    );
+    let mut end = 0;
+    for item in [
+        "$a_1$", "plot.png", "$b_2$", "literal", "$c_3$", "Link", "$d_4$", "$e_5$", "$f_6$",
+    ] {
+        let start = result[end..]
+            .find(item)
+            .unwrap_or_else(|| panic!("missing {item}: {result}"));
+        end += start + item.len();
+    }
 }
 
 #[test]

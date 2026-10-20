@@ -504,12 +504,14 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         if nonrendered_serialized_state(self.dom, node) {
             return;
         }
-        if self.dom.attribute(node, "class").is_some_and(|class| {
-            class.split_ascii_whitespace().any(|token| {
-                let token = token.to_ascii_lowercase();
-                token.contains("copy") && (token.contains("btn") || token.contains("button"))
-            })
-        }) {
+        if matches!(
+            self.dom.node_kind(node),
+            NodeKind::Element("button" | "input" | "select" | "textarea")
+        ) || self
+            .dom
+            .attribute(node, "role")
+            .is_some_and(|role| role.eq_ignore_ascii_case("button"))
+        {
             return;
         }
         match self.dom.node_kind(node) {
