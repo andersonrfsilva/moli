@@ -99,7 +99,7 @@ impl<Id: Copy> Table<Id> {
                     // a grid or silently shift the following cells left.
                     if ["colspan", "rowspan"].iter().any(|name| {
                         dom.attribute(node, name)
-                            .is_some_and(|span| span.trim().parse::<u32>() != Ok(1))
+                            .is_some_and(|span| has_cell_span(name, span))
                     }) {
                         return None;
                     }
@@ -228,4 +228,21 @@ fn ignorable(kind: NodeKind<'_>) -> bool {
         NodeKind::Text(text) => text.chars().all(is_space),
         _ => false,
     }
+}
+
+/// HTML non-negative-integer parsing: invalid spans default to one; rowspan
+/// zero extends to the end of the row group. Do not allocate from this value.
+pub(crate) fn has_cell_span(name: &str, value: &str) -> bool {
+    let value = value.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let value = value.strip_prefix('+').unwrap_or(value);
+    let mut digits = value.bytes().take_while(u8::is_ascii_digit).peekable();
+    if digits.peek().is_none() {
+        return false;
+    }
+    let count = digits.fold(0u32, |count, digit| {
+        count
+            .saturating_mul(10)
+            .saturating_add(u32::from(digit - b'0'))
+    });
+    count > 1 || (name == "rowspan" && count == 0)
 }

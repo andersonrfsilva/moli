@@ -42,7 +42,7 @@ pub(crate) fn needed<D: Dom + ?Sized>(
             if matches!(tag, "td" | "th")
                 && ["rowspan", "colspan"].iter().any(|attr| {
                     dom.attribute(node, attr)
-                        .is_some_and(|value| value.trim().parse::<u32>() != Ok(1))
+                        .is_some_and(|value| crate::table::has_cell_span(attr, value))
                 })
             {
                 return true;
@@ -117,8 +117,8 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     continue;
                 }
                 let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
-                if matches!(dom.node_kind(node), NodeKind::Element(_)) {
-                    if dom.has_block_layout(node) {
+                if let NodeKind::Element(tag) = dom.node_kind(node) {
+                    if dom.has_block_layout(node) && !has_block_tag(tag) {
                         output.push_str("<div>");
                         tasks.push(Task::Close("div".to_owned()));
                     } else if dom.has_text_boundary(node) {
@@ -170,9 +170,11 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             if !urls.is_empty() {
                                 output.push_str("<div>");
                                 if tag == "video"
-                                    && let Some(poster) = dom
-                                        .attribute(node, "poster")
-                                        .filter(|src| crate::media::safe_url(src, true))
+                                    && let Some(poster) =
+                                        dom.attribute(node, "poster").filter(|src| {
+                                            !src.trim().is_empty()
+                                                && crate::media::safe_url(src, true)
+                                        })
                                 {
                                     output.push_str("<img src=\"");
                                     escape(poster, &mut output);
@@ -329,4 +331,37 @@ fn escape(text: &str, output: &mut String) {
             _ => output.push(ch),
         }
     }
+}
+
+fn has_block_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "table"
+            | "thead"
+            | "tbody"
+            | "tfoot"
+            | "tr"
+            | "td"
+            | "th"
+            | "caption"
+            | "p"
+            | "div"
+            | "pre"
+            | "blockquote"
+            | "ul"
+            | "ol"
+            | "li"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "dl"
+            | "dt"
+            | "dd"
+            | "details"
+            | "summary"
+            | "hr"
+    )
 }

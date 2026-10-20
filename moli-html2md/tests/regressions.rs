@@ -1356,25 +1356,45 @@ fn readable_fallbacks_survive_all_table_representations() {
 
 #[test]
 fn live_textarea_value_replaces_or_clears_serialized_default_in_all_paths() {
+    struct LiveTextarea<'a> {
+        tree: Tree,
+        value: &'a str,
+    }
+    impl Dom for LiveTextarea<'_> {
+        type NodeId = usize;
+        fn node_kind(&self, node: usize) -> NodeKind<'_> {
+            self.tree.node_kind(node)
+        }
+        fn first_child(&self, node: usize) -> Option<usize> {
+            self.tree.first_child(node)
+        }
+        fn next_sibling(&self, node: usize) -> Option<usize> {
+            self.tree.next_sibling(node)
+        }
+        fn attribute(&self, node: usize, name: &str) -> Option<&str> {
+            self.tree.attribute(node, name)
+        }
+        fn control_value(&self, node: usize) -> Option<&str> {
+            (self.tree.node_kind(node) == NodeKind::Element("textarea")).then_some(self.value)
+        }
+    }
     for wrapper in [
         "<div title='Group'>{}</div>",
         "<table><tr><td colspan='2'>{}</td></tr></table>",
     ] {
-        let current = markdown(
-            &wrapper.replace(
-                "{}",
-                "<textarea value='Current user text'>Old default</textarea>",
-            ),
-            false,
-        );
-        assert!(current.contains("Current user text"), "{current}");
-        assert!(!current.contains("Old default"), "{current}");
-
-        let cleared = markdown(
-            &wrapper.replace("{}", "<textarea value=''>Old default</textarea>"),
-            false,
-        );
-        assert!(!cleared.contains("Old default"), "{cleared}");
+        for value in ["Current user text", ""] {
+            let dom = LiveTextarea {
+                tree: Tree::parse(&wrapper.replace(
+                    "{}",
+                    "<textarea value='Nonstandard attribute'>Old default</textarea>",
+                )),
+                value,
+            };
+            let result = moli_html2md::convert(&dom, dom.tree.root);
+            assert!(!result.contains("Old default"), "{result}");
+            assert!(!result.contains("Nonstandard attribute"), "{result}");
+            assert!(value.is_empty() || result.contains(value), "{result}");
+        }
     }
 }
 

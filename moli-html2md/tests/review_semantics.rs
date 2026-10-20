@@ -753,3 +753,45 @@ fn math_boundaries_survive_empty_wrappers_and_coalesced_styles() {
         );
     }
 }
+
+#[test]
+fn invalid_and_default_cell_spans_keep_simple_tables_in_markdown() {
+    for attr in ["colspan", "rowspan"] {
+        for value in ["", "invalid", "-2", "1", " 1 ", "+1", "1tail"] {
+            let result = markdown(&format!(
+                "<table><tr><th>A</th><th>B</th></tr><tr><td {attr}='{value}'>X</td><td>Y</td></tr></table>"
+            ));
+            assert!(!result.contains("<table"), "{attr}={value}: {result}");
+            assert!(result.contains("X") && result.contains("Y"), "{result}");
+        }
+    }
+    for attr in ["rowspan='0'", "colspan='2'", "rowspan='2'"] {
+        let result = markdown(&format!(
+            "<table><tr><td {attr}>Merged</td><td>Next</td></tr></table>"
+        ));
+        assert!(result.contains("<table"), "{attr}: {result}");
+    }
+}
+
+#[test]
+fn html_media_omits_empty_posters_and_redundant_css_wrappers() {
+    let result = markdown(
+        "<table><tr><td colspan='2'><video src='/movie.mp4' poster=''></video></td></tr></table>",
+    );
+    assert!(result.contains("movie.mp4"), "{result}");
+    assert!(!result.contains("<img"), "{result}");
+}
+
+#[test]
+fn html_keeps_css_boundaries_without_wrapping_existing_block_tags() {
+    let dom = Counted {
+        tree: Tree::parse(
+            "<table style='display:block'><tr><td colspan='2' style='display:block'><p style='display:block'>Paragraph</p><span style='display:block'>Box</span></td></tr></table>",
+        ),
+        visits: Cell::new(0),
+    };
+    let result = convert(&dom, dom.tree.root);
+    assert!(!result.starts_with("<div>"), "{result}");
+    assert!(!result.contains("<div><p"), "{result}");
+    assert!(result.contains("<div><span>Box</span></div>"), "{result}");
+}
