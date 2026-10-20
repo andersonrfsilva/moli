@@ -4,6 +4,27 @@ use moli_html2md::{Converter, Dom, Options, convert};
 use std::cell::Cell;
 use support::{Tree, rendered_html};
 
+struct Counted {
+    tree: Tree,
+    visits: Cell<usize>,
+}
+impl moli_html2md::Dom for Counted {
+    type NodeId = usize;
+    fn node_kind(&self, node: usize) -> moli_html2md::NodeKind<'_> {
+        self.visits.set(self.visits.get() + 1);
+        self.tree.node_kind(node)
+    }
+    fn first_child(&self, node: usize) -> Option<usize> {
+        self.tree.first_child(node)
+    }
+    fn next_sibling(&self, node: usize) -> Option<usize> {
+        self.tree.next_sibling(node)
+    }
+    fn attribute(&self, node: usize, name: &str) -> Option<&str> {
+        self.tree.attribute(node, name)
+    }
+}
+
 fn markdown(html: &str) -> String {
     let tree = Tree::parse(html);
     convert(&tree, tree.root)
@@ -112,26 +133,6 @@ fn image_buttons_keep_alternative_names_without_using_submission_values() {
 
 #[test]
 fn nested_accessible_labels_do_not_rescan_the_whole_tree() {
-    struct Counted {
-        tree: Tree,
-        visits: Cell<usize>,
-    }
-    impl moli_html2md::Dom for Counted {
-        type NodeId = usize;
-        fn node_kind(&self, node: usize) -> moli_html2md::NodeKind<'_> {
-            self.visits.set(self.visits.get() + 1);
-            self.tree.node_kind(node)
-        }
-        fn first_child(&self, node: usize) -> Option<usize> {
-            self.tree.first_child(node)
-        }
-        fn next_sibling(&self, node: usize) -> Option<usize> {
-            self.tree.next_sibling(node)
-        }
-        fn attribute(&self, node: usize, name: &str) -> Option<&str> {
-            self.tree.attribute(node, name)
-        }
-    }
     let count = |depth| {
         let html = format!(
             "{}Readable terminal{}",
