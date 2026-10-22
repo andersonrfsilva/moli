@@ -72,8 +72,9 @@ Tables with `role="presentation"` or `role="none"` retain ordinary block expansi
 in DOM order with blank lines between cells, even when structurally simple. Role
 matching ignores ASCII case and surrounding HTML whitespace. Nested layout
 wrappers expand into readable blocks. Tables with header cells, captions, explicit
-data roles, header relationships or real cell spans retain data-table structure.
-Complex data tables use content-only HTML: non-unit spans, multiple `thead` rows, rows wider than
+data roles, header relationships or real cell spans retain their authored structure.
+These tables use content-only HTML for non-unit spans, multiple `thead` rows,
+rows wider than
 an explicit header, or cells containing nested tables, lists, headings, quotes
 or preformatted blocks. This retains header, cell and nested-table associations
 that Markdown pipe tables cannot express. Inner simple tables can still produce

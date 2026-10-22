@@ -33,7 +33,7 @@ fn assert_markdown_dump(html: &str, markdown: &str, args: &[&str]) -> Result<()>
     );
     assert_eq!(
         String::from_utf8(output.stdout)?,
-        format!("{}\n", markdown.trim_end_matches('\n'))
+        markdown.trim_end_matches('\n')
     );
     Ok(())
 }
