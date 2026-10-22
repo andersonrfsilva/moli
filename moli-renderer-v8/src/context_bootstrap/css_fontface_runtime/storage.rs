@@ -280,7 +280,20 @@ fn sync_font_face_set_matching_order<'s>(
     };
     let connected = font_face_set_connected_faces_array(scope, fonts);
     let manual = font_face_set_manual_faces_array(scope, fonts);
-    let mut slots = |faces: Option<v8::Local<'s, v8::Array>>| {
+    let host = unsafe { &*host_ptr };
+    let rule_order = connected
+        .filter(|faces| faces.length() != 0)
+        .and_then(|_| crate::layout_renderer::current_native_stylesheet_resources(host, document))
+        .map(|resources| {
+            resources
+                .font_face_rule_order()
+                .iter()
+                .enumerate()
+                .map(|(index, address)| (*address, index))
+                .collect::<std::collections::HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let mut slots = |faces: Option<v8::Local<'s, v8::Array>>, cascade_order: bool| {
         let mut slots = Vec::new();
         if let Some(faces) = faces {
             for index in 0..faces.length() {
@@ -289,16 +302,27 @@ fn sync_font_face_set_matching_order<'s>(
                     .and_then(|face| v8::Local::<v8::Object>::try_from(face).ok())
                     && let Some(load) = super::state::get(scope, face)
                 {
-                    slots.push(load.borrow().slot().to_owned());
+                    let address = crate::context_bootstrap::css_stylesheet_runtime::private_u64(
+                        scope,
+                        face,
+                        crate::native_bridge::document::FONT_FACE_STYLESHEET_RULE_ADDRESS_SLOT,
+                    )
+                    .map(|address| address as usize);
+                    let order = address
+                        .and_then(|address| rule_order.get(&address).copied())
+                        .unwrap_or(usize::MAX);
+                    slots.push((order, load.borrow().slot().to_owned()));
                 }
             }
         }
-        slots
+        if cascade_order {
+            slots.sort_by_key(|(order, _)| *order);
+        }
+        slots.into_iter().map(|(_, slot)| slot).collect::<Vec<_>>()
     };
-    let connected = slots(connected);
-    let manual = slots(manual);
+    let connected = slots(connected, true);
+    let manual = slots(manual, false);
     // SAFETY: the native font service cannot call V8 while borrowed.
-    let host = unsafe { &*host_ptr };
     if host.with_font_services(document, |services| {
         services.set_web_font_order(&connected, &manual)
     }) {

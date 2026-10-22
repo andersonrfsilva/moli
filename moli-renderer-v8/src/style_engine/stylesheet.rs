@@ -171,6 +171,7 @@ pub(in crate::style_engine) fn style_source_metadata_for_stylesheet(
 #[derive(Clone, Debug)]
 pub(crate) struct StylesheetFontFaceRuleProjection {
     pub(crate) rule_identity: u64,
+    pub(crate) rule_address: usize,
     pub(crate) rule_fingerprint: String,
     pub(crate) descriptor: moli_css_parse::CssFontFace,
     pub(crate) resource: Option<crate::css_resource_urls::StylesheetLoadBlockingResource>,

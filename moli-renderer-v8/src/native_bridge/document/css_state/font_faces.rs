@@ -22,6 +22,8 @@ const CSS_STYLE_SHEET_FONT_FACE_WRAPPERS_SLOT: &str = "__moliCssStyleSheetFontFa
 const FONT_FACE_STYLESHEET_RULE_IDENTITY_SLOT: &str = "__moliFontFaceStylesheetRuleIdentity";
 const FONT_FACE_STYLESHEET_RULE_FINGERPRINT_SLOT: &str = "__moliFontFaceStylesheetRuleFingerprint";
 const FONT_FACE_STYLESHEET_ID_SLOT: &str = "__moliFontFaceStylesheetId";
+pub(crate) const FONT_FACE_STYLESHEET_RULE_ADDRESS_SLOT: &str =
+    "__moliFontFaceStylesheetRuleAddress";
 
 #[cfg(test)]
 thread_local! {
@@ -339,6 +341,12 @@ fn sync_stylesheet_font_face_wrappers<'s>(
             Some(face)
         });
         if let Some(face) = face {
+            set_private_u64(
+                scope,
+                face,
+                FONT_FACE_STYLESHEET_RULE_ADDRESS_SLOT,
+                rule.rule_address as u64,
+            );
             if let Some(font) = rule
                 .resource
                 .as_ref()

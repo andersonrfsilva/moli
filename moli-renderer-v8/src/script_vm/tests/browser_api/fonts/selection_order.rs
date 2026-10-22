@@ -24,6 +24,66 @@ pub(super) fn order_vm() -> StandaloneScriptVmHarness {
 }
 
 #[tokio::test]
+async fn css_font_selection_follows_live_layer_order_without_reordering_font_face_set() {
+    let (narrow, wide) = order_font_data();
+    for expose_font_set in [false, true] {
+        let loader = ResourceRequestClient::new(&moli_fetch::FetchConfig::default()).unwrap();
+        loader.set_optional_resource_fetch_mask(
+            crate::protocol_types::OptionalResourceFetchMask::FONT,
+        );
+        let (mut vm, _completions) = new_parsed_test_vm_with_loader_and_resource_completion_queue(
+            "https://font-layer-order.test/",
+            "<!doctype html><head></head><body><span id='probe' style='display:inline-block;font:40px OrderFace'>AAAA</span></body>",
+            &loader,
+        );
+        vm.set_layout_policy(moli_page_types::LayoutPolicy::OnDemand);
+        vm.eval(&format!(r#"
+            globalThis.layerOrder=document.createElement('style');
+            document.head.append(layerOrder);
+            const declarations=document.createElement('style');
+            declarations.textContent='@layer first{{@font-face{{font-family:OrderFace;src:url(data:font/ttf;base64,{narrow})}}}}@layer second{{@font-face{{font-family:OrderFace;src:url(data:font/ttf;base64,{wide})}}}}';
+            document.head.append(declarations);
+        "#)).unwrap();
+        if expose_font_set {
+            vm.eval("globalThis.originalFontFaces=[...document.fonts]")
+                .unwrap();
+        }
+        let width = |vm: &mut StandaloneScriptVmHarness| {
+            vm.reconcile_document_web_fonts_for_layout();
+            vm.eval("String(probe.getBoundingClientRect().width)")
+                .unwrap()
+        };
+        assert_eq!(width(&mut vm), "160", "expose_font_set={expose_font_set}");
+        vm.eval("layerOrder.sheet.insertRule('@layer second {}',0)")
+            .unwrap();
+        assert_eq!(width(&mut vm), "80", "expose_font_set={expose_font_set}");
+        if expose_font_set {
+            assert_eq!(
+                vm.eval("[...document.fonts].every((face,index)=>face===originalFontFaces[index])")
+                    .unwrap(),
+                "true"
+            );
+        }
+        vm.eval("declarations.textContent += 'body { color: green }'")
+            .unwrap();
+        assert_eq!(width(&mut vm), "80", "expose_font_set={expose_font_set}");
+        if expose_font_set {
+            vm.eval("globalThis.originalFontFaces=[...document.fonts]")
+                .unwrap();
+        }
+        vm.eval("layerOrder.sheet.deleteRule(0)").unwrap();
+        assert_eq!(width(&mut vm), "160", "expose_font_set={expose_font_set}");
+        if expose_font_set {
+            assert_eq!(
+                vm.eval("[...document.fonts].every((face,index)=>face===originalFontFaces[index])")
+                    .unwrap(),
+                "true"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn detached_css_faces_can_be_registered_manually_before_or_after_native_cleanup() {
     let (_, wide) = order_font_data();
     for automatic in [false, true] {

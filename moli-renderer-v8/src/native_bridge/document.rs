@@ -137,8 +137,9 @@ pub(in crate::native_bridge) use css_state::{
     normalize_adopted_style_sheets_assignment,
 };
 pub(crate) use css_state::{
-    apply_stylesheet_owner_css_projections, apply_stylesheet_source_css_projection,
-    clear_adopted_stylesheet_font_face_wrappers, sync_document_fonts_for_handle,
+    FONT_FACE_STYLESHEET_RULE_ADDRESS_SLOT, apply_stylesheet_owner_css_projections,
+    apply_stylesheet_source_css_projection, clear_adopted_stylesheet_font_face_wrappers,
+    sync_document_fonts_for_handle,
 };
 use css_state::{detached_document_fonts_getter, document_fonts_getter_function};
 pub(crate) use css_state::{

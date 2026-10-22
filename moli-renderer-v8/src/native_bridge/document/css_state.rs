@@ -3,6 +3,7 @@ mod font_faces;
 mod projection;
 mod shared;
 mod style_sheets;
+pub(crate) use font_faces::FONT_FACE_STYLESHEET_RULE_ADDRESS_SLOT;
 #[cfg(test)]
 pub(crate) use font_faces::take_owner_font_face_projection_count_for_test;
 

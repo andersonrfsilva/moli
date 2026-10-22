@@ -1757,6 +1757,7 @@ impl LiveStylesheet {
                 .all_rules
                 .push(crate::style_engine::StylesheetFontFaceRuleProjection {
                 rule_identity: identity,
+                rule_address,
                 rule_fingerprint: native_rule.rule_fingerprint.clone(),
                 descriptor: native_rule.descriptor.clone(),
                 resource:

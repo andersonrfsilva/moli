@@ -460,10 +460,12 @@ fn refresh_retained_derived_state(
         &retained.shadow_scopes,
     );
     if retained.stylesheet_resources != stylesheet_resources {
-        retained.stylesheet_resources = stylesheet_resources;
         retained.stylesheet_resource_revision =
             retained.stylesheet_resource_revision.saturating_add(1);
     }
+    // Rule identities must follow the current retained world even when its
+    // fetchable resources and generation are unchanged.
+    retained.stylesheet_resources = stylesheet_resources;
 }
 
 fn register_script_custom_properties(stylist: &mut Stylist, inputs: &FullStyleWorldSnapshot) {

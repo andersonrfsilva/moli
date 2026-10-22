@@ -52,6 +52,7 @@ impl StylesheetResourceGeneration {
 pub(crate) struct StylesheetResourceSnapshot {
     generation: StylesheetResourceGeneration,
     web_fonts: Arc<[StylesheetLoadBlockingResource]>,
+    font_face_rule_order: Arc<[usize]>,
     imports: Arc<[url::Url]>,
 }
 
@@ -59,11 +60,13 @@ impl StylesheetResourceSnapshot {
     pub(super) fn new(
         generation: StylesheetResourceGeneration,
         web_fonts: Arc<[StylesheetLoadBlockingResource]>,
+        font_face_rule_order: Arc<[usize]>,
         imports: Arc<[url::Url]>,
     ) -> Self {
         Self {
             generation,
             web_fonts,
+            font_face_rule_order,
             imports,
         }
     }
@@ -76,6 +79,10 @@ impl StylesheetResourceSnapshot {
         self.web_fonts.as_ref()
     }
 
+    pub(crate) fn font_face_rule_order(&self) -> &[usize] {
+        &self.font_face_rule_order
+    }
+
     pub(crate) fn imports(&self) -> &[url::Url] {
         self.imports.as_ref()
     }
@@ -83,10 +90,19 @@ impl StylesheetResourceSnapshot {
 
 /// Resource metadata retained beside the exact parsed stylesheet collections.
 /// It contains no layout, paint, or network state.
-#[derive(PartialEq)]
 pub(super) struct StylesheetResourceManifest {
     web_fonts: Arc<[StylesheetLoadBlockingResource]>,
+    font_face_rule_order: Arc<[usize]>,
     imports: Arc<[url::Url]>,
+}
+
+impl PartialEq for StylesheetResourceManifest {
+    fn eq(&self, other: &Self) -> bool {
+        // Reparsing identical declarations can replace native rule addresses
+        // without changing any fetch or its selection order. These identities
+        // belong to the current observation, not the resource generation.
+        self.web_fonts == other.web_fonts && self.imports == other.imports
+    }
 }
 
 impl StylesheetResourceManifest {
@@ -97,6 +113,23 @@ impl StylesheetResourceManifest {
     ) -> Self {
         #[cfg(test)]
         STYLESHEET_RESOURCE_MANIFEST_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+        // Stylo already orders effective rules by cascade layer and source
+        // order. Font matching must use that order rather than FontFaceSet's
+        // observable document-order iteration.
+        let font_face_rule_order = stylist
+            .iter_extra_data_origins()
+            .filter(|(_, origin)| *origin == Origin::Author)
+            .flat_map(|(data, _)| {
+                data.font_faces
+                    .iter()
+                    .map(|(rule, _)| rule.raw_ptr().as_ptr() as usize)
+            })
+            .collect::<Vec<_>>();
+        let rule_order = font_face_rule_order
+            .iter()
+            .enumerate()
+            .map(|(index, address)| (*address, index))
+            .collect::<BTreeMap<_, _>>();
         let mut web_fonts = Vec::new();
         let mut imports = BTreeMap::new();
         collect_resources(
@@ -118,11 +151,13 @@ impl StylesheetResourceManifest {
                 &mut imports,
             );
         }
+        web_fonts
+            .sort_by_key(|(address, _)| rule_order.get(address).copied().unwrap_or(usize::MAX));
         // A declaration may be adopted by more than one scope. Keep its last
         // occurrence, while independent rules retain independent registrations.
         let mut seen = BTreeSet::new();
         web_fonts.reverse();
-        web_fonts.retain(|resource| {
+        web_fonts.retain(|(_, resource)| {
             seen.insert(
                 resource
                     .web_font()
@@ -133,7 +168,11 @@ impl StylesheetResourceManifest {
         });
         web_fonts.reverse();
         Self {
-            web_fonts: web_fonts.into(),
+            web_fonts: web_fonts
+                .into_iter()
+                .map(|(_, resource)| resource)
+                .collect(),
+            font_face_rule_order: font_face_rule_order.into(),
             imports: imports.into_values().collect::<Vec<_>>().into(),
         }
     }
@@ -145,6 +184,7 @@ impl StylesheetResourceManifest {
         StylesheetResourceSnapshot::new(
             generation,
             Arc::clone(&self.web_fonts),
+            Arc::clone(&self.font_face_rule_order),
             Arc::clone(&self.imports),
         )
     }
@@ -154,7 +194,7 @@ fn collect_resources(
     stylesheets: &ActiveStylesheetCollection,
     device: &style::device::Device,
     custom_media: &style::stylesheets::CustomMediaMap,
-    web_fonts: &mut Vec<StylesheetLoadBlockingResource>,
+    web_fonts: &mut Vec<(usize, StylesheetLoadBlockingResource)>,
     imports: &mut BTreeMap<String, url::Url>,
 ) {
     for stylesheet in stylesheets.entries() {
@@ -167,9 +207,8 @@ fn collect_resources(
             if !effective_font_faces.contains(&resource.rule_address()) {
                 continue;
             }
-            let resource = resource.resource();
-            if resource.web_font().is_some() {
-                web_fonts.push(resource.clone());
+            if resource.resource().web_font().is_some() {
+                web_fonts.push((resource.rule_address(), resource.resource().clone()));
             }
         }
         for import in stylesheet.import_urls() {
