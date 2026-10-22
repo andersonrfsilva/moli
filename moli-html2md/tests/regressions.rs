@@ -825,7 +825,10 @@ fn math_recognition_does_not_reinterpret_prices_or_literal_code() {
         r"<p>Pay $5 for a_b and $10 for c_d; <code>$x_i$</code>; $unfinished_name</p>",
         false,
     );
-    assert!(result.contains(r"\$5 for a\_b and \$10 for c\_d"), "{result}");
+    assert!(
+        result.contains(r"\$5 for a\_b and \$10 for c\_d"),
+        "{result}"
+    );
     assert!(result.contains("`$x_i$`"), "{result}");
     assert!(result.contains(r"\$unfinished\_name"), "{result}");
     let result = markdown(r"<p>括号 \(x_i + \alpha\)；方括号 \[y_1=2\]。</p>", false);
