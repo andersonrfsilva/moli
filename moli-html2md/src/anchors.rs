@@ -17,7 +17,7 @@ impl Targets {
     }
 
     pub(crate) fn targets<'a, D: Dom + ?Sized>(&self, dom: &'a D, node: D::NodeId) -> Vec<&'a str> {
-        let mut targets = Vec::with_capacity(2);
+        let mut targets = Vec::new();
         if let Some(id) = dom.attribute(node, "id").filter(|id| self.contains(id)) {
             targets.push(id);
         }

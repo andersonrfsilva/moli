@@ -23,6 +23,9 @@ impl moli_html2md::Dom for Counted {
     fn attribute(&self, node: usize, name: &str) -> Option<&str> {
         self.tree.attribute(node, name)
     }
+    fn has_block_layout(&self, node: usize) -> bool {
+        self.tree.attribute(node, "style") == Some("display:block")
+    }
 }
 
 fn markdown(html: &str) -> String {
@@ -872,4 +875,65 @@ fn nested_heading_wrappers_have_linear_work_and_keep_every_title() {
     let small = count(20);
     let large = count(80);
     assert!(large <= small * 5, "{small} -> {large}");
+}
+
+#[test]
+fn table_and_code_root_targets_exist_once_in_every_output_shape() {
+    for element in [
+        "<table id='target'><tr><td>a</td><td>b</td></tr></table>",
+        "<table id='target'><tr><td><h2>Article</h2><p>Body</p></td></tr></table>",
+        "<table id='target'><caption>Data</caption><tr><td colspan='2'>Body</td></tr></table>",
+        "<pre id='target'>source</pre>",
+        "<code id='target'>source</code>",
+    ] {
+        let result = markdown(&format!("<a href='#target'>Go</a>{element}"));
+        assert_eq!(result.matches("id=\"target\"").count(), 1, "{result}");
+        assert!(result.contains("#target"), "{result}");
+    }
+    let result = markdown(
+        "<a href='#keep'>Go</a><table id='unused'><caption>Data</caption><tr><td id='keep'><pre id='noise'><span id='L2'>Line</span><a name='obsolete'>link</a></pre></td></tr></table>",
+    );
+    assert_eq!(result.matches("id=\"keep\"").count(), 1, "{result}");
+    for unwanted in ["unused", "noise", "L2", "obsolete"] {
+        assert!(!result.contains(unwanted), "{result}");
+    }
+}
+
+#[test]
+fn linked_source_roundtrips_punctuation_leading_lines_and_default_language() {
+    use moli_html2md::{Converter, Options};
+    let source =
+        "<pre>\n\nfn new_from_iter&lt;I&gt;(v: &amp;[T]) { *x }\n<a href='/ref'>name</a>\n</pre>";
+    let dom = Tree::parse(source);
+    let result = Converter::new(Options {
+        default_code_language: Some("rust".into()),
+        ..Options::default()
+    })
+    .convert(&dom, dom.root);
+    assert!(result.contains("language-rust"), "{result}");
+    for entity in ["&#95;", "&#42;", "&#91;"] {
+        assert!(!result.contains(entity), "{result}");
+    }
+    let rendered = Tree::parse(&rendered_html(&result));
+    let text = |tree: &Tree| {
+        tree.nodes
+            .iter()
+            .filter_map(|n| n.text.as_deref())
+            .collect::<String>()
+    };
+    assert_eq!(text(&rendered), text(&dom), "{result}");
+}
+
+#[test]
+fn merged_headerless_data_is_preserved_without_treating_empty_hints_as_headers() {
+    let result =
+        markdown("<table><tr><td rowspan='2'>Group</td><td>A</td></tr><tr><td>B</td></tr></table>");
+    assert!(result.contains("rowspan=\"2\""), "{result}");
+    let result = markdown("<table><tr><td scope='' headers=' '><h2>Article</h2></td></tr></table>");
+    assert_eq!(result, "## Article");
+    let result = markdown(
+        "<table><caption>Resources</caption><tr><td colspan='2'><video poster='/cover.jpg'></video><img src='' aria-label='Home'></td></tr></table>",
+    );
+    assert!(result.contains("/cover.jpg"), "{result}");
+    assert!(result.contains("Home"), "{result}");
 }

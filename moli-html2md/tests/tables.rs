@@ -481,14 +481,13 @@ fn nested_tables_obey_the_conversion_depth_limit() {
     let dom = Tree::parse(
         "<table><tr><td>visible<div><table><tr><td>too deep</td></tr></table></div></td></tr></table>",
     );
-    for max_depth in [6, 7] {
+    for (max_depth, expected) in [(6, "|  |\n| --- |\n| visible |"), (7, "visible")] {
         let converter = Converter::new(Options {
             max_depth,
             ..Options::default()
         });
         let result = converter.convert(&dom, dom.root);
-        assert!(result.contains("visible"));
-        assert!(!result.contains("too deep"));
+        assert_eq!(result, expected);
     }
     let full = markdown(
         "<table><tr><td>visible<div><table><tr><td>too deep</td></tr></table></div></td></tr></table>",

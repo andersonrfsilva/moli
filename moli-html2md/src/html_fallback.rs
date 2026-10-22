@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Write as _;
 
 use crate::{Dom, NodeKind};
 
@@ -53,8 +54,10 @@ pub(crate) fn needed<D: Dom + ?Sized>(
     false
 }
 
-/// Examine this table's own cells, not a data table nested inside a layout.
-pub(crate) fn has_data_semantics<D: Dom + ?Sized>(
+/// Preserve this table's authored relationships, even without header cells.
+/// Spans require structural output; they do not prove whether a table is layout.
+/// Inspect only this table's own cells, not nested tables.
+pub(crate) fn requires_table_structure<D: Dom + ?Sized>(
     dom: &D,
     root: D::NodeId,
     depth: usize,
@@ -85,8 +88,12 @@ pub(crate) fn has_data_semantics<D: Dom + ?Sized>(
                 return true;
             }
             if matches!(tag, "td" | "th")
-                && (dom.attribute(node, "scope").is_some()
-                    || dom.attribute(node, "headers").is_some()
+                && (dom
+                    .attribute(node, "scope")
+                    .is_some_and(|value| !value.trim().is_empty())
+                    || dom
+                        .attribute(node, "headers")
+                        .is_some_and(|value| !value.trim().is_empty())
                     || ["rowspan", "colspan"].into_iter().any(|name| {
                         dom.attribute(node, name)
                             .is_some_and(|value| crate::table::has_cell_span(name, value))
@@ -131,8 +138,7 @@ enum Task<Id> {
     Literal(&'static str),
 }
 
-/// A compact HTML block is valid Markdown and preserves the original cell
-/// associations. Keep content markup only; scripts, styles, event handlers
+/// HTML fallback preserves structural content and referenced navigation targets. Keep content markup only; scripts, styles, event handlers
 /// and unrelated presentation attributes are never copied.
 pub(crate) fn render<D: Dom + ?Sized>(
     dom: &D,
@@ -140,7 +146,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
     depth: usize,
     limit: usize,
     anchor_targets: &crate::anchors::Targets,
+    default_language: Option<&str>,
 ) -> String {
+    let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
     let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
     let mut emitted_anchors = HashSet::new();
@@ -198,9 +206,13 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     }
                 }
                 match dom.node_kind(node) {
-                    NodeKind::Text(text) => {
-                        escape_text(text, &mut output, code, keep_source_lines && code)
-                    }
+                    NodeKind::Text(text) => escape_text(
+                        text,
+                        &mut output,
+                        code,
+                        keep_source_lines && code,
+                        inline_root,
+                    ),
                     NodeKind::Element(
                         "head" | "title" | "script" | "style" | "noscript" | "template",
                     )
@@ -229,34 +241,47 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         if crate::visibility::nonrendered_serialized_state(dom, node) {
                             continue;
                         }
+                        if tag == "img" {
+                            let label = crate::content::image_label(dom, node);
+                            if let Some(src) = crate::media::source(dom, node) {
+                                output.push_str("<img src=\"");
+                                escape(&src, &mut output);
+                                output.push_str("\" alt=\"");
+                                escape(&label, &mut output);
+                                output.push_str("\">");
+                            } else {
+                                escape(&label, &mut output);
+                            }
+                            continue;
+                        }
                         if matches!(tag, "iframe" | "video" | "audio") {
                             let urls = crate::media::sources(dom, node, tag, depth, limit);
-                            if !urls.is_empty() {
-                                output.push_str("<div>");
-                                if tag == "video"
-                                    && let Some(poster) =
-                                        dom.attribute(node, "poster").filter(|src| {
-                                            !src.trim().is_empty()
-                                                && crate::media::safe_url(src, true)
-                                        })
-                                {
+                            let poster = (tag == "video")
+                                .then(|| dom.attribute(node, "poster"))
+                                .flatten()
+                                .filter(|src| {
+                                    !src.trim().is_empty() && crate::media::safe_url(src, true)
+                                });
+                            if !urls.is_empty() || poster.is_some() {
+                                let block = tag == "audio";
+                                output.push_str(if block { "<div>" } else { " " });
+                                if let Some(poster) = poster {
                                     output.push_str("<img src=\"");
                                     escape(poster, &mut output);
                                     output.push_str("\" alt=\"");
                                     escape(&crate::media::poster_label(dom, node), &mut output);
-                                    output.push_str("\">");
+                                    output.push_str("\"> ");
                                 }
-                                for url in urls
-                                    .into_iter()
-                                    .filter(|url| crate::media::safe_url(url, false))
-                                {
+                                for url in urls {
                                     output.push_str("<a href=\"");
                                     escape(url, &mut output);
                                     output.push_str("\">");
                                     escape(crate::media::label(dom, node, tag), &mut output);
-                                    output.push_str("</a><br>");
+                                    output.push_str("</a> ");
                                 }
-                                output.push_str("</div>");
+                                if block {
+                                    output.push_str("</div>");
+                                }
                                 continue;
                             }
                         }
@@ -286,9 +311,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             output.push('<');
                             output.push_str(tag);
                             for name in [
-                                "rowspan", "colspan", "scope", "headers", "id", "href", "src",
-                                "alt", "title", "start", "reversed", "value", "label", "selected",
-                                "multiple", "disabled", "name",
+                                "rowspan", "colspan", "scope", "headers", "href", "src", "alt",
+                                "title", "start", "reversed", "value", "label", "selected",
+                                "multiple", "disabled",
                             ] {
                                 let image_source = if name == "src" && tag == "img" {
                                     crate::media::source(dom, node)
@@ -313,19 +338,39 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push('"');
                                 }
                             }
-                            if matches!(tag, "pre" | "code")
-                                && let Some(language) =
-                                    dom.attribute(node, "class").and_then(|class| {
-                                        class
-                                            .split_ascii_whitespace()
-                                            .find(|name| name.starts_with("language-"))
-                                    })
+                            let targets: Vec<_> = anchor_targets
+                                .targets(dom, node)
+                                .into_iter()
+                                .filter(|id| emitted_anchors.insert((*id).to_owned()))
+                                .collect();
+                            if let Some(id) = targets.first() {
+                                output.push_str(" id=\"");
+                                escape(id, &mut output);
+                                output.push('"');
+                            }
+                            let language = if tag == "pre" {
+                                crate::content::code_language(dom, node, default_language)
+                            } else if tag == "code" {
+                                crate::content::class_language(dom.attribute(node, "class"))
+                            } else {
+                                None
+                            };
+                            if let Some(language) =
+                                language.and_then(|value| value.split_ascii_whitespace().next())
                             {
-                                output.push_str(" class=\"");
+                                output.push_str(" class=\"language-");
                                 escape(language, &mut output);
                                 output.push('"');
                             }
                             output.push('>');
+                            // The HTML parser discards one initial LF after pre.
+                            // Supply that LF separately from the actual source.
+                            if tag == "pre" {
+                                output.push('\n');
+                            }
+                            for id in targets.iter().skip(1) {
+                                output.push_str(&crate::anchors::markup(id));
+                            }
                             if !matches!(tag, "br" | "hr" | "img") {
                                 tasks.push(Task::Close(tag.to_owned()));
                             }
@@ -377,7 +422,6 @@ fn allowed(tag: &str) -> bool {
             | "optgroup"
             | "option"
             | "button"
-            | "textarea"
             | "p"
             | "div"
             | "span"
@@ -462,7 +506,13 @@ fn has_block_tag(tag: &str) -> bool {
     )
 }
 
-fn escape_text(text: &str, output: &mut String, code: bool, keep_newlines: bool) {
+fn escape_text(
+    text: &str,
+    output: &mut String,
+    code: bool,
+    keep_newlines: bool,
+    inline_root: bool,
+) {
     for ch in text.chars() {
         if !code && matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
             if !output.ends_with([' ', '\n']) {
@@ -472,8 +522,11 @@ fn escape_text(text: &str, output: &mut String, code: bool, keep_newlines: bool)
         }
         if keep_newlines && matches!(ch, '\n' | '\r') {
             output.push(ch);
-        } else if code && matches!(ch, '\\' | '*' | '_' | '`' | '~' | '[' | ']') {
-            output.push_str(&format!("&#{};", ch as u32));
+        } else if code
+            && inline_root
+            && matches!(ch, '\\' | '*' | '_' | '`' | '~' | '[' | ']' | '$')
+        {
+            write!(output, "&#{};", ch as u32).expect("writing to String");
         } else {
             let mut bytes = [0; 4];
             escape(ch.encode_utf8(&mut bytes), output);

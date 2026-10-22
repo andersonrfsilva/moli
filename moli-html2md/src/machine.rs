@@ -254,6 +254,8 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     | "noscript"
                     | "template"
                     | "title"
+                    | "pre"
+                    | "code"
                     | "li"
                     | "blockquote"
                     | "h1"
@@ -372,6 +374,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         depth,
                         self.options.max_depth,
                         &self.anchor_targets,
+                        self.options.default_code_language.as_deref(),
                     );
                     if tag == "pre" {
                         self.writer().block(html.into(), 2, 2);
@@ -412,6 +415,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         depth,
                         self.options.max_depth,
                         &self.anchor_targets,
+                        self.options.default_code_language.as_deref(),
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
@@ -434,16 +438,17 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         "presentation" | "none"
                     )
                 });
-                let data_table = crate::html_fallback::has_data_semantics(
-                    self.dom,
-                    node,
-                    depth,
-                    self.options.max_depth,
-                );
+                let structural_table = !presentation
+                    && crate::html_fallback::requires_table_structure(
+                        self.dom,
+                        node,
+                        depth,
+                        self.options.max_depth,
+                    );
                 let complex_table =
                     crate::html_fallback::needed(self.dom, node, depth, self.options.max_depth);
                 if !presentation
-                    && data_table
+                    && structural_table
                     && (complex_table
                         || (!self.anchor_targets.is_empty()
                             && crate::anchors::contains(
@@ -459,11 +464,12 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         depth,
                         self.options.max_depth,
                         &self.anchor_targets,
+                        self.options.default_code_language.as_deref(),
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
                 }
-                if presentation {
+                {
                     for id in self.anchor_targets.targets(self.dom, node) {
                         if self.emitted_anchors.insert(id.to_owned()) {
                             self.writer().inline_html(&crate::anchors::markup(id));
@@ -483,7 +489,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     return;
                 }
                 if !presentation
-                    && data_table
+                    && structural_table
                     && crate::html_fallback::has_cells(
                         self.dom,
                         node,
@@ -497,6 +503,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         depth,
                         self.options.max_depth,
                         &self.anchor_targets,
+                        self.options.default_code_language.as_deref(),
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
@@ -662,17 +669,11 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
     }
 
     fn language(&self, node: D::NodeId) -> Option<&'a str> {
-        let mut child = self.dom.first_child(node);
-        while let Some(id) = child {
-            if self.dom.node_kind(id) == NodeKind::Element("code")
-                && let Some(language) = class_language(self.dom.attribute(id, "class"))
-            {
-                return Some(language);
-            }
-            child = self.dom.next_sibling(id);
-        }
-        class_language(self.dom.attribute(node, "class"))
-            .or(self.options.default_code_language.as_deref())
+        crate::content::code_language(
+            self.dom,
+            node,
+            self.options.default_code_language.as_deref(),
+        )
     }
 
     fn raw_node(&mut self, node: D::NodeId, depth: usize, inline: bool) {
@@ -820,12 +821,6 @@ fn subtree_has_block<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize) ->
         pending.push((dom.first_child(node), depth + 1));
     }
     false
-}
-
-fn class_language(class: Option<&str>) -> Option<&str> {
-    class?
-        .split_ascii_whitespace()
-        .find_map(|part| part.strip_prefix("language-").filter(|s| !s.is_empty()))
 }
 
 fn is_block(tag: &str) -> bool {

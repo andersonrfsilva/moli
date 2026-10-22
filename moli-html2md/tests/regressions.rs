@@ -1159,7 +1159,7 @@ fn fragment_targets_prefer_ids_and_only_accept_legacy_anchor_names() {
         false,
     ));
     assert!(!result.contains("id=\"target\"></a>Wrong"), "{result}");
-    assert!(result.contains("name=\"target\""), "{result}");
+    assert_eq!(result.matches("id=\"target\"").count(), 1, "{result}");
 }
 
 #[test]
@@ -1400,7 +1400,7 @@ fn live_textarea_value_replaces_or_clears_serialized_default_in_all_paths() {
 }
 
 #[test]
-fn html_table_math_delegation_preserves_referenced_descendant_targets() {
+fn html_fallback_math_delegation_preserves_referenced_descendant_targets() {
     let result = markdown(
         "<a href='#L1'>Term</a><table><tr><td colspan='2'><math><mrow id='L1'><mi>x</mi></mrow></math></td></tr></table>",
         false,
@@ -1413,7 +1413,8 @@ fn html_table_math_delegation_preserves_referenced_descendant_targets() {
         false,
     );
     assert!(
-        alternative.contains("<a id=\"wrapped\"></a>"),
+        alternative.matches("id=\"wrapped\"").count() == 1
+            && alternative.contains("<span id=\"wrapped\"><math>"),
         "{alternative}"
     );
     assert!(alternative.contains("<math>"), "{alternative}");

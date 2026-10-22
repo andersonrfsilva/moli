@@ -78,11 +78,11 @@ an explicit header, or cells containing nested tables, lists, headings, quotes
 or preformatted blocks. This retains header, cell and nested-table associations
 that Markdown pipe tables cannot express. Inner simple tables can still produce
 GFM when an explicitly presentational containing table is expanded. Scripts,
-styles and event handlers are omitted from HTML table output.
+styles and event handlers are omitted from HTML fallback output.
 
 Supported output includes headings, paragraphs, emphasis, strikethrough, links,
 images, lists, blockquotes, hard breaks, media source links, separated form choices,
-and fenced code. Inline HTML is used when
+readable form values, and fenced code. Inline HTML is used when
 Markdown delimiters cannot express an emphasis boundary.
 Superscripts and subscripts retain their HTML markers. Complete author-supplied
 TeX spans retain their commands and indices. Native MathML retains mathematical
@@ -101,8 +101,7 @@ spaces and blank lines. Empty blocks still separate surrounding text.
 This is a structural content dump. It omits non-rendered serialized state blobs
 but retains content in collapsed panels and inactive tabs. It does not evaluate
 stylesheets, layout, or JavaScript. Callers may supply computed block boundaries
-through the optional DOM query. Moli's page exporter additionally filters current
-CSS-hidden UI while retaining explicitly linked disclosure content. The converter
+through the optional DOM query. The converter
 cannot preserve all HTML presentation (for example, arbitrary ordered-list numbering).
 DOM snapshots used by Moli's optional
 strip/base/frame transformations remain the responsibility of the caller.
@@ -149,9 +148,7 @@ JavaScript and inline HTML document URLs are excluded.
 
 SVG title children are tooltip metadata, not body text. They supply a name only
 when an SVG has no emitted content; title elements outside SVG are omitted.
-Author-supplied TeX keeps its commands across transparent inline wrappers.
-MathML and superscript/subscript retain their structure; alternate visual copies
-do not duplicate an equation. Code omits embedded copy controls and scripts.
+Code omits embedded copy controls and scripts.
 
 Backslash-delimited inline TeX becomes inline dollar math. Invisible separators
 keep adjacent formulas distinct across empty wrappers. They also separate a

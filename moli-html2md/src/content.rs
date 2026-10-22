@@ -112,3 +112,26 @@ pub(crate) fn is_code_control<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> bool
         .attribute(node, "role")
         .is_some_and(|role| role.eq_ignore_ascii_case("button"))
 }
+
+/// The same authored/default language policy serves fenced and HTML code blocks.
+pub(crate) fn code_language<'a, D: Dom + ?Sized>(
+    dom: &'a D,
+    node: D::NodeId,
+    default: Option<&'a str>,
+) -> Option<&'a str> {
+    let mut child = dom.first_child(node);
+    while let Some(id) = child {
+        if dom.node_kind(id) == NodeKind::Element("code")
+            && let Some(language) = class_language(dom.attribute(id, "class"))
+        {
+            return Some(language);
+        }
+        child = dom.next_sibling(id);
+    }
+    class_language(dom.attribute(node, "class")).or(default)
+}
+pub(crate) fn class_language(class: Option<&str>) -> Option<&str> {
+    class?
+        .split_ascii_whitespace()
+        .find_map(|part| part.strip_prefix("language-").filter(|s| !s.is_empty()))
+}

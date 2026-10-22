@@ -4,29 +4,11 @@ use std::process::Command;
 
 const HTML: &str = include_str!("../../../moli-html2md/tests/fixtures/hacker-news-layout.html");
 fn assert_layout_table_dump(args: &[&str]) -> Result<()> {
-    let url = format!("data:text/html;base64,{}", STANDARD.encode(HTML));
-    let output = Command::new(env!("CARGO_BIN_EXE_moli"))
-        .args([
-            "fetch",
-            "--dump",
-            "markdown",
-            "--wait-until",
-            "load",
-            "--timeout",
-            "10000",
-        ])
-        .args(args)
-        .arg(url)
-        .output()?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let markdown = String::from_utf8(output.stdout)?;
-    let expected = include_str!("../../../moli-html2md/tests/fixtures/hacker-news-layout.md");
-    assert_eq!(markdown.trim_end(), expected.trim_end());
-    Ok(())
+    assert_markdown_dump(
+        HTML,
+        include_str!("../../../moli-html2md/tests/fixtures/hacker-news-layout.md"),
+        args,
+    )
 }
 
 fn assert_markdown_dump(html: &str, markdown: &str, args: &[&str]) -> Result<()> {
@@ -49,7 +31,10 @@ fn assert_markdown_dump(html: &str, markdown: &str, args: &[&str]) -> Result<()>
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8(output.stdout)?, markdown.trim_end());
+    assert_eq!(
+        String::from_utf8(output.stdout)?.trim_end(),
+        markdown.trim_end()
+    );
     Ok(())
 }
 
