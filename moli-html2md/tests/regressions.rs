@@ -838,7 +838,7 @@ fn dollar_wrapped_literal_html_remains_inert_without_a_math_extension() {
     let result = markdown(r"<p>$&lt;img src=x onerror=alert(1)&gt;_i$</p>", false);
     let html = rendered_html(&result);
     assert!(!html.contains("<img"), "{html}");
-    assert!(html.contains("&lt;img"), "{html}");
+    assert!(html.contains("img src=x"), "{html}");
 }
 
 #[test]
@@ -974,7 +974,7 @@ fn math_preserves_structure_attributes_and_inert_text() {
     let html = rendered_html(&result);
     assert!(!html.contains("onclick="), "{html}");
     assert!(!html.contains("<img"), "{html}");
-    assert!(html.contains("&lt;img"), "{html}");
+    assert!(html.contains("img src=x"), "{html}");
 }
 
 #[test]

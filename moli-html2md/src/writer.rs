@@ -116,7 +116,7 @@ impl<'a> Writer<'a> {
             self.prepare_inline(math.chars().next().expect("nonempty math span"));
             // TeX commands, indices and alignment characters carry meaning;
             // CommonMark escaping changes that meaning in math-aware readers.
-            self.output.push_str(math);
+            self.output.push_str(&crate::math::normalized_span(math));
             self.line_digits = None;
             consumed = end;
         }

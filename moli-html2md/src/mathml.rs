@@ -87,7 +87,7 @@ pub(crate) fn render<D: Dom + ?Sized>(dom: &D, root: D::NodeId, max_depth: usize
                     continue;
                 }
                 match dom.node_kind(node) {
-                    NodeKind::Text(text) => escape(text, &mut output),
+                    NodeKind::Text(text) => escape(text, &mut output, true),
                     NodeKind::Element("annotation" | "annotation-xml" | "script" | "style") => {}
                     NodeKind::Element("semantics") => {
                         // Presentation is the first child; subsequent annotation
@@ -110,7 +110,7 @@ pub(crate) fn render<D: Dom + ?Sized>(dom: &D, root: D::NodeId, max_depth: usize
                                     output.push(' ');
                                     output.push_str(name);
                                     output.push_str("=\"");
-                                    escape(value, &mut output);
+                                    escape(value, &mut output, false);
                                     output.push('"');
                                 }
                             }
@@ -198,9 +198,12 @@ const ATTRIBUTES: &[&str] = &[
     "rquote",
 ];
 
-fn escape(text: &str, output: &mut String) {
+fn escape(text: &str, output: &mut String, markdown_text: bool) {
     for ch in text.chars() {
         match ch {
+            '\\' | '*' | '_' | '`' | '~' | '[' | ']' if markdown_text => {
+                output.push_str(&format!("&#{};", ch as u32));
+            }
             '&' => output.push_str("&amp;"),
             '<' => output.push_str("&lt;"),
             '>' => output.push_str("&gt;"),

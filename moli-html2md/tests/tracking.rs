@@ -1,4 +1,4 @@
-//! Review findings: explicit compatibility choices and semantic regressions.
+//! Open compatibility findings; corrected behavior lives in regression tests.
 
 mod support;
 
@@ -39,55 +39,5 @@ fn track_nested_list_spacing_through_a_transparent_wrapper() {
 fn track_nested_list_spacing_before_a_trailing_empty_element() {
     track_list_spacing(
         "<ul><li>before<ul><li>inner</li></ul><span></span></li><li>after</li></ul>",
-    );
-}
-
-#[test]
-fn multiline_image_alt_preserves_the_image() {
-    let result = markdown("<img src='/x' alt='first\n# heading'>");
-    // Turndown emits the same Markdown. Matching it does not preserve the image.
-    let actual_html = rendered_html(&result);
-    let desired_html = "<p><img src=\"/x\" alt=\"first # heading\" /></p>\n";
-    assert_eq!(
-        actual_html, desired_html,
-        "review the resolved image-alt gap"
-    );
-}
-
-#[test]
-fn multiline_link_title_preserves_the_link() {
-    let result = markdown("<a href='/' title='first\n# heading'>link</a>");
-    // Turndown has this loss too; the link and its title must survive rendering.
-    let actual_html = rendered_html(&result);
-    let desired_html = "<p><a href=\"/\" title=\"first\n# heading\">link</a></p>\n";
-    assert_eq!(
-        actual_html, desired_html,
-        "review the resolved link-title gap"
-    );
-}
-
-#[test]
-fn multiple_nested_spans_keep_their_styles_at_paragraph_end() {
-    // This predates the closing-edge fix: with no following character there
-    // is no punctuation fallback, but sibling delimiters can still mispair.
-    let result = markdown("<em><strong>x</strong>b<strong>c</strong></em>");
-    let actual_html = rendered_html(&result);
-    let desired_html = "<p><em><strong>x</strong>b<strong>c</strong></em></p>\n";
-    assert_eq!(
-        actual_html, desired_html,
-        "review the resolved sibling-span gap"
-    );
-}
-
-#[test]
-fn mixed_emphasis_markers_preserve_intraword_styles() {
-    // The opening check sees the text 'x', although the nested styles emit
-    // punctuation first. This is separate from closing a same-marker run.
-    let result = markdown("before<em><del><strong>x</strong></del></em>");
-    let actual_html = rendered_html(&result);
-    let desired_html = "<p>before<em><del><strong>x</strong></del></em></p>\n";
-    assert_eq!(
-        actual_html, desired_html,
-        "review the resolved mixed-marker gap"
     );
 }

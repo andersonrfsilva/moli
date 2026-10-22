@@ -527,3 +527,49 @@ fn authored_image_alternatives_survive_naming_exclusions() {
         "![](b.png)"
     );
 }
+
+#[test]
+fn mixed_currency_inequalities_and_multiline_math_keep_math_payloads() {
+    use pulldown_cmark::{Event, Options as MarkdownOptions, Parser};
+    for (source, expected) in [
+        ("<p>Pay $5 for $x_i$.</p>", "x_i"),
+        ("<p>$0&lt;x&lt;1$</p>", "0< x<1"),
+        ("<p>\\(n&lt;k\\)</p>", "n< k"),
+        ("<p>$$a\n- b$$</p>", "a - b"),
+        ("<table><tr><td>$$a\n- b$$</td></tr></table>", "a - b"),
+        (r"<p>$$a \% + b$$</p>", r"a \% + b"),
+        ("<p>$$a\n# b\n\n&gt; c$$</p>", "a # b > c"),
+        ("<p>$$a % a comment\n- b$$</p>", "a - b"),
+    ] {
+        let result = markdown(source);
+        let math: Vec<_> = Parser::new_ext(&result, MarkdownOptions::ENABLE_MATH)
+            .filter_map(|event| match event {
+                Event::InlineMath(t) | Event::DisplayMath(t) => Some(t.to_string()),
+                _ => None,
+            })
+            .collect();
+        if source.contains("\\(") {
+            assert!(result.contains("\\(n< k\\)"), "{result}");
+            continue;
+        }
+        assert_eq!(math.len(), 1, "{source}: {result}, {math:?}");
+        assert_eq!(math[0].trim(), expected, "{result}");
+        let html = rendered_html(&result);
+        for unwanted in ["<ul>", "<blockquote>", "<h1>"] {
+            assert!(!html.contains(unwanted), "{html}");
+        }
+    }
+}
+
+#[test]
+fn mathml_operators_survive_commonmark_as_literal_math_text() {
+    let result = markdown(
+        r"<math><mi>A</mi><mo>\</mo><mi>B</mi><mo>*</mo><mi>C</mi><mo>*</mo><mo>_</mo><mi>D</mi><mo>_</mo><mo>~</mo><mo>`</mo><mo>[</mo></math>",
+    );
+    let html = rendered_html(&result);
+    assert!(html.contains("<mo>\\</mo>"), "{html}");
+    for unexpected in ["<em>", "<strong>", "&lt;/mo&gt;"] {
+        assert!(!html.contains(unexpected), "{html}");
+    }
+
+}

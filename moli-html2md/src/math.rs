@@ -29,7 +29,14 @@ fn spans_counted(text: &str, steps: &mut usize) -> Vec<(usize, usize)> {
                 continue;
             }
             if let Some(start) = dollar.take() {
-                accept_candidate(text, start, index + 1, 1, true, &mut candidates);
+                if !accept_candidate(text, start, index + 1, 1, true, &mut candidates)
+                    && text[index + 1..]
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| !ch.is_whitespace())
+                {
+                    dollar = Some(index);
+                }
             } else if text[index + 1..]
                 .chars()
                 .next()
@@ -93,7 +100,7 @@ fn accept_candidate(
     delimiter: usize,
     single_dollar: bool,
     candidates: &mut Vec<(usize, usize)>,
-) {
+) -> bool {
     let content_start = start + delimiter;
     let content_end = end - delimiter;
     if content_start == content_end
@@ -104,20 +111,67 @@ fn accept_candidate(
                 .is_some_and(char::is_whitespace)
                 || text.as_bytes().get(end).is_some_and(u8::is_ascii_digit))
     {
-        return;
+        return false;
     }
     let content = &text[content_start..content_end];
-    if content.as_bytes().windows(2).any(|pair| {
-        pair[0] == b'<' && (pair[1].is_ascii_alphabetic() || matches!(pair[1], b'/' | b'!' | b'?'))
-    }) || contains_markdown_resource(content)
-    {
-        return;
+    if contains_markdown_resource(content) {
+        return false;
     }
     candidates.push((start, end));
+    true
 }
 
 fn contains_markdown_resource(text: &str) -> bool {
     text.contains("](") || text.contains("][") || text.contains("![[")
+}
+
+/// Keep one physical Markdown line without turning TeX operators into blocks
+/// or HTML. TeX comments end at a source newline, so remove their payload
+/// before collapsing whitespace instead of extending a comment over the formula.
+pub(crate) fn normalized_span(text: &str) -> String {
+    let delimiter = if text.starts_with("$$") || text.starts_with('\\') {
+        2
+    } else {
+        1
+    };
+    let mut output = text[..delimiter].to_owned();
+    let mut chars = text[delimiter..text.len() - delimiter].chars().peekable();
+    let mut escaped = false;
+    let mut space = false;
+    while let Some(ch) = chars.next() {
+        if ch == '%' && !escaped {
+            for part in chars.by_ref() {
+                if matches!(part, '\n' | '\r') {
+                    break;
+                }
+            }
+            space = true;
+            continue;
+        }
+        if matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
+            space = true;
+            escaped = false;
+            continue;
+        }
+        if space {
+            output.push(' ');
+            space = false;
+        }
+        output.push(ch);
+        if ch == '<'
+            && chars
+                .peek()
+                .is_some_and(|next| next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?'))
+        {
+            output.push(' ');
+        }
+        escaped = ch == '\\' && !escaped;
+    }
+    if space {
+        output.push(' ');
+    }
+    output.push_str(&text[text.len() - delimiter..]);
+    output
 }
 
 #[cfg(test)]
