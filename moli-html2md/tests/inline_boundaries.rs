@@ -257,7 +257,7 @@ fn separate_nested_spans_keep_html_when_delimiters_are_ambiguous() {
 #[test]
 fn multiline_image_alt_preserves_the_image() {
     let result = markdown("<img src='/x' alt='first\n# heading'>");
-    // Turndown emits the same Markdown. Matching it does not preserve the image.
+    // Alt newlines must not open a heading; the image and its text alternative survive.
     let actual_html = rendered_html(&result);
     let desired_html = "<p><img src=\"/x\" alt=\"first # heading\" /></p>\n";
     assert_eq!(
@@ -280,8 +280,8 @@ fn multiline_link_title_preserves_the_link() {
 
 #[test]
 fn multiple_nested_spans_keep_their_styles_at_paragraph_end() {
-    // This predates the closing-edge fix: with no following character there
-    // is no punctuation fallback, but sibling delimiters can still mispair.
+    // This guards the closing-edge fix: with no following character there
+    // is no punctuation fallback, but sibling delimiters must not mispair.
     let result = markdown("<em><strong>x</strong>b<strong>c</strong></em>");
     let actual_html = rendered_html(&result);
     let desired_html = "<p><em><strong>x</strong>b<strong>c</strong></em></p>\n";

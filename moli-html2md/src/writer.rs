@@ -154,7 +154,7 @@ impl<'a> Writer<'a> {
                 self.line_digits = Some(0);
             }
             match ch {
-                '\\' | '`' | '*' | '_' | '[' | ']' | '<' | '>' | '~' => {
+                '\\' | '`' | '*' | '_' | '[' | ']' | '<' | '>' | '~' | '$' => {
                     self.output.push('\\');
                     self.output.push(ch);
                 }

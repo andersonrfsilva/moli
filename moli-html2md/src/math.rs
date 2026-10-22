@@ -138,7 +138,65 @@ pub(crate) fn normalized_span(text: &str) -> String {
     let mut chars = text[delimiter..text.len() - delimiter].chars().peekable();
     let mut escaped = false;
     let mut space = false;
+    let mut text_depth = 0usize;
     while let Some(ch) = chars.next() {
+        if ch == '\\' && !escaped && chars.clone().take(4).eq("verb".chars()) {
+            let mut probe = chars.clone();
+            for _ in 0..4 {
+                probe.next();
+            }
+            let star = probe.peek() == Some(&'*');
+            if star {
+                probe.next();
+            }
+            if let Some(verb_delimiter) = probe
+                .next()
+                .filter(|c| !c.is_whitespace() && !c.is_ascii_alphabetic())
+            {
+                if space && output.len() > delimiter {
+                    output.push(' ');
+                }
+                space = false;
+                output.push_str(r"\verb");
+                for _ in 0..4 {
+                    chars.next();
+                }
+                if star {
+                    output.push('*');
+                    chars.next();
+                }
+                output.push(chars.next().expect("verb delimiter"));
+                for c in chars.by_ref() {
+                    output.push(c);
+                    if c == verb_delimiter {
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+        if ch == '\\' && !escaped {
+            let command = if chars.clone().take(5).eq("text{".chars()) {
+                Some("text{")
+            } else if chars.clone().take(5).eq("mbox{".chars()) {
+                Some("mbox{")
+            } else {
+                None
+            };
+            if let Some(command) = command {
+                if space && output.len() > delimiter {
+                    output.push(' ');
+                }
+                space = false;
+                output.push('\\');
+                output.push_str(command);
+                for _ in 0..command.len() {
+                    chars.next();
+                }
+                text_depth += 1;
+                continue;
+            }
+        }
         if ch == '%' && !escaped {
             for part in chars.by_ref() {
                 if matches!(part, '\n' | '\r') {
@@ -154,11 +212,21 @@ pub(crate) fn normalized_span(text: &str) -> String {
             continue;
         }
         if space {
-            output.push(' ');
+            if output.len() > delimiter {
+                output.push(' ');
+            }
             space = false;
         }
         output.push(ch);
+        if !escaped && text_depth > 0 {
+            if ch == '{' {
+                text_depth += 1;
+            } else if ch == '}' {
+                text_depth -= 1;
+            }
+        }
         if ch == '<'
+            && text_depth == 0
             && chars
                 .peek()
                 .is_some_and(|next| next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?'))
@@ -166,9 +234,6 @@ pub(crate) fn normalized_span(text: &str) -> String {
             output.push(' ');
         }
         escaped = ch == '\\' && !escaped;
-    }
-    if space {
-        output.push(' ');
     }
     output.push_str(&text[text.len() - delimiter..]);
     output

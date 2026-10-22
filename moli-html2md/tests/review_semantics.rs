@@ -167,7 +167,7 @@ fn code_excludes_interactive_controls_without_guessing_class_names() {
 #[test]
 fn formulas_keep_their_order_across_output_boundaries() {
     let result = markdown(
-        r"<p>$a_1$<img src='/plot.png' alt='Plot'>$b_2$<code>literal</code>\
+        r"<p>$a_1$<img src='/plot.png' alt='Plot'>$b_2$<code>literal</code>
            $c_3$<a href='/target'>Link</a>$d_4$<br>$e_5$</p><blockquote>$f_6$</blockquote>",
     );
     let mut end = 0;
@@ -572,4 +572,42 @@ fn mathml_operators_survive_commonmark_as_literal_math_text() {
         assert!(!html.contains(unexpected), "{html}");
     }
 
+}
+
+#[test]
+fn math_comments_literals_and_inline_markup_keep_distinct_boundaries() {
+    use pulldown_cmark::{Event, Options as MarkdownOptions, Parser};
+    for (source, expected) in [
+        ("<p>$a%b$</p>", "a"),
+        ("<p>$5%$</p>", "5"),
+        ("<p>$%c\nx$</p>", "x"),
+        (r"<p>$\verb|50%|$</p>", r"\verb|50%|"),
+        (r"<p>$\verb|a  b|$</p>", r"\verb|a  b|"),
+        (r"<p>$\text{a&lt;b}$</p>", r"\text{a<b}"),
+        (r"<p>$\mbox{a&lt;b}$</p>", r"\mbox{a<b}"),
+    ] {
+        let result = markdown(source);
+        let math: Vec<_> = Parser::new_ext(&result, MarkdownOptions::ENABLE_MATH)
+            .filter_map(|e| match e {
+                Event::InlineMath(x) => Some(x.into_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(math, vec![expected], "{source}: {result}");
+    }
+    for source in [
+        "<p>$[a](b)$</p>",
+        "<p>$x<a href='/d'>l</a>y$</p>",
+        "<math><mi>$</mi><mn>5</mn><mo>-</mo><mi>$</mi><mn>3</mn></math>",
+    ] {
+        let result = markdown(source);
+        assert!(
+            !Parser::new_ext(&result, MarkdownOptions::ENABLE_MATH)
+                .any(|e| matches!(e, Event::InlineMath(_) | Event::DisplayMath(_))),
+            "{result}"
+        );
+        if source.contains("href") {
+            assert!(rendered_html(&result).contains("href=\"/d\""), "{result}");
+        }
+    }
 }

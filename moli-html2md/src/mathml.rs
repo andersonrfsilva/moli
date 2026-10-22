@@ -1,4 +1,5 @@
 use crate::{Dom, NodeKind};
+use std::fmt::Write as _;
 
 /// Math renderers often pair semantic MathML with an aria-hidden visual copy.
 /// Recognize that relationship from markup, independently of library classes.
@@ -201,8 +202,8 @@ const ATTRIBUTES: &[&str] = &[
 fn escape(text: &str, output: &mut String, markdown_text: bool) {
     for ch in text.chars() {
         match ch {
-            '\\' | '*' | '_' | '`' | '~' | '[' | ']' if markdown_text => {
-                output.push_str(&format!("&#{};", ch as u32));
+            '\\' | '*' | '_' | '`' | '~' | '[' | ']' | '$' if markdown_text => {
+                write!(output, "&#{};", ch as u32).expect("writing to String");
             }
             '&' => output.push_str("&amp;"),
             '<' => output.push_str("&lt;"),
