@@ -74,9 +74,8 @@ matching ignores ASCII case and surrounding HTML whitespace. Nested layout
 wrappers expand into readable blocks. Tables with header cells, captions, explicit
 data roles, header relationships or real cell spans retain their authored structure.
 These tables use content-only HTML for non-unit spans, multiple `thead` rows,
-rows wider than
-an explicit header, or cells containing nested tables, lists, headings, quotes
-or preformatted blocks. This retains header, cell and nested-table associations
+rows wider than an explicit header, or cells containing nested tables, lists,
+headings, quotes or preformatted blocks. This retains header, cell and nested-table associations
 that Markdown pipe tables cannot express. Inner simple tables can still produce
 GFM when a presentational or layout-only containing table is expanded. Scripts,
 styles and event handlers are omitted from HTML fallback output.

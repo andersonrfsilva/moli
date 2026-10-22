@@ -26,6 +26,9 @@ impl moli_html2md::Dom for Counted {
     fn has_block_layout(&self, node: usize) -> bool {
         self.tree.attribute(node, "style") == Some("display:block")
     }
+    fn has_text_boundary(&self, node: usize) -> bool {
+        self.tree.attribute(node, "style") == Some("display:inline-block")
+    }
 }
 
 fn markdown(html: &str) -> String {
@@ -966,6 +969,12 @@ fn fallback_targets_and_media_preserve_navigation_without_duplicate_ids() {
         "<a href='#one'>1</a><a href='#two'>2</a><table><caption>C</caption><tr><td><a id='one' name='two' href='/x'>linked text</a><span id='unreferenced'>plain</span><video poster=' ' src='/v.mp4'></video></td></tr></table>",
     );
     let html = rendered_html(&output);
+    assert_eq!(output.matches("id=\"two\"").count(), 1, "{output}");
+    assert!(
+        output.find("id=\"two\"").unwrap() < output.find("href=\"/x\"").unwrap(),
+        "{output}"
+    );
+
     assert!(
         html.contains("href=\"/x\" id=\"one\">linked text</a>"),
         "{html}"
@@ -983,5 +992,64 @@ fn fallback_targets_and_media_preserve_navigation_without_duplicate_ids() {
             html.contains("/cover.jpg") && html.contains("href=\"/v.mp4\""),
             "{output}"
         );
+    }
+}
+
+#[test]
+fn computed_boundaries_supplement_structure_without_rewriting_code() {
+    for (source, expected) in [
+        (
+            "<ul><li style='display:block'>A</li><li style='display:block'>B</li></ul>",
+            "- A\n- B",
+        ),
+        (
+            "<ul><li><a href='/a' style='display:block'>A</a></li><li><span style='display:block'>B</span></li></ul>",
+            "- [A](/a)\n- B",
+        ),
+        (
+            "<select><option style='display:block'>A</option><option style='display:block'>B</option></select>",
+            "A\nB",
+        ),
+        (
+            "<span style='display:inline-block'>A</span><span style='display:inline-block'>B</span>",
+            "A B",
+        ),
+    ] {
+        let dom = Counted {
+            tree: Tree::parse(source),
+            visits: Cell::new(0),
+        };
+        assert_eq!(convert(&dom, dom.tree.root), expected, "{source}");
+    }
+    for layout in ["display:inline-block", "display:block"] {
+        let source = format!(
+            "<pre><code>let v = <span style='{layout}'>f</span>(<a href='/doc'>x</a>);</code></pre>"
+        );
+        let dom = Counted {
+            tree: Tree::parse(&source),
+            visits: Cell::new(0),
+        };
+        let result = convert(&dom, dom.tree.root);
+        assert!(
+            result.contains("let v = f(<a href=\"/doc\">x</a>);"),
+            "{result}"
+        );
+        assert!(!result.contains("<div>"), "{result}");
+    }
+}
+
+#[test]
+fn role_tokens_use_html_spaces_and_media_names_prefer_accessible_labels() {
+    for role in ["presentation", "none"] {
+        let source = format!(
+            "<table role='\u{a0}{role}\u{a0}'><tr><th>H</th></tr><tr><td colspan='2'>X</td></tr></table>"
+        );
+        assert!(markdown(&source).contains("<table>"));
+    }
+    for tag in ["audio", "video", "iframe"] {
+        let result = markdown(&format!(
+            "<{tag} src='/media' title='Tooltip' aria-label='Description'></{tag}>"
+        ));
+        assert!(result.contains("[Description](/media)"), "{result}");
     }
 }

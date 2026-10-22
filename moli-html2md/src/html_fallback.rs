@@ -65,7 +65,9 @@ pub(crate) fn requires_table_structure<D: Dom + ?Sized>(
 ) -> bool {
     if dom.attribute(root, "role").is_some_and(|role| {
         matches!(
-            role.trim().to_ascii_lowercase().as_str(),
+            role.trim_matches(crate::writer::is_space)
+                .to_ascii_lowercase()
+                .as_str(),
             "table" | "grid" | "treegrid"
         )
     }) {
@@ -189,13 +191,17 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 }
                 let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
                 if let NodeKind::Element(tag) = dom.node_kind(node) {
-                    if dom.has_block_layout(node)
+                    if !code
+                        && dom.has_block_layout(node)
                         && !has_block_tag(tag)
-                        && !crate::content::owns_boundaries(tag)
+                        && !crate::machine::owns_boundaries(tag)
                     {
                         output.push_str("<div>");
                         tasks.push(Task::Close("div".to_owned()));
-                    } else if dom.has_text_boundary(node) && !crate::content::owns_boundaries(tag) {
+                    } else if !code
+                        && dom.has_text_boundary(node)
+                        && !crate::machine::owns_boundaries(tag)
+                    {
                         output.push(' ');
                         tasks.push(Task::Literal(" "));
                     }

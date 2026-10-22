@@ -310,8 +310,6 @@ pub(crate) fn poster<'a, D: Dom + ?Sized>(
     tag: &str,
 ) -> Option<&'a str> {
     (tag == "video")
-        .then(|| dom.attribute(node, "poster"))
+        .then(|| direct_attribute(dom, node, "poster", true))
         .flatten()
-        .map(str::trim)
-        .filter(|src| !src.is_empty() && safe_url(src, true))
 }

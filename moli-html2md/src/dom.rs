@@ -42,6 +42,7 @@ pub trait Dom {
 
     /// A caller with computed CSS can retain boundaries between independent
     /// inline boxes such as tabs, badges, and compact action controls.
+    /// Request a collapsible space on each side of an inline layout box.
     fn has_text_boundary(&self, _node: Self::NodeId) -> bool {
         false
     }
