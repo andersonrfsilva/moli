@@ -110,19 +110,16 @@ impl<'a> Writer<'a> {
         self.flush_code();
         let text = std::mem::take(&mut self.pending_text);
         let mut consumed = 0;
-        for (start, end) in crate::math::spans(&text) {
+        for (start, end, normalized) in crate::math::spans(&text) {
             self.plain_text(&text[consumed..start]);
             let math = &text[start..end];
             self.prepare_inline(math.chars().next().expect("nonempty math span"));
             // TeX commands, indices and alignment characters carry meaning;
             // CommonMark escaping changes that meaning in math-aware readers.
-            self.output.push_str(
-                &crate::math::normalized_span(
-                    math,
-                    text.as_bytes().get(end).is_some_and(u8::is_ascii_digit),
-                )
-                .expect("accepted math span"),
-            );
+            if consumed > 0 && start == consumed {
+                self.output.push_str("<!-- -->");
+            }
+            self.output.push_str(&normalized);
             self.line_digits = None;
             consumed = end;
         }

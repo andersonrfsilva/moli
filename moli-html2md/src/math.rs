@@ -1,12 +1,12 @@
 /// Locate a complete author-supplied TeX span before ordinary Markdown escaping.
 /// Dollar boundaries follow the usual non-space/non-digit rules, so prices do
 /// not consume the prose between two currency amounts.
-pub(crate) fn spans(text: &str) -> Vec<(usize, usize)> {
+pub(crate) fn spans(text: &str) -> Vec<(usize, usize, String)> {
     let mut steps = 0;
     spans_counted(text, &mut steps)
 }
 
-fn spans_counted(text: &str, steps: &mut usize) -> Vec<(usize, usize)> {
+fn spans_counted(text: &str, steps: &mut usize) -> Vec<(usize, usize, String)> {
     let bytes = text.as_bytes();
     let mut index = 0;
     let mut backslashes = 0;
@@ -99,7 +99,7 @@ fn accept_candidate(
     end: usize,
     delimiter: usize,
     single_dollar: bool,
-    candidates: &mut Vec<(usize, usize)>,
+    candidates: &mut Vec<(usize, usize, String)>,
 ) -> bool {
     let content_start = start + delimiter;
     let content_end = end - delimiter;
@@ -113,17 +113,15 @@ fn accept_candidate(
     {
         return false;
     }
+    let followed_by_digit = text.as_bytes().get(end).is_some_and(u8::is_ascii_digit);
     let content = &text[content_start..content_end];
-    if contains_markdown_resource(content)
-        || normalized_span(
-            &text[start..end],
-            text.as_bytes().get(end).is_some_and(u8::is_ascii_digit),
-        )
-        .is_none()
-    {
+    if contains_markdown_resource(content) {
         return false;
     }
-    candidates.push((start, end));
+    let Some(normalized) = normalized_span(&text[start..end], followed_by_digit) else {
+        return false;
+    };
+    candidates.push((start, end, normalized));
     true
 }
 
@@ -164,7 +162,7 @@ pub(crate) fn normalized_span(text: &str, followed_by_digit: bool) -> Option<Str
                 }
                 let delimiter = chars
                     .next()
-                    .filter(|c| !c.is_whitespace() && !c.is_ascii_alphabetic())?;
+                    .filter(|c| !c.is_whitespace() && !c.is_ascii_alphabetic() && *c != '<')?;
                 output.push(delimiter);
                 let mut closed = false;
                 while let Some(c) = chars.next() {
@@ -252,7 +250,12 @@ pub(crate) fn normalized_span(text: &str, followed_by_digit: bool) -> Option<Str
         return None;
     }
     let inline = text.starts_with("\\(") || delimiter == 1;
-    let marker = if inline && !followed_by_digit && !output.ends_with(char::is_whitespace) {
+    if inline && output.ends_with(char::is_whitespace) {
+        // An empty TeX group preserves the preceding control space while
+        // keeping the inline Markdown closer after a non-space character.
+        output.push_str("{}");
+    }
+    let marker = if inline && !followed_by_digit {
         "$"
     } else {
         "$$"

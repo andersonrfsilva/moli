@@ -610,26 +610,38 @@ fn math_comments_literals_and_inline_markup_keep_distinct_boundaries() {
 #[test]
 fn tex_delimiters_control_spaces_and_empty_comments_survive_math_readers() {
     use pulldown_cmark::{Event, Options as O, Parser};
-    for (source, expected) in [
-        (r"<p>\(x_i\)2</p>", "x_i"),
-        (r"<p>\[y_1=2\]</p>", "y_1=2"),
-        (r"<p>$$a\ $$</p>", "a\\ "),
-        (r"<p>\(x\ \)</p>", "x\\ "),
-        (r"<p>$\textrm{a&lt;2}$</p>", r"\textrm{a<2}"),
-        (r"<p>$\text {a&lt;2}$</p>", r"\text{a<2}"),
+    for (source, expected, display) in [
+        (r"<p>\(x_i\)2</p>", "x_i", true),
+        (r"<p>\[y_1=2\]</p>", "y_1=2", true),
+        (r"<p>$$a\ $$</p>", "a\\ ", true),
+        (r"<p>\(x\ \)</p>", "x\\ {}", false),
+        (r"<p>$\textrm{a&lt;2}$</p>", r"\textrm{a<2}", false),
+        (r"<p>$\text {a&lt;2}$</p>", r"\text{a<2}", false),
     ] {
         let result = markdown(source);
         let payloads: Vec<_> = Parser::new_ext(&result, O::ENABLE_MATH)
             .filter_map(|e| match e {
-                Event::InlineMath(v) | Event::DisplayMath(v) => Some(v.into_string()),
+                Event::InlineMath(v) => Some((v.into_string(), false)),
+                Event::DisplayMath(v) => Some((v.into_string(), true)),
                 _ => None,
             })
             .collect();
-        assert_eq!(payloads, vec![expected], "{source}: {result}");
+        assert_eq!(
+            payloads,
+            vec![(expected.to_owned(), display)],
+            "{source}: {result}"
+        );
     }
     for source in [
         r"<p>$%a$ b $%c$</p>",
         r"<p>$\text{&lt;img src=x onerror=alert(1)&gt;}$</p>",
+        r"<p>$\textbf{&lt;b&gt;x}$</p>",
+        r"<p>$\hbox {&lt;b&gt;}$</p>",
+        r"<p>$\text{a{&lt;b&gt;}}$</p>",
+        r"<p>$\text{&lt;b&gt;$</p>",
+        r"<p>$\verb*|&lt;b&gt;|$</p>",
+        r"<p>$\verb&lt;b&gt;x&lt;$</p>",
+        r"<p>$\verb*&lt;img src=x&gt;a&lt;$</p>",
         r"<p>$\verb|&lt;b&gt;|$</p>",
         "<p>$$\\verb|a\n- b$$</p>",
     ] {
@@ -644,5 +656,16 @@ fn tex_delimiters_control_spaces_and_empty_comments_survive_math_readers() {
             !html.contains("<img") && !html.contains("<b>") && !html.contains("<li>"),
             "{html}"
         );
+    }
+}
+
+#[test]
+fn adjacent_math_keeps_independent_delimiter_runs() {
+    for (source, expected) in [
+        (r"<p>\(a\)\(b\)</p>", "$a$<!-- -->$b$"),
+        (r"<p>$a$\(b\)</p>", "$a$<!-- -->$b$"),
+        (r"<p>\[a\]\[b\]</p>", "$$a$$<!-- -->$$b$$"),
+    ] {
+        assert_eq!(markdown(source), expected);
     }
 }
