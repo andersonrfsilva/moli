@@ -43,6 +43,8 @@ pub(crate) struct Writer<'a> {
     // End of the last emitted Markdown code span in the local output. Only
     // actual output after this position separates it from another code span.
     markdown_code_end: Option<usize>,
+    // Output position, so empty wrappers and coalesced styles do not join math.
+    math_end: Option<usize>,
     line_digits: Option<usize>,
     heading: bool,
     pub(crate) last_link: usize,
@@ -112,14 +114,14 @@ impl<'a> Writer<'a> {
         let mut consumed = 0;
         for (start, end, normalized) in crate::math::spans(&text) {
             self.plain_text(&text[consumed..start]);
-            let math = &text[start..end];
-            self.prepare_inline(math.chars().next().expect("nonempty math span"));
+            self.prepare_inline('$');
             // TeX commands, indices and alignment characters carry meaning;
             // CommonMark escaping changes that meaning in math-aware readers.
-            if consumed > 0 && start == consumed {
+            if self.math_end == Some(self.output.len()) {
                 self.output.push_str("<!-- -->");
             }
             self.output.push_str(&normalized);
+            self.math_end = Some(self.output.len());
             self.line_digits = None;
             consumed = end;
         }
@@ -152,6 +154,9 @@ impl<'a> Writer<'a> {
                 continue;
             }
             self.prepare_inline(ch);
+            if ch.is_ascii_digit() && self.math_end == Some(self.output.len()) {
+                self.output.push_str("<!-- -->");
+            }
             let line_start = self.is_empty() || self.last_char() == Some('\n');
             if line_start {
                 self.line_digits = Some(0);
@@ -304,6 +309,7 @@ impl<'a> Writer<'a> {
         self.prefix
             .push_text(std::mem::take(&mut self.output).into());
         self.markdown_code_end = None;
+        self.math_end = None;
         self.prefix.append(output);
         self.line_digits = None;
         self.boundary(after);

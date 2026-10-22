@@ -103,22 +103,22 @@ fn accept_candidate(
 ) -> bool {
     let content_start = start + delimiter;
     let content_end = end - delimiter;
+    let followed_by_digit = text.as_bytes().get(end).is_some_and(u8::is_ascii_digit);
     if content_start == content_end
         || single_dollar
             && (text[..content_end]
                 .chars()
                 .next_back()
                 .is_some_and(char::is_whitespace)
-                || text.as_bytes().get(end).is_some_and(u8::is_ascii_digit))
+                || followed_by_digit)
     {
         return false;
     }
-    let followed_by_digit = text.as_bytes().get(end).is_some_and(u8::is_ascii_digit);
     let content = &text[content_start..content_end];
     if contains_markdown_resource(content) {
         return false;
     }
-    let Some(normalized) = normalized_span(&text[start..end], followed_by_digit) else {
+    let Some(normalized) = normalized_span(&text[start..end]) else {
         return false;
     };
     candidates.push((start, end, normalized));
@@ -133,7 +133,7 @@ fn contains_markdown_resource(text: &str) -> bool {
 /// control spaces and verbatim payloads remain literal. HTML-like text inside
 /// text/verbatim commands cannot be preserved safely and rejects the span.
 /// Backslash delimiters become dollar delimiters understood by Markdown math.
-pub(crate) fn normalized_span(text: &str, followed_by_digit: bool) -> Option<String> {
+fn normalized_span(text: &str) -> Option<String> {
     let delimiter = if text.starts_with("$$") || text.starts_with('\\') {
         2
     } else {
@@ -255,11 +255,7 @@ pub(crate) fn normalized_span(text: &str, followed_by_digit: bool) -> Option<Str
         // keeping the inline Markdown closer after a non-space character.
         output.push_str("{}");
     }
-    let marker = if inline && !followed_by_digit {
-        "$"
-    } else {
-        "$$"
-    };
+    let marker = if inline { "$" } else { "$$" };
     Some(format!("{marker}{output}{marker}"))
 }
 

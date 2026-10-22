@@ -137,7 +137,6 @@ Author-supplied TeX keeps its commands across transparent inline wrappers.
 MathML and superscript/subscript retain their structure; alternate visual copies
 do not duplicate an equation. Code omits embedded copy controls and scripts.
 
-Backslash-delimited inline TeX normally becomes inline dollar math. When an
-inline closer is immediately followed by a digit, double-dollar math avoids
-turning that digit into part of the delimiter; readers may display that formula
-as a block. Adjacent formulas remain separate.
+Backslash-delimited inline TeX becomes inline dollar math. Invisible separators
+keep adjacent formulas distinct across empty wrappers and keep a following digit
+outside the closing delimiter in math readers that require it.

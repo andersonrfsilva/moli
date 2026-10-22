@@ -611,7 +611,7 @@ fn math_comments_literals_and_inline_markup_keep_distinct_boundaries() {
 fn tex_delimiters_control_spaces_and_empty_comments_survive_math_readers() {
     use pulldown_cmark::{Event, Options as O, Parser};
     for (source, expected, display) in [
-        (r"<p>\(x_i\)2</p>", "x_i", true),
+        (r"<p>\(x_i\)2</p>", "x_i", false),
         (r"<p>\[y_1=2\]</p>", "y_1=2", true),
         (r"<p>$$a\ $$</p>", "a\\ ", true),
         (r"<p>\(x\ \)</p>", "x\\ {}", false),
@@ -667,5 +667,37 @@ fn adjacent_math_keeps_independent_delimiter_runs() {
         (r"<p>\[a\]\[b\]</p>", "$$a$$<!-- -->$$b$$"),
     ] {
         assert_eq!(markdown(source), expected);
+    }
+}
+
+#[test]
+fn math_boundaries_survive_empty_wrappers_and_coalesced_styles() {
+    use pulldown_cmark::{Event, Options, Parser};
+    for source in [
+        r"<p>\(a\)<b></b>\(b\)</p>",
+        r"<p><b>\(a\)</b><b>\(b\)</b></p>",
+        r"<p>$a$<i></i>$b$</p>",
+    ] {
+        let result = markdown(source);
+        let values: Vec<_> = Parser::new_ext(&result, Options::ENABLE_MATH)
+            .filter_map(|e| match e {
+                Event::InlineMath(v) => Some(v.into_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(values, ["a", "b"], "{source}: {result}");
+        assert!(result.contains("$<!-- -->$"), "{result}");
+    }
+    for source in [
+        r"<p>\(x\)2</p>",
+        r"<p>\(x\)<i></i>2</p>",
+        r"<p>$x$<i></i>2</p>",
+    ] {
+        let result = markdown(source);
+        assert_eq!(result, "$x$<!-- -->2", "{source}");
+        assert!(
+            Parser::new_ext(&result, Options::ENABLE_MATH)
+                .any(|e| matches!(e, Event::InlineMath(_)))
+        );
     }
 }
