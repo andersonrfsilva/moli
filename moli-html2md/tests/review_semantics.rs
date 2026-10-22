@@ -1010,10 +1010,6 @@ fn computed_boundaries_supplement_structure_without_rewriting_code() {
             "<select><option style='display:block'>A</option><option style='display:block'>B</option></select>",
             "A\nB",
         ),
-        (
-            "<span style='display:inline-block'>A</span><span style='display:inline-block'>B</span>",
-            "A B",
-        ),
     ] {
         let dom = Counted {
             tree: Tree::parse(source),
@@ -1052,4 +1048,50 @@ fn role_tokens_use_html_spaces_and_media_names_prefer_accessible_labels() {
         ));
         assert!(result.contains("[Description](/media)"), "{result}");
     }
+}
+
+#[test]
+fn independent_inline_boxes_request_spaces_through_the_adapter_contract() {
+    let dom = Counted {
+        tree: Tree::parse(
+            "<span style='display:inline-block'>A</span><span style='display:inline-block'>B</span>",
+        ),
+        visits: Cell::new(0),
+    };
+    assert_eq!(convert(&dom, dom.tree.root), "A B");
+}
+
+#[test]
+fn fallback_keeps_code_boxes_and_ignores_column_boxes() {
+    for (style, expected) in [
+        ("display:inline-block", "run <code>ls</code> now"),
+        ("display:block", "run<div><code>ls</code></div>now"),
+    ] {
+        let source = format!(
+            "<table><caption>C</caption><colgroup style='display:block'><col style='display:block'></colgroup><tr><td colspan='2'>run<code style='{style}'>ls</code>now</td></tr></table>"
+        );
+        let dom = Counted {
+            tree: Tree::parse(&source),
+            visits: Cell::new(0),
+        };
+        let result = convert(&dom, dom.tree.root);
+        assert!(result.contains(expected), "{result}");
+        assert_eq!(
+            result.matches("<div>").count(),
+            usize::from(style == "display:block"),
+            "{result}"
+        );
+    }
+}
+
+#[test]
+fn content_after_a_nested_list_can_make_the_outer_list_loose() {
+    assert_eq!(
+        markdown("<ul><li>a<ul><li>b</li></ul>c</li><li>d</li></ul>"),
+        "- a\n  - b\n\n  c\n\n- d"
+    );
+    assert_eq!(
+        markdown("<ul><li>a<ul><li>b</li></ul></li><li>d</li></ul>"),
+        "- a\n  - b\n- d"
+    );
 }

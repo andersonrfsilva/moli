@@ -68,17 +68,18 @@ context, keeping links on one line. Unicode spaces and literal entity text are
 retained; URLs use destination escaping. GFM supplies
 missing trailing cells in short rows; the converter does not allocate a padded grid.
 
-Tables with `role="presentation"` or `role="none"` retain ordinary block expansion,
-in DOM order with blank lines between cells, even when structurally simple. Role
-matching ignores ASCII case and surrounding HTML whitespace. Nested layout
-wrappers expand into readable blocks. Tables with header cells, captions, explicit
-data roles, header relationships or real cell spans retain their authored structure.
-These tables use content-only HTML for non-unit spans, multiple `thead` rows,
-rows wider than an explicit header, or cells containing nested tables, lists,
-headings, quotes or preformatted blocks. This retains header, cell and nested-table associations
-that Markdown pipe tables cannot express. Inner simple tables can still produce
-GFM when a presentational or layout-only containing table is expanded. Scripts,
-styles and event handlers are omitted from HTML fallback output.
+Tables with `role="presentation"` or `role="none"` retain ordinary block
+expansion, in DOM order with blank lines between cells, even when structurally
+simple. Role matching ignores ASCII case and surrounding HTML whitespace. Nested
+layout wrappers expand into readable blocks. Tables with header cells, captions,
+explicit data roles, header relationships or real cell spans retain their
+authored structure. These tables use content-only HTML for non-unit spans,
+multiple `thead` rows, rows wider than an explicit header, or cells containing
+nested tables, lists, headings, quotes or preformatted blocks. This retains
+header, cell and nested-table associations that Markdown pipe tables cannot
+express. Inner simple tables can still produce GFM when a presentational or
+layout-only containing table is expanded. Scripts, styles and event handlers are
+omitted from HTML fallback output.
 
 Supported output includes headings, paragraphs, emphasis, strikethrough, links,
 images, lists, blockquotes, hard breaks, media source links, separated form choices,
@@ -111,16 +112,16 @@ strip/base/frame transformations remain the responsibility of the caller.
 `cargo test -p moli-html2md` covers an independent arena DOM, immutability,
 whitespace, escaping, code, tables, depth limits, and 20,000 nested nodes on a
 64 KiB thread stack. The [Turndown differential suite](tests/turndown/README.md)
-pins 147 upstream fixtures and 50 additional cases. It compares rendered meaning,
-checks DOM immutability, and explicitly asserts 16 documented differences that
-preserve Moli's handling of literal text, code, emphasis, and list boundaries.
-Targeted regressions also cover empty elements, links, attributes in headings and
-tables, code whitespace and language names, list numbering, and loose lists.
-An operation-count regression checks nested table fallback at 64, 128 and 256
-levels with 256 text bytes per level, both with and without headers. It bounds
-bytes copied during fragment materialization by output size; completed blocks
-move into parent buffers without copying their text. A repeated flatten/copy
-regression fails without timing thresholds.
+pins 147 upstream fixtures and 50 additional cases. It compares rendered
+meaning, checks DOM immutability, and explicitly asserts 16 documented
+differences that preserve Moli's handling of literal text, code, emphasis, and
+list boundaries. Targeted regressions also cover empty elements, links,
+attributes in headings and tables, code whitespace and language names, list
+numbering, and loose lists. An operation-count regression checks nested table
+fallback at 64, 128 and 256 levels with 256 text bytes per level, both with and
+without headers. It bounds bytes copied during fragment materialization by
+output size; completed blocks move into parent buffers without copying their
+text. A repeated flatten/copy regression fails without timing thresholds.
 Dropping 20,000 nested fragments is also tested on a 64 KiB thread stack.
 Emphasis tests cover adjacent links that can use Markdown delimiters and
 intraword link boundaries that still require inline HTML. Combining marks and

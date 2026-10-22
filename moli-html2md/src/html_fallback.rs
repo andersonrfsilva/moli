@@ -189,7 +189,6 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 if code && crate::content::is_code_control(dom, node) {
                     continue;
                 }
-                let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
                 if let NodeKind::Element(tag) = dom.node_kind(node) {
                     if !code
                         && dom.has_block_layout(node)
@@ -206,6 +205,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         tasks.push(Task::Literal(" "));
                     }
                 }
+                let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
                 if let NodeKind::Element(tag) = dom.node_kind(node)
                     && !allowed(tag)
                 {

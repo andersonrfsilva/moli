@@ -141,11 +141,13 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     let has_blocks = self.writer().has_blocks;
                     self.writer().block(content, before, 2);
                     if before == 1 {
-                        // A nested list alone does not make its parent item loose.
+                        // A nested list at the end keeps its parent item tight;
+                        // following content can still realize a blank-line boundary.
                         self.writer().has_blocks = has_blocks;
                     }
                 }
                 Task::EndItem(marker) => {
+                    self.writer().materialize_pending();
                     let loose = self.writer().has_blocks;
                     let content = self.take_writer().into_string();
                     if content.is_empty() {

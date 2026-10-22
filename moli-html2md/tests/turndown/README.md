@@ -31,10 +31,11 @@ emphasis, whitespace, and list boundaries, and normalize textual attributes for
 single-line dumps. They remain active assertions; no
 case is skipped. A reference change that makes a difference obsolete also fails
 the test. Separate converter tests cover GFM tables and strikethrough as Moli
-extensions. Explicit table headers follow Turndown's GFM plugin; simple headerless
-tables receive empty headings. Complex tables retain content-only HTML so merged
-cells and nested tables keep their associations. Presentational and layout-only containing
-tables expand into blocks; their simple inner tables can use GFM.
+extensions. Explicit table headers follow Turndown's GFM plugin; simple
+headerless tables receive empty headings. Complex tables retain content-only
+HTML so merged cells and nested tables keep their associations. Presentational
+and layout-only containing tables expand into blocks; their simple inner tables
+can use GFM.
 
 ## Findings tracked outside the reference corpus
 
