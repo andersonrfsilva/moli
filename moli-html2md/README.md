@@ -138,5 +138,5 @@ MathML and superscript/subscript retain their structure; alternate visual copies
 do not duplicate an equation. Code omits embedded copy controls and scripts.
 
 Backslash-delimited inline TeX becomes inline dollar math. Invisible separators
-keep adjacent formulas distinct across empty wrappers and keep a following digit
-outside the closing delimiter in math readers that require it.
+keep adjacent formulas distinct across empty wrappers. They also separate a
+closing `$` from an immediately following digit, which some math readers require.
