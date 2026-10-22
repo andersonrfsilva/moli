@@ -114,7 +114,13 @@ fn accept_candidate(
         return false;
     }
     let content = &text[content_start..content_end];
-    if contains_markdown_resource(content) {
+    if contains_markdown_resource(content)
+        || normalized_span(
+            &text[start..end],
+            text.as_bytes().get(end).is_some_and(u8::is_ascii_digit),
+        )
+        .is_none()
+    {
         return false;
     }
     candidates.push((start, end));
@@ -125,76 +131,85 @@ fn contains_markdown_resource(text: &str) -> bool {
     text.contains("](") || text.contains("][") || text.contains("![[")
 }
 
-/// Keep one physical Markdown line without turning TeX operators into blocks
-/// or HTML. TeX comments end at a source newline, so remove their payload
-/// before collapsing whitespace instead of extending a comment over the formula.
-pub(crate) fn normalized_span(text: &str) -> String {
+/// Keep TeX on one Markdown line. Comments and ordinary whitespace normalize;
+/// control spaces and verbatim payloads remain literal. HTML-like text inside
+/// text/verbatim commands cannot be preserved safely and rejects the span.
+/// Backslash delimiters become dollar delimiters understood by Markdown math.
+pub(crate) fn normalized_span(text: &str, followed_by_digit: bool) -> Option<String> {
     let delimiter = if text.starts_with("$$") || text.starts_with('\\') {
         2
     } else {
         1
     };
-    let mut output = text[..delimiter].to_owned();
+    let mut output = String::new();
     let mut chars = text[delimiter..text.len() - delimiter].chars().peekable();
     let mut escaped = false;
     let mut space = false;
     let mut text_depth = 0usize;
     while let Some(ch) = chars.next() {
-        if ch == '\\' && !escaped && chars.clone().take(4).eq("verb".chars()) {
-            let mut probe = chars.clone();
-            for _ in 0..4 {
-                probe.next();
-            }
-            let star = probe.peek() == Some(&'*');
-            if star {
-                probe.next();
-            }
-            if let Some(verb_delimiter) = probe
-                .next()
-                .filter(|c| !c.is_whitespace() && !c.is_ascii_alphabetic())
-            {
-                if space && output.len() > delimiter {
-                    output.push(' ');
-                }
-                space = false;
-                output.push_str(r"\verb");
-                for _ in 0..4 {
-                    chars.next();
-                }
-                if star {
-                    output.push('*');
-                    chars.next();
-                }
-                output.push(chars.next().expect("verb delimiter"));
-                for c in chars.by_ref() {
-                    output.push(c);
-                    if c == verb_delimiter {
-                        break;
-                    }
-                }
-                continue;
-            }
-        }
         if ch == '\\' && !escaped {
-            let command = if chars.clone().take(5).eq("text{".chars()) {
-                Some("text{")
-            } else if chars.clone().take(5).eq("mbox{".chars()) {
-                Some("mbox{")
-            } else {
-                None
-            };
-            if let Some(command) = command {
-                if space && output.len() > delimiter {
-                    output.push(' ');
-                }
-                space = false;
-                output.push('\\');
-                output.push_str(command);
+            let command: String = chars
+                .clone()
+                .take_while(char::is_ascii_alphabetic)
+                .collect();
+            if command == "verb" {
                 for _ in 0..command.len() {
                     chars.next();
                 }
-                text_depth += 1;
+                flush_space(&mut output, &mut space);
+                output.push_str(r"\verb");
+                if chars.peek() == Some(&'*') {
+                    output.push('*');
+                    chars.next();
+                }
+                let delimiter = chars
+                    .next()
+                    .filter(|c| !c.is_whitespace() && !c.is_ascii_alphabetic())?;
+                output.push(delimiter);
+                let mut closed = false;
+                while let Some(c) = chars.next() {
+                    if matches!(c, '\n' | '\r') || html_start(c, chars.peek().copied()) {
+                        return None;
+                    }
+                    output.push(c);
+                    if c == delimiter {
+                        closed = true;
+                        break;
+                    }
+                }
+                if !closed {
+                    return None;
+                }
                 continue;
+            }
+            const TEXT_COMMANDS: &[&str] = &[
+                "text",
+                "mbox",
+                "textrm",
+                "textbf",
+                "textit",
+                "texttt",
+                "textsf",
+                "textnormal",
+                "hbox",
+            ];
+            if TEXT_COMMANDS.contains(&command.as_str()) {
+                let mut probe = chars.clone();
+                for _ in 0..command.len() {
+                    probe.next();
+                }
+                while probe.peek().is_some_and(char::is_ascii_whitespace) {
+                    probe.next();
+                }
+                if probe.next() == Some('{') {
+                    flush_space(&mut output, &mut space);
+                    output.push('\\');
+                    output.push_str(&command);
+                    output.push('{');
+                    chars = probe;
+                    text_depth += 1;
+                    continue;
+                }
             }
         }
         if ch == '%' && !escaped {
@@ -207,17 +222,23 @@ pub(crate) fn normalized_span(text: &str) -> String {
             continue;
         }
         if matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
-            space = true;
+            if escaped {
+                output.push(' ');
+            } else {
+                space = true;
+            }
             escaped = false;
             continue;
         }
-        if space {
-            if output.len() > delimiter {
-                output.push(' ');
+        flush_space(&mut output, &mut space);
+        if html_start(ch, chars.peek().copied()) {
+            if text_depth > 0 {
+                return None;
             }
-            space = false;
+            output.push_str("< ");
+        } else {
+            output.push(ch);
         }
-        output.push(ch);
         if !escaped && text_depth > 0 {
             if ch == '{' {
                 text_depth += 1;
@@ -225,18 +246,30 @@ pub(crate) fn normalized_span(text: &str) -> String {
                 text_depth -= 1;
             }
         }
-        if ch == '<'
-            && text_depth == 0
-            && chars
-                .peek()
-                .is_some_and(|next| next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?'))
-        {
-            output.push(' ');
-        }
         escaped = ch == '\\' && !escaped;
     }
-    output.push_str(&text[text.len() - delimiter..]);
-    output
+    if output.is_empty() || text_depth > 0 {
+        return None;
+    }
+    let inline = text.starts_with("\\(") || delimiter == 1;
+    let marker = if inline && !followed_by_digit && !output.ends_with(char::is_whitespace) {
+        "$"
+    } else {
+        "$$"
+    };
+    Some(format!("{marker}{output}{marker}"))
+}
+
+fn flush_space(output: &mut String, pending: &mut bool) {
+    if *pending && !output.is_empty() {
+        output.push(' ');
+    }
+    *pending = false;
+}
+
+fn html_start(ch: char, next: Option<char>) -> bool {
+    ch == '<'
+        && next.is_some_and(|next| next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?'))
 }
 
 #[cfg(test)]

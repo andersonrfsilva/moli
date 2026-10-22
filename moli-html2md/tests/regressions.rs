@@ -832,8 +832,8 @@ fn math_recognition_does_not_reinterpret_prices_or_literal_code() {
     assert!(result.contains("`$x_i$`"), "{result}");
     assert!(result.contains(r"\$unfinished\_name"), "{result}");
     let result = markdown(r"<p>括号 \(x_i + \alpha\)；方括号 \[y_1=2\]。</p>", false);
-    assert!(result.contains(r"\(x_i + \alpha\)"), "{result}");
-    assert!(result.contains(r"\[y_1=2\]"), "{result}");
+    assert!(result.contains(r"$x_i + \alpha$"), "{result}");
+    assert!(result.contains(r"$$y_1=2$$"), "{result}");
 }
 
 #[test]
