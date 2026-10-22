@@ -135,3 +135,8 @@ pub(crate) fn class_language(class: Option<&str>) -> Option<&str> {
         .split_ascii_whitespace()
         .find_map(|part| part.strip_prefix("language-").filter(|s| !s.is_empty()))
 }
+
+/// These elements already own their document/list/choice boundaries.
+pub(crate) fn owns_boundaries(tag: &str) -> bool {
+    crate::machine::is_structural_block(tag) || matches!(tag, "select" | "optgroup" | "option")
+}

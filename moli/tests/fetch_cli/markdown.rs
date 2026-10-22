@@ -32,8 +32,8 @@ fn assert_markdown_dump(html: &str, markdown: &str, args: &[&str]) -> Result<()>
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(
-        String::from_utf8(output.stdout)?.trim_end(),
-        markdown.trim_end()
+        String::from_utf8(output.stdout)?,
+        format!("{}\n", markdown.trim_end_matches('\n'))
     );
     Ok(())
 }

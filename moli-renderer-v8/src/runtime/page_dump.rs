@@ -394,30 +394,11 @@ mod tests {
         );
         let before = dom.serialize_document();
         let markdown = render_markdown_document(&dom);
-        for content in [
-            "First story",
-            "42 points by",
-            "8 comments",
-            "Second story",
-            "7 points by",
-            "discuss",
-            "More",
-        ] {
-            assert!(markdown.contains(content), "missing {content}: {markdown}");
-        }
-        let positions = [
-            "First story",
-            "42 points by",
-            "Second story",
-            "7 points by",
-            "More",
-        ]
-        .map(|content| markdown.find(content).expect("checked above"));
-        assert!(
-            positions.windows(2).all(|pair| pair[0] < pair[1]),
-            "{markdown}"
+        assert_eq!(
+            markdown,
+            include_str!("../../../moli-html2md/tests/fixtures/hacker-news-layout.md")
+                .trim_end_matches('\n')
         );
-        assert!(markdown.contains("<table"), "{markdown}");
         assert_eq!(dom.serialize_document(), before);
     }
 

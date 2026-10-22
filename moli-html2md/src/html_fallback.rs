@@ -4,8 +4,8 @@ use std::fmt::Write as _;
 use crate::{Dom, NodeKind};
 
 /// Markdown has no merged cells, nested tables, or block content inside cells.
-/// Detect those structures before conversion so a table is traversed at most
-/// twice, even when it contains thousands of nested tables.
+/// Each structural pre-scan stops at nested tables; nested scopes are disjoint.
+/// Conversion and target discovery keep their own bounded linear traversals.
 pub(crate) fn needed<D: Dom + ?Sized>(
     dom: &D,
     root: D::NodeId,
@@ -138,8 +138,9 @@ enum Task<Id> {
     Literal(&'static str),
 }
 
-/// HTML fallback preserves structural content and referenced navigation targets. Keep content markup only; scripts, styles, event handlers
-/// and unrelated presentation attributes are never copied.
+/// HTML fallback preserves structural content and referenced navigation targets.
+/// Keep content markup only; scripts, styles, event handlers and unrelated
+/// presentation attributes are never copied.
 pub(crate) fn render<D: Dom + ?Sized>(
     dom: &D,
     root: D::NodeId,
@@ -147,11 +148,11 @@ pub(crate) fn render<D: Dom + ?Sized>(
     limit: usize,
     anchor_targets: &crate::anchors::Targets,
     default_language: Option<&str>,
+    emitted_anchors: &mut HashSet<String>,
 ) -> String {
     let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
     let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
-    let mut emitted_anchors = HashSet::new();
     let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
         match task {
@@ -188,10 +189,13 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 }
                 let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
                 if let NodeKind::Element(tag) = dom.node_kind(node) {
-                    if dom.has_block_layout(node) && !has_block_tag(tag) {
+                    if dom.has_block_layout(node)
+                        && !has_block_tag(tag)
+                        && !crate::content::owns_boundaries(tag)
+                    {
                         output.push_str("<div>");
                         tasks.push(Task::Close("div".to_owned()));
-                    } else if dom.has_text_boundary(node) {
+                    } else if dom.has_text_boundary(node) && !crate::content::owns_boundaries(tag) {
                         output.push(' ');
                         tasks.push(Task::Literal(" "));
                     }
@@ -243,25 +247,42 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         }
                         if tag == "img" {
                             let label = crate::content::image_label(dom, node);
+                            let targets: Vec<_> = anchor_targets
+                                .targets(dom, node)
+                                .into_iter()
+                                .filter(|id| emitted_anchors.insert((*id).to_owned()))
+                                .collect();
                             if let Some(src) = crate::media::source(dom, node) {
+                                for id in targets.iter().skip(1) {
+                                    output.push_str(&crate::anchors::markup(id));
+                                }
                                 output.push_str("<img src=\"");
                                 escape(&src, &mut output);
                                 output.push_str("\" alt=\"");
                                 escape(&label, &mut output);
-                                output.push_str("\">");
+                                output.push('"');
+                                if let Some(id) = targets.first() {
+                                    output.push_str(" id=\"");
+                                    escape(id, &mut output);
+                                    output.push('"');
+                                }
+                                if let Some(title) = dom.attribute(node, "title") {
+                                    output.push_str(" title=\"");
+                                    escape(title, &mut output);
+                                    output.push('"');
+                                }
+                                output.push('>');
                             } else {
+                                for id in targets {
+                                    output.push_str(&crate::anchors::markup(id));
+                                }
                                 escape(&label, &mut output);
                             }
                             continue;
                         }
                         if matches!(tag, "iframe" | "video" | "audio") {
                             let urls = crate::media::sources(dom, node, tag, depth, limit);
-                            let poster = (tag == "video")
-                                .then(|| dom.attribute(node, "poster"))
-                                .flatten()
-                                .filter(|src| {
-                                    !src.trim().is_empty() && crate::media::safe_url(src, true)
-                                });
+                            let poster = crate::media::poster(dom, node, tag);
                             if !urls.is_empty() || poster.is_some() {
                                 let block = tag == "audio";
                                 output.push_str(if block { "<div>" } else { " " });
@@ -272,6 +293,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     escape(&crate::media::poster_label(dom, node), &mut output);
                                     output.push_str("\"> ");
                                 }
+                                let has_source = !urls.is_empty();
                                 for url in urls {
                                     output.push_str("<a href=\"");
                                     escape(url, &mut output);
@@ -282,12 +304,14 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 if block {
                                     output.push_str("</div>");
                                 }
-                                continue;
+                                if has_source {
+                                    continue;
+                                }
                             }
                         }
                         let retained = if allowed(tag)
                             && (tag != "span"
-                                || dom.attribute(node, "id").is_some()
+                                || !anchor_targets.targets(dom, node).is_empty()
                                 || dom.attribute(node, "title").is_some())
                         {
                             Some(tag)
@@ -307,6 +331,14 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     | "caption"
                             ) {
                                 begin_html_line(&mut output);
+                            }
+                            let targets: Vec<_> = anchor_targets
+                                .targets(dom, node)
+                                .into_iter()
+                                .filter(|id| emitted_anchors.insert((*id).to_owned()))
+                                .collect();
+                            for id in targets.iter().skip(1) {
+                                output.push_str(&crate::anchors::markup(id));
                             }
                             output.push('<');
                             output.push_str(tag);
@@ -338,11 +370,6 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push('"');
                                 }
                             }
-                            let targets: Vec<_> = anchor_targets
-                                .targets(dom, node)
-                                .into_iter()
-                                .filter(|id| emitted_anchors.insert((*id).to_owned()))
-                                .collect();
                             if let Some(id) = targets.first() {
                                 output.push_str(" id=\"");
                                 escape(id, &mut output);
@@ -367,9 +394,6 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             // Supply that LF separately from the actual source.
                             if tag == "pre" {
                                 output.push('\n');
-                            }
-                            for id in targets.iter().skip(1) {
-                                output.push_str(&crate::anchors::markup(id));
                             }
                             if !matches!(tag, "br" | "hr" | "img") {
                                 tasks.push(Task::Close(tag.to_owned()));

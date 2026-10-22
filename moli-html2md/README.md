@@ -71,13 +71,13 @@ missing trailing cells in short rows; the converter does not allocate a padded g
 Tables with `role="presentation"` or `role="none"` retain ordinary block expansion,
 in DOM order with blank lines between cells, even when structurally simple. Role
 matching ignores ASCII case and surrounding HTML whitespace. Nested layout
-wrappers expand into readable blocks. Tables with headings, captions, explicit
+wrappers expand into readable blocks. Tables with header cells, captions, explicit
 data roles, header relationships or real cell spans retain data-table structure.
 Complex data tables use content-only HTML: non-unit spans, multiple `thead` rows, rows wider than
 an explicit header, or cells containing nested tables, lists, headings, quotes
 or preformatted blocks. This retains header, cell and nested-table associations
 that Markdown pipe tables cannot express. Inner simple tables can still produce
-GFM when an explicitly presentational containing table is expanded. Scripts,
+GFM when a presentational or layout-only containing table is expanded. Scripts,
 styles and event handlers are omitted from HTML fallback output.
 
 Supported output includes headings, paragraphs, emphasis, strikethrough, links,

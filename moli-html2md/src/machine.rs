@@ -11,6 +11,7 @@ enum Task<'a, Id> {
     MathChildren(Option<Id>, usize),
     Boundary,
     ChoiceBoundary,
+    InlineSpace,
     Fallback(String, usize),
     PopStyle,
     EndLink(usize),
@@ -88,6 +89,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                 | Task::MathChildren(None, _)
                 | Task::RawChildren(None, _, _) => {}
                 Task::Boundary => self.writer().boundary(2),
+                Task::InlineSpace => self.writer().text(" "),
                 Task::ChoiceBoundary => self.writer().boundary(1),
                 Task::Fallback(label, before) => {
                     if self.writer().content_mark() == before {
@@ -223,12 +225,13 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         if depth >= self.options.max_depth {
             return;
         }
-        if self.dom.has_block_layout(node) {
+        let owns_boundaries = matches!(self.dom.node_kind(node), NodeKind::Element(tag) if crate::content::owns_boundaries(tag));
+        if !owns_boundaries && self.dom.has_block_layout(node) {
             self.writer().boundary(2);
             self.tasks.push(Task::Boundary);
-        } else if self.dom.has_text_boundary(node) {
-            self.writer().boundary(1);
-            self.tasks.push(Task::ChoiceBoundary);
+        } else if !owns_boundaries && self.dom.has_text_boundary(node) {
+            self.writer().text(" ");
+            self.tasks.push(Task::InlineSpace);
         }
         let tag = match self.dom.node_kind(node) {
             NodeKind::Document => {
@@ -375,6 +378,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.max_depth,
                         &self.anchor_targets,
                         self.options.default_code_language.as_deref(),
+                        &mut self.emitted_anchors,
                     );
                     if tag == "pre" {
                         self.writer().block(html.into(), 2, 2);
@@ -416,6 +420,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.max_depth,
                         &self.anchor_targets,
                         self.options.default_code_language.as_deref(),
+                        &mut self.emitted_anchors,
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
@@ -447,8 +452,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     );
                 let complex_table =
                     crate::html_fallback::needed(self.dom, node, depth, self.options.max_depth);
-                if !presentation
-                    && structural_table
+                if structural_table
                     && (complex_table
                         || (!self.anchor_targets.is_empty()
                             && crate::anchors::contains(
@@ -465,17 +469,12 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.max_depth,
                         &self.anchor_targets,
                         self.options.default_code_language.as_deref(),
+                        &mut self.emitted_anchors,
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
                 }
-                {
-                    for id in self.anchor_targets.targets(self.dom, node) {
-                        if self.emitted_anchors.insert(id.to_owned()) {
-                            self.writer().inline_html(&crate::anchors::markup(id));
-                        }
-                    }
-                }
+                self.emit_own_targets(node);
                 if !complex_table
                     && let Some(mut table) =
                         Table::from_dom(self.dom, node, depth, self.options.max_depth)
@@ -488,8 +487,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     }
                     return;
                 }
-                if !presentation
-                    && structural_table
+                if structural_table
                     && crate::html_fallback::has_cells(
                         self.dom,
                         node,
@@ -504,6 +502,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.max_depth,
                         &self.anchor_targets,
                         self.options.default_code_language.as_deref(),
+                        &mut self.emitted_anchors,
                     );
                     self.writer().block(html.into(), 2, 2);
                     return;
@@ -558,9 +557,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
 
     fn media(&mut self, node: D::NodeId, tag: &str, depth: usize) -> bool {
         let urls = crate::media::sources(self.dom, node, tag, depth, self.options.max_depth);
-        let poster = (tag == "video")
-            .then(|| crate::media::direct_attribute(self.dom, node, "poster", true))
-            .flatten();
+        let poster = crate::media::poster(self.dom, node, tag);
         if urls.is_empty() && poster.is_none() {
             return false;
         }
@@ -831,7 +828,7 @@ fn is_block(tag: &str) -> bool {
         )
 }
 
-fn is_structural_block(tag: &str) -> bool {
+pub(crate) fn is_structural_block(tag: &str) -> bool {
     matches!(
         tag,
         "address"

@@ -937,3 +937,51 @@ fn merged_headerless_data_is_preserved_without_treating_empty_hints_as_headers()
     assert!(result.contains("/cover.jpg"), "{result}");
     assert!(result.contains("Home"), "{result}");
 }
+
+#[test]
+fn fallback_targets_and_media_preserve_navigation_without_duplicate_ids() {
+    for html in [
+        "<a href='#fig'>F</a><table><caption>C</caption><tr><td><img id='fig' src='/a.png' alt='Chart' title='Details'></td></tr></table>",
+        "<a href='#note'>N</a><table><caption>C</caption><tr><td><textarea id='note'>x</textarea></td></tr></table>",
+        "<a href='#x'>X</a><p id='x'>P</p><table><caption>C</caption><tr><td id='x'>Cell</td></tr></table>",
+    ] {
+        let output = markdown(html);
+        let target = if html.contains("#fig") {
+            "fig"
+        } else if html.contains("#note") {
+            "note"
+        } else {
+            "x"
+        };
+        assert_eq!(
+            output.matches(&format!("id=\"{target}\"")).count(),
+            1,
+            "{output}"
+        );
+        if target == "fig" {
+            assert!(output.contains("title=\"Details\""), "{output}");
+        }
+    }
+    let output = markdown(
+        "<a href='#one'>1</a><a href='#two'>2</a><table><caption>C</caption><tr><td><a id='one' name='two' href='/x'>linked text</a><span id='unreferenced'>plain</span><video poster=' ' src='/v.mp4'></video></td></tr></table>",
+    );
+    let html = rendered_html(&output);
+    assert!(
+        html.contains("href=\"/x\" id=\"one\">linked text</a>"),
+        "{html}"
+    );
+    assert!(
+        !output.contains("<span>plain") && !output.contains("<img"),
+        "{output}"
+    );
+    for span in ["", "colspan='2'"] {
+        let output = markdown(&format!(
+            "<table><caption>C</caption><tr><td {span}><video poster='/cover.jpg' src='blob:id'><a href='/v.mp4'>Download</a></video></td></tr></table>"
+        ));
+        let html = rendered_html(&output);
+        assert!(
+            html.contains("/cover.jpg") && html.contains("href=\"/v.mp4\""),
+            "{output}"
+        );
+    }
+}

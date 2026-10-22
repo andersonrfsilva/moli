@@ -273,8 +273,12 @@ pub(crate) fn sources<'a, D: Dom + ?Sized>(
 }
 
 pub(crate) fn label<'a, D: Dom + ?Sized>(dom: &'a D, node: D::NodeId, tag: &str) -> &'a str {
-    dom.attribute(node, "title")
+    dom.attribute(node, "aria-label")
         .filter(|label| !label.trim().is_empty())
+        .or_else(|| {
+            dom.attribute(node, "title")
+                .filter(|label| !label.trim().is_empty())
+        })
         .unwrap_or(match tag {
             "video" => "Video",
             "audio" => "Audio",
@@ -294,4 +298,20 @@ pub(crate) fn safe_link_url(value: &str) -> bool {
         && !normalized.starts_with("vbscript:")
         && !normalized.starts_with("data:text/html")
         && !normalized.starts_with("data:application/xhtml+xml")
+}
+
+pub(crate) fn poster_label<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> String {
+    format!("{} poster", label(dom, node, "video"))
+}
+
+pub(crate) fn poster<'a, D: Dom + ?Sized>(
+    dom: &'a D,
+    node: D::NodeId,
+    tag: &str,
+) -> Option<&'a str> {
+    (tag == "video")
+        .then(|| dom.attribute(node, "poster"))
+        .flatten()
+        .map(str::trim)
+        .filter(|src| !src.is_empty() && safe_url(src, true))
 }
