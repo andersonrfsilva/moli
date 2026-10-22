@@ -53,6 +53,53 @@ pub(crate) fn needed<D: Dom + ?Sized>(
     false
 }
 
+/// Examine this table's own cells, not a data table nested inside a layout.
+pub(crate) fn has_data_semantics<D: Dom + ?Sized>(
+    dom: &D,
+    root: D::NodeId,
+    depth: usize,
+    limit: usize,
+) -> bool {
+    if dom.attribute(root, "role").is_some_and(|role| {
+        matches!(
+            role.trim().to_ascii_lowercase().as_str(),
+            "table" | "grid" | "treegrid"
+        )
+    }) {
+        return true;
+    }
+    let mut stack = vec![(dom.first_child(root), depth + 1)];
+    while let Some((node, depth)) = stack.pop() {
+        let Some(node) = node else {
+            continue;
+        };
+        if depth >= limit {
+            continue;
+        }
+        stack.push((dom.next_sibling(node), depth));
+        if let NodeKind::Element(tag) = dom.node_kind(node) {
+            if tag == "table" {
+                continue;
+            }
+            if matches!(tag, "th" | "thead" | "caption") {
+                return true;
+            }
+            if matches!(tag, "td" | "th")
+                && (dom.attribute(node, "scope").is_some()
+                    || dom.attribute(node, "headers").is_some()
+                    || ["rowspan", "colspan"].into_iter().any(|name| {
+                        dom.attribute(node, name)
+                            .is_some_and(|value| crate::table::has_cell_span(name, value))
+                    }))
+            {
+                return true;
+            }
+        }
+        stack.push((dom.first_child(node), depth + 1));
+    }
+    false
+}
+
 pub(crate) fn has_cells<D: Dom + ?Sized>(
     dom: &D,
     root: D::NodeId,
@@ -80,6 +127,7 @@ enum Task<Id> {
     Node(Id, usize, bool),
     Siblings(Option<Id>, usize, bool),
     Close(String),
+    Fallback(String, usize),
     Literal(&'static str),
 }
 
@@ -93,13 +141,27 @@ pub(crate) fn render<D: Dom + ?Sized>(
     limit: usize,
     anchor_targets: &crate::anchors::Targets,
 ) -> String {
+    let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
     let mut emitted_anchors = HashSet::new();
     let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
         match task {
             Task::Literal(value) => output.push_str(value),
+            Task::Fallback(label, before) => {
+                if output[before..]
+                    .trim_matches(crate::writer::is_space)
+                    .is_empty()
+                {
+                    output.push(' ');
+                    escape(&label, &mut output);
+                    output.push(' ');
+                }
+            }
             Task::Close(tag) => {
+                if matches!(tag.as_str(), "table" | "thead" | "tbody" | "tfoot" | "tr") {
+                    begin_html_line(&mut output);
+                }
                 output.push_str("</");
                 output.push_str(&tag);
                 output.push('>');
@@ -136,7 +198,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     }
                 }
                 match dom.node_kind(node) {
-                    NodeKind::Text(text) => escape(text, &mut output),
+                    NodeKind::Text(text) => {
+                        escape_text(text, &mut output, code, keep_source_lines && code)
+                    }
                     NodeKind::Element(
                         "head" | "title" | "script" | "style" | "noscript" | "template",
                     )
@@ -178,7 +242,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 {
                                     output.push_str("<img src=\"");
                                     escape(poster, &mut output);
-                                    output.push_str("\" alt=\"\">");
+                                    output.push_str("\" alt=\"");
+                                    escape(&crate::media::poster_label(dom, node), &mut output);
+                                    output.push_str("\">");
                                 }
                                 for url in urls
                                     .into_iter()
@@ -194,8 +260,29 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 continue;
                             }
                         }
-                        let retained = if allowed(tag) { Some(tag) } else { None };
+                        let retained = if allowed(tag)
+                            && (tag != "span"
+                                || dom.attribute(node, "id").is_some()
+                                || dom.attribute(node, "title").is_some())
+                        {
+                            Some(tag)
+                        } else {
+                            None
+                        };
                         if let Some(tag) = retained {
+                            if matches!(
+                                tag,
+                                "table"
+                                    | "thead"
+                                    | "tbody"
+                                    | "tfoot"
+                                    | "tr"
+                                    | "td"
+                                    | "th"
+                                    | "caption"
+                            ) {
+                                begin_html_line(&mut output);
+                            }
                             output.push('<');
                             output.push_str(tag);
                             for name in [
@@ -214,8 +301,8 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     dom.attribute(node, name)
                                 };
                                 if let Some(value) = value {
-                                    if matches!(name, "href" | "src")
-                                        && !crate::media::safe_url(value, name == "src")
+                                    if (name == "href" && !crate::media::safe_link_url(value))
+                                        || (name == "src" && !crate::media::safe_url(value, true))
                                     {
                                         continue;
                                     }
@@ -225,6 +312,18 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     escape(value, &mut output);
                                     output.push('"');
                                 }
+                            }
+                            if matches!(tag, "pre" | "code")
+                                && let Some(language) =
+                                    dom.attribute(node, "class").and_then(|class| {
+                                        class
+                                            .split_ascii_whitespace()
+                                            .find(|name| name.starts_with("language-"))
+                                    })
+                            {
+                                output.push_str(" class=\"");
+                                escape(language, &mut output);
+                                output.push('"');
                             }
                             output.push('>');
                             if !matches!(tag, "br" | "hr" | "img") {
@@ -247,13 +346,10 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 limit - depth - relative_depth,
                             ));
                         } else {
-                            if let Some(label) = crate::content::fallback_text(dom, node)
-                                && !crate::content::has_readable_content(dom, node, limit - depth)
-                            {
-                                escape(&label, &mut output);
-                            } else {
-                                tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
+                            if let Some(label) = crate::content::fallback_text(dom, node) {
+                                tasks.push(Task::Fallback(label, output.len()));
                             }
+                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
                         }
                     }
                     NodeKind::Document => {
@@ -364,4 +460,32 @@ fn has_block_tag(tag: &str) -> bool {
             | "summary"
             | "hr"
     )
+}
+
+fn escape_text(text: &str, output: &mut String, code: bool, keep_newlines: bool) {
+    for ch in text.chars() {
+        if !code && matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
+            if !output.ends_with([' ', '\n']) {
+                output.push(' ');
+            }
+            continue;
+        }
+        if keep_newlines && matches!(ch, '\n' | '\r') {
+            output.push(ch);
+        } else if code && matches!(ch, '\\' | '*' | '_' | '`' | '~' | '[' | ']') {
+            output.push_str(&format!("&#{};", ch as u32));
+        } else {
+            let mut bytes = [0; 4];
+            escape(ch.encode_utf8(&mut bytes), output);
+        }
+    }
+}
+
+fn begin_html_line(output: &mut String) {
+    while output.ends_with(' ') {
+        output.pop();
+    }
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push('\n');
+    }
 }

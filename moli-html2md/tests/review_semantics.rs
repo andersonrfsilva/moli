@@ -793,5 +793,83 @@ fn html_keeps_css_boundaries_without_wrapping_existing_block_tags() {
     let result = convert(&dom, dom.tree.root);
     assert!(!result.starts_with("<div>"), "{result}");
     assert!(!result.contains("<div><p"), "{result}");
-    assert!(result.contains("<div><span>Box</span></div>"), "{result}");
+    assert!(result.contains("<div>Box</div>"), "{result}");
+}
+
+#[test]
+fn complex_layouts_expand_but_semantic_data_tables_keep_cell_structure() {
+    let result = markdown(
+        "<table><tr><td><h2>Article</h2><table><tr><td>First story</td></tr><tr><td>Second story</td></tr></table></td></tr></table>",
+    );
+    assert!(!result.contains("<table"), "{result}");
+    for text in ["## Article", "First story", "Second story"] {
+        assert!(result.contains(text), "{result}");
+    }
+    for source in [
+        "<table><tr><th>Name</th><th>Items</th></tr><tr><td>Ada</td><td><ul><li>One</li><li>Two</li></ul></td></tr></table>",
+        "<table><caption>Results</caption><tr><td rowspan='2'>A</td><td>B</td></tr><tr><td>C</td></tr></table>",
+    ] {
+        let result = markdown(source);
+        assert!(result.contains("<table"), "{result}");
+    }
+}
+
+#[test]
+fn linked_preformatted_source_keeps_language_lines_and_links() {
+    let result = markdown(
+        "<pre><code class='language-rust'>let x = <a href='/type'>Type</a>;\n\nlet y = x &amp; 1;\n</code></pre>",
+    );
+    assert!(result.contains("language-rust"), "{result}");
+    assert!(result.contains("\n\nlet y"), "{result}");
+    assert!(result.contains("href=\"/type\""), "{result}");
+    assert!(!result.contains("&#10;"), "{result}");
+}
+
+#[test]
+fn component_heading_wrappers_remain_markdown_headings() {
+    let result = markdown(
+        "<h2><div>Title <span>text</span></div></h2><h3><a href='/story'><div>Story</div></a></h3>",
+    );
+    assert_eq!(result, "## Title text\n\n### [Story](/story)");
+}
+
+#[test]
+fn referenced_targets_belong_to_their_captured_blocks() {
+    let result = markdown(
+        "<a href='#second'>Second</a><a href='#title'>Title</a><a href='#quote'>Quote</a><ul><li>Alpha</li><li id='second'>Beta</li></ul><h2 id='title'>Heading</h2><blockquote id='quote'>Quoted text</blockquote>",
+    );
+    let html = rendered_html(&result);
+    assert!(
+        html.contains("<li><a id=\"second\"></a>Beta</li>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<h2><a id=\"title\"></a>Heading</h2>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<blockquote>\n<p><a id=\"quote\"></a>Quoted text</p>"),
+        "{html}"
+    );
+}
+
+#[test]
+fn nested_heading_wrappers_have_linear_work_and_keep_every_title() {
+    let count = |depth| {
+        let html = format!(
+            "{}Title{}",
+            "<h2><div>".repeat(depth),
+            "</div></h2>".repeat(depth)
+        );
+        let dom = Counted {
+            tree: Tree::parse(&html),
+            visits: Cell::new(0),
+        };
+        let result = convert(&dom, dom.tree.root);
+        assert_eq!(result.matches("Title").count(), 1, "{result}");
+        dom.visits.get()
+    };
+    let small = count(20);
+    let large = count(80);
+    assert!(large <= small * 5, "{small} -> {large}");
 }

@@ -116,8 +116,16 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                 Task::EndHeading(level) => {
                     let content = self.take_writer().into_string();
                     if !content.is_empty() {
-                        let heading =
-                            format!("{} {}", "#".repeat(level), content.replace('\n', " "));
+                        let heading = format!(
+                            "{} {}",
+                            "#".repeat(level),
+                            content
+                                .lines()
+                                .map(|line| line.trim_matches(crate::writer::is_space))
+                                .filter(|line| !line.is_empty())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        );
                         self.writer().block(heading.into(), 2, 2);
                     } else {
                         self.writer().boundary(2);
@@ -240,7 +248,20 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         if tag != "table"
             && !matches!(
                 tag,
-                "head" | "script" | "style" | "noscript" | "template" | "title"
+                "head"
+                    | "script"
+                    | "style"
+                    | "noscript"
+                    | "template"
+                    | "title"
+                    | "li"
+                    | "blockquote"
+                    | "h1"
+                    | "h2"
+                    | "h3"
+                    | "h4"
+                    | "h5"
+                    | "h6"
             )
         {
             for id in self.anchor_targets.targets(self.dom, node) {
@@ -345,7 +366,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                             &self.anchor_targets,
                         ))
                 {
-                    let html = crate::html_table::render(
+                    let html = crate::html_fallback::render(
                         self.dom,
                         node,
                         depth,
@@ -358,15 +379,6 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.writer().inline_html(&html);
                     }
                     return;
-                }
-                if tag == "pre" && !self.anchor_targets.is_empty() {
-                    for id in
-                        crate::anchors::within(self.dom, node, remaining, &self.anchor_targets)
-                    {
-                        if self.emitted_anchors.insert(id.clone()) {
-                            self.writer().inline_html(&crate::anchors::markup(&id));
-                        }
-                    }
                 }
                 self.raw.clear();
                 let end = if tag == "pre" {
@@ -388,12 +400,13 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                 let remaining = self.options.max_depth - depth;
                 if subtree_has_nested_heading(self.dom, node, remaining) {
                     self.writer().boundary(2);
+                    self.emit_own_targets(node);
                     self.tasks.push(Task::Boundary);
                     self.children(node, depth + 1);
                     return;
                 }
                 if subtree_has_block(self.dom, node, remaining) {
-                    let html = crate::html_table::render(
+                    let html = crate::html_fallback::render(
                         self.dom,
                         node,
                         depth,
@@ -421,8 +434,17 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         "presentation" | "none"
                     )
                 });
+                let data_table = crate::html_fallback::has_data_semantics(
+                    self.dom,
+                    node,
+                    depth,
+                    self.options.max_depth,
+                );
+                let complex_table =
+                    crate::html_fallback::needed(self.dom, node, depth, self.options.max_depth);
                 if !presentation
-                    && (crate::html_table::needed(self.dom, node, depth, self.options.max_depth)
+                    && data_table
+                    && (complex_table
                         || (!self.anchor_targets.is_empty()
                             && crate::anchors::contains(
                                 self.dom,
@@ -431,7 +453,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                                 &self.anchor_targets,
                             )))
                 {
-                    let html = crate::html_table::render(
+                    let html = crate::html_fallback::render(
                         self.dom,
                         node,
                         depth,
@@ -448,8 +470,9 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         }
                     }
                 }
-                if let Some(mut table) =
-                    Table::from_dom(self.dom, node, depth, self.options.max_depth)
+                if !complex_table
+                    && let Some(mut table) =
+                        Table::from_dom(self.dom, node, depth, self.options.max_depth)
                 {
                     let captions = table.take_captions();
                     self.tables.push(table);
@@ -460,9 +483,15 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     return;
                 }
                 if !presentation
-                    && crate::html_table::has_cells(self.dom, node, depth, self.options.max_depth)
+                    && data_table
+                    && crate::html_fallback::has_cells(
+                        self.dom,
+                        node,
+                        depth,
+                        self.options.max_depth,
+                    )
                 {
-                    let html = crate::html_table::render(
+                    let html = crate::html_fallback::render(
                         self.dom,
                         node,
                         depth,
@@ -480,6 +509,12 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                 self.tasks.push(Task::Boundary);
             }
             _ => {}
+        }
+        if matches!(
+            tag,
+            "li" | "blockquote" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
+        ) {
+            self.emit_own_targets(node);
         }
         if crate::mathml::primary_alternative(self.dom, node, self.options.max_depth - depth)
             .is_some()
@@ -502,6 +537,14 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         for id in crate::anchors::within(self.dom, node, remaining, &self.anchor_targets) {
             if self.emitted_anchors.insert(id.clone()) {
                 self.writer().inline_html(&crate::anchors::markup(&id));
+            }
+        }
+    }
+
+    fn emit_own_targets(&mut self, node: D::NodeId) {
+        for id in self.anchor_targets.targets(self.dom, node) {
+            if self.emitted_anchors.insert(id.to_owned()) {
+                self.writer().inline_html(&crate::anchors::markup(id));
             }
         }
     }
@@ -559,6 +602,10 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         let table = self.tables.last_mut().expect("table conversion is active");
         if let Some(cell) = table.next_cell() {
             self.capture();
+            if let Some(row) = cell.row {
+                self.emit_own_targets(row);
+            }
+            self.emit_own_targets(cell.node);
             self.tasks.push(Task::TableCell);
             self.tasks.push(Task::EndTableCell);
             self.children(cell.node, cell.depth + 1);
@@ -745,7 +792,7 @@ fn subtree_has_link<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize) -> 
         if matches!(dom.node_kind(node), NodeKind::Element("a"))
             && dom
                 .attribute(node, "href")
-                .is_some_and(|href| !href.is_empty() && crate::media::safe_url(href, false))
+                .is_some_and(|href| !href.is_empty() && crate::media::safe_link_url(href))
         {
             return true;
         }
@@ -764,7 +811,10 @@ fn subtree_has_block<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize) ->
             continue;
         }
         pending.push((dom.next_sibling(node), depth));
-        if matches!(dom.node_kind(node), NodeKind::Element(tag) if is_structural_block(tag)) {
+        if matches!(
+            dom.node_kind(node),
+            NodeKind::Element("table" | "pre" | "blockquote" | "ul" | "ol" | "hr")
+        ) {
             return true;
         }
         pending.push((dom.first_child(node), depth + 1));

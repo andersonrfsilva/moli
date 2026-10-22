@@ -3,6 +3,7 @@ use crate::{Dom, NodeKind, output::Output, writer::is_space};
 pub(crate) struct Cell<Id> {
     pub(crate) node: Id,
     pub(crate) depth: usize,
+    pub(crate) row: Option<Id>,
 }
 
 pub(crate) struct Table<Id> {
@@ -49,6 +50,7 @@ impl<Id: Copy> Table<Id> {
                     table.captions.push(Cell {
                         node,
                         depth: depth + 1,
+                        row: None,
                     });
                 }
                 NodeKind::Element("tr") => {
@@ -88,6 +90,7 @@ impl<Id: Copy> Table<Id> {
         section: &str,
         cells: &mut Vec<Cell<Id>>,
     ) -> Option<()> {
+        let row_node = node;
         let start = cells.len();
         let mut all_headers = true;
         let mut child = dom.first_child(node);
@@ -107,6 +110,7 @@ impl<Id: Copy> Table<Id> {
                     cells.push(Cell {
                         node,
                         depth: depth + 1,
+                        row: (cells.len() == start).then_some(row_node),
                     });
                     // The first cell encountered in each column supplies its
                     // alignment. A synthetic header can grow to fit later rows.

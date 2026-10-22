@@ -3,7 +3,7 @@ mod content;
 mod converter;
 mod dom;
 mod form;
-mod html_table;
+mod html_fallback;
 mod machine;
 mod math;
 mod mathml;

@@ -42,6 +42,23 @@ pub(crate) fn referenced<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize
             ids: element_ids,
         };
     }
+    let mut fragments = Vec::new();
+    walk(dom, root, limit, |node| {
+        if let Some(fragment) = dom
+            .attribute(node, "href")
+            .and_then(|href| href.strip_prefix('#'))
+            .filter(|fragment| !fragment.is_empty())
+        {
+            fragments.push(fragment);
+        }
+        false
+    });
+    if fragments.is_empty() {
+        return Targets {
+            referenced: available,
+            ids: element_ids,
+        };
+    }
     walk(dom, root, limit, |node| {
         for attribute in ["id", "name"] {
             if attribute == "name" && dom.node_kind(node) != NodeKind::Element("a") {
@@ -57,25 +74,16 @@ pub(crate) fn referenced<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize
         false
     });
     let mut referenced = HashSet::new();
-    walk(dom, root, limit, |node| {
-        if let Some(fragment) = dom
-            .attribute(node, "href")
-            .and_then(|href| href.strip_prefix('#'))
-            && !fragment.is_empty()
-        {
-            // HTML fragment navigation tries the literal fragment first and
-            // only percent-decodes it when no literal target exists.
-            if available.contains(fragment) {
-                referenced.insert(fragment.to_owned());
-            } else {
-                let decoded = decode_fragment(fragment);
-                if available.contains(&decoded) {
-                    referenced.insert(decoded);
-                }
+    for fragment in fragments {
+        if available.contains(fragment) {
+            referenced.insert(fragment.to_owned());
+        } else {
+            let decoded = decode_fragment(fragment);
+            if available.contains(&decoded) {
+                referenced.insert(decoded);
             }
         }
-        false
-    });
+    }
     Targets {
         referenced,
         ids: element_ids,

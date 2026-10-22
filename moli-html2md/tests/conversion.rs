@@ -306,7 +306,7 @@ fn table_spans_do_not_duplicate_cell_text() {
     let cell = dom.leaf(row, "td", "end");
     dom.attr(cell, "colspan", "999999999999");
     let result = convert(&dom, 0);
-    assert!(result.contains("rowspan=\"2\">one</td><td>two</td>"));
+    assert!(result.contains("rowspan=\"2\">one</td>\n<td>two</td>"));
     assert!(result.contains("colspan=\"999999999999\">end</td>"));
 }
 
@@ -385,7 +385,7 @@ fn converts_deep_tables_on_a_small_thread_stack() {
                 ..Options::default()
             });
             let result = converter.convert(&dom, 0);
-            assert_eq!(result.matches("<table>").count(), 10_000);
+            assert_eq!(result, "|  |\n| --- |\n| deep |");
             assert_eq!(result.matches("deep").count(), 1);
         })
         .expect("spawn small-stack test")

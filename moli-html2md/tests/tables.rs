@@ -67,25 +67,35 @@ fn assert_preserves_table(source: &str) {
 #[test]
 fn hacker_news_layout_tables_preserve_story_and_metadata_order() {
     let result = markdown(include_str!("fixtures/hacker-news-layout.html"));
-    assert_preserves_table(include_str!("fixtures/hacker-news-layout.html"));
+    assert_eq!(
+        result,
+        include_str!("fixtures/hacker-news-layout.md").trim_end()
+    );
     let html = rendered_html(&result);
-    assert_eq!(html.matches("<table").count(), 3);
-    assert!(!html.contains("<br>"));
+    assert_eq!(html.matches("<table").count(), 2);
     assert_eq!(html.matches("<a ").count(), 14);
 }
 
 #[test]
-fn nested_data_table_preserves_its_outer_cells() {
+fn nested_data_table_survives_its_layout_wrapper() {
     let html = "<table><tr><td>before</td></tr><tr><td><table><tr><th>Key</th><th>Value</th></tr><tr><td>a|b</td><td><code>c|d</code></td></tr></table></td></tr><tr><td>after</td></tr></table>";
-    assert_preserves_table(html);
-    assert!(rendered_html(&markdown(html)).contains("<code>c|d</code>"));
+    let result = markdown(html);
+    assert_eq!(rendered_html(&result).matches("<table>").count(), 1);
+    assert!(
+        result.starts_with("before\n\n") && result.ends_with("\n\nafter"),
+        "{result}"
+    );
+    assert!(rendered_html(&result).contains("<code>c|d</code>"));
 }
 
 #[test]
 fn wrapping_a_table_preserves_its_content() {
     let data =
         "<table><tr><td>one</td><td>two</td></tr><tr><td>three</td><td>four</td></tr></table>";
-    assert_preserves_table(&format!("<table><tr><td>{data}</td></tr></table>"));
+    assert_eq!(
+        markdown(&format!("<table><tr><td>{data}</td></tr></table>")),
+        markdown(data)
+    );
     assert_eq!(
         markdown(data),
         "|  |  |\n| --- | --- |\n| one | two |\n| three | four |"
@@ -155,7 +165,7 @@ fn other_table_roles_do_not_change_conversion() {
 
 #[test]
 fn table_cells_preserve_block_syntax_and_code_whitespace() {
-    let html = "<table><tr><td>intro</td><td><h2>Heading</h2><pre><code>  a\n  b\n</code></pre><blockquote>quote</blockquote><ul><li>item</li></ul></td><td>end</td></tr></table>";
+    let html = "<table><caption>Structured content</caption><tr><td>intro</td><td><h2>Heading</h2><pre><code>  a\n  b\n</code></pre><blockquote>quote</blockquote><ul><li>item</li></ul></td><td>end</td></tr></table>";
     assert_preserves_table(html);
     let tree = Tree::parse(&rendered_html(&markdown(html)));
     assert!(
@@ -337,8 +347,13 @@ fn complex_tables_keep_cell_associations_without_duplicate_content() {
         "<table><tr><td>nested</td></tr></table>",
     ] {
         for cell in ["th", "td"] {
+            let caption = if cell == "td" {
+                "<caption>Data</caption>"
+            } else {
+                ""
+            };
             let source = format!(
-                "<table><tr><{cell}>A</{cell}><{cell}>B</{cell}></tr><tr><td>one</td><td>{content}</td></tr></table>"
+                "<table>{caption}<tr><{cell}>A</{cell}><{cell}>B</{cell}></tr><tr><td>one</td><td>{content}</td></tr></table>"
             );
             assert_preserves_table(&source);
         }
@@ -475,7 +490,8 @@ fn nested_tables_obey_the_conversion_depth_limit() {
         assert!(result.contains("visible"));
         assert!(!result.contains("too deep"));
     }
-    assert_preserves_table(
+    let full = markdown(
         "<table><tr><td>visible<div><table><tr><td>too deep</td></tr></table></div></td></tr></table>",
     );
+    assert_eq!(full, "visible\n\n|  |\n| --- |\n| too deep |");
 }

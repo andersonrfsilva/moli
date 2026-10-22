@@ -24,30 +24,8 @@ fn assert_layout_table_dump(args: &[&str]) -> Result<()> {
         String::from_utf8_lossy(&output.stderr)
     );
     let markdown = String::from_utf8(output.stdout)?;
-    for content in [
-        "First story",
-        "42 points by",
-        "8 comments",
-        "Second story",
-        "7 points by",
-        "discuss",
-        "More",
-    ] {
-        assert!(markdown.contains(content), "missing {content}: {markdown}");
-    }
-    let positions = [
-        "First story",
-        "42 points by",
-        "Second story",
-        "7 points by",
-        "More",
-    ]
-    .map(|content| markdown.find(content).expect("checked above"));
-    assert!(
-        positions.windows(2).all(|pair| pair[0] < pair[1]),
-        "{markdown}"
-    );
-    assert!(markdown.contains("<table"), "{markdown}");
+    let expected = include_str!("../../../moli-html2md/tests/fixtures/hacker-news-layout.md");
+    assert_eq!(markdown.trim_end(), expected.trim_end());
     Ok(())
 }
 
