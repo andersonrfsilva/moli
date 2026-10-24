@@ -31,6 +31,85 @@ class _Socket:
 
 
 class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unhandled_callback_failure_is_retained_and_previous_handler_restored(self) -> None:
+        loop = asyncio.get_running_loop()
+        original = loop.get_exception_handler()
+        seen: list[dict[str, Any]] = []
+        previous = lambda active_loop, context: seen.append(context)
+        loop.set_exception_handler(previous)
+        try:
+            with diagnostics_scope(None) as diagnostics:
+                entered = asyncio.Event()
+
+                def fail() -> None:
+                    entered.set()
+                    raise RuntimeError("unexpected protocol callback")
+
+                loop.call_soon(fail)
+                await entered.wait()
+                result = diagnostics.finish()
+            self.assertEqual(len(seen), 1)
+            self.assertIn("RuntimeError: unexpected protocol callback", result["errors"][0])
+            self.assertIs(loop.get_exception_handler(), previous)
+        finally:
+            loop.set_exception_handler(original)
+
+    async def test_unhandled_background_task_failure_is_not_only_printed(self) -> None:
+        loop = asyncio.get_running_loop()
+        original = loop.get_exception_handler()
+        loop.set_exception_handler(lambda *_: None)
+        try:
+            with diagnostics_scope(None) as diagnostics:
+                async def fail() -> None:
+                    raise RuntimeError("unobserved task failed")
+
+                task = asyncio.create_task(fail())
+                await asyncio.sleep(0)
+                del task  # Deliver the actual 'exception was never retrieved' callback.
+                self.assertIn("RuntimeError: unobserved task failed", diagnostics.finish()["errors"][0])
+        finally:
+            loop.set_exception_handler(original)
+
+    async def test_unhandled_callback_fails_an_otherwise_successful_worker(self) -> None:
+        from moli_cdp_smoke import runner
+
+        fixture = SimpleNamespace(url="http://fixture.test", start=lambda: None, stop=lambda: None)
+
+        async def smoke(endpoint: str, server: Any, selection: Any, results: list[Any]) -> None:
+            completed = asyncio.Event()
+
+            def fail() -> None:
+                completed.set()
+                raise RuntimeError("background protocol callback failed")
+
+            asyncio.get_running_loop().call_soon(fail)
+            await completed.wait()
+            results.append({"name": "normal assertion", "ok": True})
+
+        loop = asyncio.get_running_loop()
+        previous = loop.get_exception_handler()
+        loop.set_exception_handler(lambda *_: None)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "worker.json"
+                args = runner.parse_args(["--group", "tracing", "--browser", "chromium",
+                                          "--endpoint", "http://fixture.test", "--result", str(path)])
+                with (diagnostics_scope(path),
+                      patch.object(runner, "FixtureServer", return_value=fixture),
+                      patch.object(runner, "wait_for_cdp_server", new_callable=AsyncMock),
+                      patch.object(runner, "browser_identity", new_callable=AsyncMock,
+                                   return_value={"engine": "chromium"}),
+                      patch.object(runner, "stop_browser", new_callable=AsyncMock),
+                      patch.object(runner, "run_smoke", side_effect=smoke)):
+                    code = await runner._run_worker(args)
+                payload = json.loads(path.read_text())
+                self.assertEqual(code, 1)
+                self.assertFalse(payload["ok"])
+                self.assertTrue(payload["results"][0]["ok"])
+                self.assertIn("background protocol callback failed", payload["error"])
+        finally:
+            loop.set_exception_handler(previous)
+
     async def test_raw_messages_keep_wire_order_and_exact_pending_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             result = Path(directory) / "raw.json"

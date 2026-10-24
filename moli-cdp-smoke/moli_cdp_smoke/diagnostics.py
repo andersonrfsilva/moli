@@ -8,6 +8,7 @@ import itertools
 import os
 import sys
 import time
+import traceback
 import weakref
 from collections import deque
 from contextlib import contextmanager
@@ -142,11 +143,33 @@ def diagnostics_scope(result_path: Path | None) -> Iterator[Diagnostics]:
     diagnostics = Diagnostics(result_path)
     token = _ACTIVE.set(diagnostics)
     try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    previous_handler = loop.get_exception_handler() if loop is not None else None
+
+    def unhandled(active_loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+        error = context.get("exception")
+        details = ("".join(traceback.format_exception(error))
+                   if isinstance(error, BaseException) else repr(context))
+        if len(diagnostics.errors) < 16:
+            diagnostics.errors.append(f"unhandled asyncio error: {context.get('message')}: {details}")
+        diagnostics.phase("asyncio/unhandled", "failed", error)
+        if previous_handler is not None:
+            previous_handler(active_loop, context)
+        else:
+            active_loop.default_exception_handler(context)
+
+    if loop is not None:
+        loop.set_exception_handler(unhandled)
+    try:
         yield diagnostics
     finally:
         try:
             diagnostics.finish()
         finally:
+            if loop is not None:
+                loop.set_exception_handler(previous_handler)
             _ACTIVE.reset(token)
 
 

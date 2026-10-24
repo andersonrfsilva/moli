@@ -270,10 +270,12 @@ async def _run_worker_job(
     started_at = time.monotonic()
     print(f"[moli-cdp-supervisor] START {job.label}", file=sys.stderr, flush=True)
     with log_path.open("wb", buffering=0) as log_stream:
+        environment = _worker_environment()
+        environment["MOLI_SMOKE_WORKER_TIMEOUT_SECONDS"] = str(timeout_seconds)
         process = await asyncio.create_subprocess_exec(
             *_worker_argv(job, result_path),
             cwd=str(REPO_ROOT),
-            env=_worker_environment(),
+            env=environment,
             stdout=log_stream,
             stderr=asyncio.subprocess.STDOUT,
             start_new_session=os.name == "posix",
