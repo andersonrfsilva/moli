@@ -6,6 +6,7 @@ use crate::util::{get_private_value, set_private_value};
 
 const RESOLVER: &str = "__moliFontFaceResolver";
 const PROMISE_OWNER: &str = "__moliFontFacePromiseOwner";
+const REQUEST_QUEUED: &str = "__moliFontFaceRequestQueued";
 const OWNER_DOCUMENT: &str = "__moliFontFaceSetOwnerDocument";
 static NEXT_REGISTRATION: AtomicU64 = AtomicU64::new(1);
 const QUERY_RESOLVER: &str = "__moliFontQueryResolver";
@@ -323,15 +324,88 @@ pub(super) fn load_font<'s>(
     face: v8::Local<'s, v8::Object>,
 ) -> Option<v8::Local<'s, v8::Promise>> {
     let promise = loaded_promise(scope, face)?;
-    let load = super::state::get(scope, face)?;
-    let context = face.get_creation_context(scope)?;
+    start_font_load(scope, face);
+    Some(promise)
+}
+
+fn start_font_load<'s>(scope: &mut v8::PinScope<'s, '_>, face: v8::Local<'s, v8::Object>) {
+    let Some(load) = super::state::get(scope, face) else {
+        return;
+    };
+    let Some(context) = face.get_creation_context(scope) else {
+        return;
+    };
     let scope = &mut v8::ContextScope::new(scope, context);
     let start = load.borrow_mut().begin();
     publish_state(scope, face);
     if start {
         advance_sources(scope, face, &load);
     }
-    Some(promise)
+}
+
+pub(super) fn queue_requested_font_loads(
+    scope: &mut v8::PinScope<'_, '_>,
+    requests: &std::collections::BTreeSet<String>,
+) {
+    if requests.is_empty() {
+        return;
+    }
+    for face in super::state::wrappers_for_slots(scope, requests) {
+        if status(scope, face) != FontFaceStatus::Unloaded
+            || get_private_value(scope, face, REQUEST_QUEUED).is_some_and(|value| value.is_true())
+        {
+            continue;
+        }
+        let Some(context) = face.get_creation_context(scope) else {
+            continue;
+        };
+        let scope = &mut v8::ContextScope::new(scope, context);
+        let Some(host_ptr) = crate::util::context_host_ptr_from_global_bridge(scope) else {
+            continue;
+        };
+        let queued = v8::Boolean::new(scope, true);
+        set_private_value(scope, face, REQUEST_QUEUED, queued.into());
+        let callback = v8::Function::builder(run_requested_font_load)
+            .data(face.into())
+            .build(scope)
+            .expect("font resource task");
+        unsafe { &mut *host_ptr }.queue_internal_task(scope, callback);
+    }
+}
+
+fn run_requested_font_load<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    args: v8::FunctionCallbackArguments<'s>,
+    _rv: v8::ReturnValue<'s, v8::Value>,
+) {
+    let face = v8::Local::<v8::Object>::try_from(args.data()).expect("font resource face");
+    start_queued_font_load(scope, face);
+}
+
+pub(super) fn start_queued_font_load<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    face: v8::Local<'s, v8::Object>,
+) {
+    if get_private_value(scope, face, REQUEST_QUEUED).is_some_and(|value| value.is_true()) {
+        set_private_value(scope, face, REQUEST_QUEUED, v8::undefined(scope).into());
+        start_font_load(scope, face);
+    }
+}
+
+pub(super) fn start_queued_font_set_loads<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    fonts: v8::Local<'s, v8::Object>,
+) {
+    if let Some(faces) = super::storage::font_face_set_faces_array(scope, fonts) {
+        for index in 0..faces.length() {
+            if let Some(face) = faces
+                .get_index(scope, index)
+                .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+            {
+                start_queued_font_load(scope, face);
+            }
+        }
+    }
 }
 
 fn advance_sources<'s>(

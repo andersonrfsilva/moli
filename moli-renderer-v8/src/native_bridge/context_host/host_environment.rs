@@ -920,6 +920,13 @@ impl JsContextHost {
         self.style_engine.document_has_style_state(document)
     }
 
+    pub(crate) fn document_style_input_generations(
+        &self,
+        document: DomHandle,
+    ) -> Vec<(DomHandle, u64, u64)> {
+        self.style_engine.visual_style_input_generations([document])
+    }
+
     /// Initialize sources when taking ownership of an already constructed DOM.
     /// Ordinary reads and synchronization only install lifecycle-prepared sources.
     pub(crate) fn initialize_style_element_sources_for_document(&mut self, document: DomHandle) {
