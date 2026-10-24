@@ -2220,6 +2220,9 @@ mod observer_receivers;
 mod offline_audio_float;
 mod post_parse;
 mod queue_microtask;
+
+mod svg_gradient_native_receivers;
+
 mod readable_algorithm_arrays;
 mod remote_playback_interface;
 mod rendering_update;

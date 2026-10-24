@@ -1681,7 +1681,7 @@ struct SvgGradientElementPrototypeAccessorsDeclaration {
 }
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::SVGLinearGradientElement, enumerable)]
+#[webapi(interface = web_api_interfaces::SVGLinearGradientElement, enumerable, receiver)]
 struct SvgLinearGradientElementPrototypeAccessorsDeclaration {
     #[webapi(accessor_property = "x1", getter = svg_linear_gradient_animated_length_getter, data = callback_data_index_value(scope, 0))]
     x1: (),
@@ -1697,7 +1697,7 @@ struct SvgLinearGradientElementPrototypeAccessorsDeclaration {
 }
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::SVGRadialGradientElement, enumerable)]
+#[webapi(interface = web_api_interfaces::SVGRadialGradientElement, enumerable, receiver)]
 struct SvgRadialGradientElementPrototypeAccessorsDeclaration {
     #[webapi(accessor_property = "cx", getter = svg_radial_gradient_animated_length_getter, data = callback_data_index_value(scope, 0))]
     cx: (),
