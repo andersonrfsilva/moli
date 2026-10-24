@@ -3,7 +3,7 @@ use crate::web_api_interfaces;
 use moli_webapi_declare::WebApiFunctionTemplate;
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::IDBIndex, enumerable)]
+#[webapi(interface = web_api_interfaces::IDBIndex, enumerable, receiver)]
 struct IdbIndexPrototypeDeclaration {
     #[webapi(method, length = 1, callback = idb_index_get_callback)]
     get: (),
