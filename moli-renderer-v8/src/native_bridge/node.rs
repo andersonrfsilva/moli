@@ -42,7 +42,7 @@ pub(super) use self::mutation::*;
 pub(super) use self::tree::*;
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::Node, enumerable)]
+#[webapi(interface = web_api_interfaces::Node, enumerable, receiver)]
 struct NodePrototypeReflectionDeclaration {
     #[webapi(accessor_property = "nodeType", getter = node_node_type_getter_function)]
     node_type: (),

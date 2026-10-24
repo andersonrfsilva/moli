@@ -2224,6 +2224,9 @@ mod readable_algorithm_arrays;
 mod remote_playback_interface;
 mod rendering_update;
 mod rtc_configuration;
+
+mod node_reflection_native_receivers;
+
 mod script_terminal_completion;
 mod speech_events;
 mod storage_dense_name_arrays;
