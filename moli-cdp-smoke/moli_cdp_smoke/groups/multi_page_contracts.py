@@ -4,6 +4,7 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
+from ..lifecycle import pending_runtime_evaluation
 from ..navigation import navigate_cdp
 from ..assertions import SmokeError, assert_equal, record_contract, wait_until
 from ..config import is_moli_browser
@@ -1514,7 +1515,7 @@ async def _network_enablement_is_session_local(
             lambda: _has_document_response(events_b, second_url),
             "surviving Network session after peer disable",
         )
-        await asyncio.sleep(0.1)
+        await session_a.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
             _has_document_response(events_a, second_url),
             False,
@@ -1623,7 +1624,7 @@ async def _page_lifecycle_enablement_is_session_local(
             lambda: _has_lifecycle_event(events_b, "load"),
             "surviving Page lifecycle observer",
         )
-        await asyncio.sleep(0.1)
+        await session_a.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
             _has_lifecycle_event(events_a, "load"),
             False,
@@ -1731,7 +1732,7 @@ async def _same_name_runtime_bindings_keep_session_authority(
             == ["b-after-a-remove"],
             "same-name binding surviving peer removeBinding",
         )
-        await asyncio.sleep(0.1)
+        await session_a.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
             _binding_payloads(events_a, "multiPageSharedBinding"),
             [],
@@ -1835,7 +1836,7 @@ async def _runtime_enablement_and_context_replay_are_session_local(
             lambda: bool(events_a),
             "Runtime-enabled session receives a new child context",
         )
-        await asyncio.sleep(0.05)
+        await session_b.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
             events_b,
             [],
@@ -1865,7 +1866,7 @@ async def _runtime_enablement_and_context_replay_are_session_local(
             lambda: bool(events_b),
             "surviving Runtime-enabled session receives the second child context",
         )
-        await asyncio.sleep(0.05)
+        await session_a.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
             events_a,
             [],
@@ -1912,25 +1913,15 @@ async def _session_detach_cancels_only_its_pending_await(
             context.new_cdp_session(page),
         )
         sessions = [session_a, session_b]
-        pending = asyncio.create_task(
-            session_a.send(
-                "Runtime.evaluate",
-                {
-                    "expression": "new Promise(resolve => setTimeout(() => resolve('late'), 1000))",
-                    "awaitPromise": True,
-                    "returnByValue": True,
-                },
-            )
-        )
-        await asyncio.sleep(0.05)
-        await session_a.detach()
-        sessions.remove(session_a)
-        canceled = (await asyncio.gather(pending, return_exceptions=True))[0]
-        if not isinstance(canceled, BaseException):
-            raise SmokeError(
-                "detached Runtime session unexpectedly completed its pending await: "
-                f"{canceled!r}"
-            )
+        async with pending_runtime_evaluation(session_a) as pending:
+            await session_a.detach()
+            sessions.remove(session_a)
+            canceled = (await asyncio.gather(pending, return_exceptions=True))[0]
+            if not isinstance(canceled, BaseException):
+                raise SmokeError(
+                    "detached Runtime session unexpectedly completed its pending await: "
+                    f"{canceled!r}"
+                )
         peer = await asyncio.wait_for(
             session_b.send(
                 "Runtime.evaluate",
@@ -2025,7 +2016,8 @@ async def _fetch_interception_is_session_local(
             raise SmokeError(f"Fetch.requestPaused returned no requestId: {paused_request!r}")
 
         await peer.send("Fetch.disable")
-        await asyncio.sleep(0.1)
+        # The owner's successful continueRequest below proves that its exact
+        # interception is still paused; elapsed time cannot establish that.
         assert_equal(
             navigation.done(),
             False,

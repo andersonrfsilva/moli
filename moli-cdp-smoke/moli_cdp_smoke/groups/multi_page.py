@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import AsyncExitStack
 import hashlib
 from contextlib import suppress
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from ..lifecycle import pending_page_evaluation
 from ..assertions import SmokeError, assert_equal, record, wait_until
 from ..helpers import attach_cdp_event_collector, run_worker_command
 from .multi_page_chromium_contracts import multi_page_chromium_contract_cases
@@ -955,14 +957,11 @@ async def _background_tasks_workers_and_screenshots(
             "background timers across foreground activation churn",
         )
 
-        pending = asyncio.create_task(
-            pages[2].evaluate("() => new Promise(resolve => setTimeout(resolve, 10_000))")
-        )
-        await asyncio.sleep(0.05)
-        await pages[2].close()
-        pending_result = (await asyncio.gather(pending, return_exceptions=True))[0]
-        if not isinstance(pending_result, BaseException):
-            raise SmokeError("closing a page did not reject its pending Runtime evaluation")
+        async with pending_page_evaluation(pages[2]) as pending:
+            await pages[2].close()
+            pending_result = (await asyncio.gather(pending, return_exceptions=True))[0]
+            if not isinstance(pending_result, BaseException):
+                raise SmokeError("closing a page did not reject its pending Runtime evaluation")
         assert_equal(
             await asyncio.gather(
                 pages[0].text_content("main"),
@@ -1000,23 +999,20 @@ async def _context_teardown_with_pending_commands(
             page_a_peer.goto(f"{fixture}/plain?teardown=a-peer", wait_until="load"),
             survivor.goto(f"{fixture}/plain?teardown=survivor", wait_until="load"),
         )
-        pending = [
-            asyncio.create_task(
-                page.evaluate("() => new Promise(() => {})")
+        async with AsyncExitStack() as stack:
+            pending = [
+                await stack.enter_async_context(pending_page_evaluation(page))
+                for page in (page_a, page_a_peer)
+            ]
+            await asyncio.wait_for(context_a.close(), timeout=5)
+            context_a_closed = True
+            pending_results = await asyncio.wait_for(
+                asyncio.gather(*pending, return_exceptions=True), timeout=5,
             )
-            for page in (page_a, page_a_peer)
-        ]
-        await asyncio.sleep(0.05)
-        await asyncio.wait_for(context_a.close(), timeout=5)
-        context_a_closed = True
-        pending_results = await asyncio.wait_for(
-            asyncio.gather(*pending, return_exceptions=True),
-            timeout=5,
-        )
-        if not all(isinstance(result, BaseException) for result in pending_results):
-            raise SmokeError(
-                f"disposed context did not reject every pending command: {pending_results!r}"
-            )
+            if not all(isinstance(result, BaseException) for result in pending_results):
+                raise SmokeError(
+                    f"disposed context did not reject every pending command: {pending_results!r}"
+                )
         assert_equal(
             await survivor.evaluate("() => location.search"),
             "?teardown=survivor",

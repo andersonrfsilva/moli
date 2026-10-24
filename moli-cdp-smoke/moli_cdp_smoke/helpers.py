@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import weakref
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Any, AsyncIterator
@@ -64,11 +65,39 @@ async def capture_layout(page: Any) -> bytes:
         await client.detach()
 
 
-def attach_cdp_event_collector(client: Any, methods: list[str]) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    for method in methods:
-        client.on(method, lambda params, method=method: events.append({"method": method, "params": params}))
-    return events
+def _remove_event_listeners(client: Any, handlers: list[tuple[str, Any]]) -> None:
+    for method, handler in handlers:
+        client.remove_listener(method, handler)
+
+
+class CdpEvents(list[dict[str, Any]]):
+    """Keep listeners while their events are owned, with explicit scoped cleanup."""
+
+    def __init__(self, client: Any, methods: list[str]) -> None:
+        super().__init__()
+        reference = weakref.ref(self)
+        handlers: list[tuple[str, Any]] = []
+        self._detach = weakref.finalize(self, _remove_event_listeners, client, handlers)
+        for method in methods:
+            def collect(params: Any, method: str = method) -> None:
+                events = reference()
+                if events is not None:
+                    events.append({"method": method, "params": params})
+            client.on(method, collect)
+            handlers.append((method, collect))
+
+    def close(self) -> None:
+        self._detach()
+
+    def __enter__(self) -> CdpEvents:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
+
+
+def attach_cdp_event_collector(client: Any, methods: list[str]) -> CdpEvents:
+    return CdpEvents(client, methods)
 
 
 async def run_worker_command(page: Any, payload: Any, timeout_ms: int = 10_000) -> Any:

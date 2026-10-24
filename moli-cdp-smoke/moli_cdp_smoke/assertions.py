@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import time
 from typing import Any, Awaitable, Callable
 
 
@@ -50,12 +49,17 @@ async def wait_until(
     timeout_ms: int = 10_000,
     interval_ms: int = 50,
 ) -> None:
-    deadline = time.monotonic() + timeout_ms / 1000
-    while time.monotonic() < deadline:
-        result = predicate()
-        if inspect.isawaitable(result):
-            result = await result
-        if result:
-            return
-        await asyncio.sleep(interval_ms / 1000)
-    raise SmokeError(f"timed out waiting for {label} after {timeout_ms}ms")
+    timer = asyncio.timeout(timeout_ms / 1000)
+    try:
+        async with timer:
+            while True:
+                result = predicate()
+                if inspect.isawaitable(result):
+                    result = await result
+                if result:
+                    return
+                await asyncio.sleep(interval_ms / 1000)
+    except TimeoutError as error:
+        if not timer.expired():
+            raise
+        raise SmokeError(f"timed out waiting for {label} after {timeout_ms}ms") from error
