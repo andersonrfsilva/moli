@@ -116,16 +116,16 @@ struct WebSocketStreamConstructorArgs<'s> {
         missing_message = "Failed to construct 'WebSocketStream': 1 argument required, but only 0 present."
     )]
     url: String,
-    #[webidl(index = 1, converter = "raw")]
-    options: Option<v8::Local<'s, v8::Value>>,
+    #[webidl(index = 1, dictionary)]
+    options: WebSocketStreamOptionsMembers<'s>,
 }
 
 #[derive(Default, webidl::WebIdlDictionary)]
 #[webidl(prefix = "WebSocketStreamOptions")]
 struct WebSocketStreamOptionsMembers<'s> {
-    #[webidl(legacy_nullish, converter = "raw")]
-    protocols: Option<v8::Local<'s, v8::Value>>,
-    #[webidl(legacy_nullish, converter = "raw")]
+    #[webidl(sequence, converter = "usv_string", default = Vec::new())]
+    protocols: Vec<String>,
+    #[webidl(interface = web_api_interfaces::AbortSignal)]
     signal: Option<v8::Local<'s, v8::Object>>,
 }
 
@@ -411,9 +411,7 @@ fn websocket_stream_constructor_callback_inner<'s>(
     else {
         return;
     };
-    let Some(options) = websocket_stream_options(scope, parsed.options) else {
-        return;
-    };
+    let options = parsed.options;
     let Some(host_ptr) = context_host_ptr_from_global_bridge(scope) else {
         throw_type_error(
             scope,
@@ -452,14 +450,10 @@ fn websocket_stream_constructor_callback_inner<'s>(
         );
         return;
     }
-    let protocols = match parse_websocket_stream_protocols(scope, options.protocols) {
+    let protocols = match parse_websocket_stream_protocols(options.protocols) {
         Ok(protocols) => protocols,
-        Err(WebSocketProtocolParseError::Validation(message)) => {
+        Err(message) => {
             throw_websocket_dom_exception(scope, "SyntaxError", 12, &message);
-            return;
-        }
-        Err(WebSocketProtocolParseError::Conversion(error)) => {
-            webidl::throw_error(scope, &error);
             return;
         }
     };
@@ -508,26 +502,6 @@ fn websocket_stream_constructor_callback_inner<'s>(
         install_websocket_stream_abort_listener(scope, stream, signal);
     }
     rv.set(stream.into());
-}
-
-fn websocket_stream_options<'s>(
-    scope: &mut v8::PinScope<'s, '_>,
-    value: Option<v8::Local<'s, v8::Value>>,
-) -> Option<WebSocketStreamOptionsMembers<'s>> {
-    let Some(value) = value else {
-        return Some(WebSocketStreamOptionsMembers::default());
-    };
-    match webidl::parse_dictionary::<WebSocketStreamOptionsMembers<'s>>(
-        scope,
-        value,
-        webidl::Context::argument("WebSocketStream", 2),
-    ) {
-        Ok(options) => Some(options.unwrap_or_default()),
-        Err(error) => {
-            webidl::throw_error(scope, &error);
-            None
-        }
-    }
 }
 
 fn install_websocket_stream_abort_listener<'s>(
