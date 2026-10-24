@@ -240,7 +240,7 @@ pub(crate) fn safe_url(value: &str, image: bool) -> bool {
     }
     matches!(
         scheme.to_ascii_lowercase().as_str(),
-        "http" | "https" | "mailto" | "tel" | "ftp"
+        "http" | "https" | "mailto" | "tel" | "ftp" | "file"
     ) || (image && normalized.to_ascii_lowercase().starts_with("data:image/"))
 }
 

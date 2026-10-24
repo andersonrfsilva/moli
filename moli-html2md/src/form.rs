@@ -16,7 +16,10 @@ pub(crate) fn input_text<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> Option<&s
         return None;
     }
     if kind.eq_ignore_ascii_case("image") {
-        return dom.attribute(node, "alt").filter(|value| !value.is_empty());
+        return ["alt", "aria-label", "title"].into_iter().find_map(|name| {
+            dom.attribute(node, name)
+                .filter(|value| !value.trim().is_empty())
+        });
     }
     if let Some(value) = dom
         .control_value(node)

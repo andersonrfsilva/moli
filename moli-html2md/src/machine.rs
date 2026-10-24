@@ -277,7 +277,9 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
             }
             "input" => {
                 if let Some(value) = crate::form::input_text(self.dom, node) {
+                    self.writer().text(" ");
                     self.writer().text(value);
+                    self.writer().text(" ");
                 }
                 return;
             }

@@ -66,6 +66,72 @@ fn standard_image_sources_are_not_overridden_by_filename_guesses() {
 }
 
 #[test]
+fn local_image_sources_are_preserved_before_lazy_loading_fallbacks() {
+    for (source, expected) in [
+        (
+            "<img src='file:///tmp/chart.png' alt='Chart'>",
+            "![Chart](file:///tmp/chart.png)",
+        ),
+        (
+            "<img src='file:///tmp/chart.png' data-src='/old.png' alt='Chart'>",
+            "![Chart](file:///tmp/chart.png)",
+        ),
+        (
+            "<img src='file:///tmp/chart.png'>",
+            "![](file:///tmp/chart.png)",
+        ),
+        (
+            "<img srcset='file:///tmp/small.png 1x, file:///tmp/chart.png 2x' src='/fallback.png' data-src='/old.png' alt='Chart'>",
+            "![Chart](file:///tmp/chart.png)",
+        ),
+    ] {
+        assert_eq!(markdown(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn input_values_remain_distinct_from_adjacent_fields_and_labels() {
+    for (source, expected) in [
+        (
+            "<input name='min' value='10'><input name='max' value='20'>",
+            "10 20",
+        ),
+        (
+            "<label>Min<input value='10'></label><label>Max<input value='20'></label>",
+            "Min 10 Max 20",
+        ),
+        ("before<input value='10'>after", "before 10 after"),
+        (
+            "<strong><input value='10'></strong><em><input value='20'></em>",
+            "**10** *20*",
+        ),
+        (
+            "<label><input type='checkbox' checked>Enabled</label><label><input type='checkbox'>Disabled</label>",
+            "☑ Enabled ☐ Disabled",
+        ),
+    ] {
+        assert_eq!(markdown(source), expected, "{source}");
+    }
+}
+
+#[test]
+fn image_buttons_keep_alternative_names_without_using_submission_values() {
+    for attributes in [
+        "alt='Search' aria-label='Other' title='Hint'",
+        "aria-label='Search' title='Hint'",
+        "title='Search'",
+        "alt='' aria-label='Search'",
+        "alt='' title='Search'",
+        "alt=' \t' aria-label='Search'",
+        "aria-label=' \t' title='Search'",
+    ] {
+        let source =
+            format!("<input type='image' src='/search.png' value='Submission value' {attributes}>");
+        assert_eq!(markdown(&source), "Search", "{source}");
+    }
+}
+
+#[test]
 fn nested_accessible_labels_do_not_rescan_the_whole_tree() {
     let count = |depth| {
         let html = format!(
