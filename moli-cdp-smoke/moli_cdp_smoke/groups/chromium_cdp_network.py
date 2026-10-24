@@ -3,7 +3,9 @@ import asyncio
 import base64
 from contextlib import suppress
 from typing import Any
+
 from urllib.parse import urlsplit
+from ..diagnostics import new_cdp_session
 from . import SmokeState
 from ..assertions import SmokeError, assert_equal, wait_until
 from ..config import is_moli_browser
@@ -1406,7 +1408,7 @@ async def _verify_chromium_failed_main_document_request_extra_info_sample(
 ) -> None:
     page = await state.context.new_page()
     try:
-        cdp = await state.context.new_cdp_session(page)
+        cdp = await new_cdp_session(state.context, page)
         await _verify_failed_main_document_request_extra_info_on_session(state, cdp)
     finally:
         await page.close()
@@ -1559,7 +1561,7 @@ async def _verify_chromium_redirect_then_failed_main_document_extra_info_sample(
 ) -> None:
     page = await state.context.new_page()
     try:
-        cdp = await state.context.new_cdp_session(page)
+        cdp = await new_cdp_session(state.context, page)
         observed_methods = [
             "Network.requestWillBeSent",
             "Network.requestWillBeSentExtraInfo",
@@ -1904,7 +1906,6 @@ async def _verify_chromium_main_document_response_stage_extra_info_sample(
                 await navigation_task
             except asyncio.CancelledError:
                 pass
-
 
 
 async def run_network_group(state: SmokeState) -> None:

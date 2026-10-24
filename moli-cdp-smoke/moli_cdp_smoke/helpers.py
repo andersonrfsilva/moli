@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Any, AsyncIterator
 
+
+from .diagnostics import new_cdp_session, record_wire
 from .assertions import SmokeError
 from .state import SmokeState
 
@@ -18,7 +20,7 @@ async def isolated_network_page(state: SmokeState) -> AsyncIterator[SmokeState]:
     context = await state.browser.new_context()
     try:
         page = await context.new_page()
-        cdp = await context.new_cdp_session(page)
+        cdp = await new_cdp_session(context, page)
         events = attach_cdp_event_collector(cdp, [
             "Network.requestWillBeSent", "Network.responseReceived", "Network.dataReceived",
             "Network.loadingFinished", "Network.loadingFailed",
@@ -57,7 +59,7 @@ async def capture_layout(page: Any) -> bytes:
     Screenshot tests must call page.screenshot() directly on a fresh page;
     prewarming here would bypass Playwright's getLayoutMetrics preflight.
     """
-    client = await page.context.new_cdp_session(page)
+    client = await new_cdp_session(page.context, page)
     try:
         result = await client.send("Page.captureScreenshot", {"format": "png"})
         return base64.b64decode(result["data"], validate=True)
@@ -83,6 +85,8 @@ class CdpEvents(list[dict[str, Any]]):
                 events = reference()
                 if events is not None:
                     events.append({"method": method, "params": params})
+                    record_wire(client, "event", {"method": method, "params": params},
+                                transport="playwright")
             client.on(method, collect)
             handlers.append((method, collect))
 

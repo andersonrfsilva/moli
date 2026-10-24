@@ -12,8 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
 
+
 from playwright.async_api import async_playwright
 
+from .diagnostics import current_diagnostics, diagnostics_scope, new_cdp_session
 from .assertions import record
 from .config import clear_current_process_proxy_env
 from .fixture import FixtureServer
@@ -589,7 +591,7 @@ async def run_smoke(
             )
             cdp = await await_with_progress(
                 "playwright/context-new-cdp-session",
-                context.new_cdp_session(page),
+                new_cdp_session(context, page),
             )
             websocket_events = attach_cdp_event_collector(
                 cdp,
@@ -702,8 +704,7 @@ def _emit_worker_payload(
     os.replace(temporary, result_path)
 
 
-async def async_main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+async def _run_worker(args: argparse.Namespace) -> int:
     if args.list_groups:
         print(json.dumps({"groups": group_listing()}, indent=2, ensure_ascii=False))
         return 0
@@ -777,6 +778,10 @@ async def async_main(argv: list[str] | None = None) -> int:
             except Exception as error:
                 failures.append("".join(traceback.format_exception(error)))
 
+    diagnostics = current_diagnostics()
+    diagnostic_result = diagnostics.finish() if diagnostics is not None else None
+    if diagnostic_result and diagnostic_result["errors"]:
+        failures.append("diagnostic capture failed: " + "; ".join(diagnostic_result["errors"]))
     ok = not failures and not any(result.get("ok") is False for result in results)
     payload: dict[str, Any] = {
         "ok": ok,
@@ -785,6 +790,7 @@ async def async_main(argv: list[str] | None = None) -> int:
         "fixture": fixture.url,
         "browser": identity,
         "browserLaunches": BROWSER_LAUNCHES,
+        "diagnostics": diagnostic_result,
         "results": results,
     }
     if failures:
@@ -793,6 +799,12 @@ async def async_main(argv: list[str] | None = None) -> int:
             payload["moliLogTail"] = serve.logs[-5_000:]
     _emit_worker_payload(payload, args.result, failed=not ok)
     return 0 if ok else 1
+
+
+async def async_main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    with diagnostics_scope(args.result):
+        return await _run_worker(args)
 
 
 def main(argv: list[str] | None = None) -> None:

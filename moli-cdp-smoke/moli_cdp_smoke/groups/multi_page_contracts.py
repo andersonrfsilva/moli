@@ -4,6 +4,8 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
+
+from ..diagnostics import new_cdp_session
 from ..lifecycle import pending_runtime_evaluation
 from ..navigation import navigate_cdp
 from ..assertions import SmokeError, assert_equal, record_contract, wait_until
@@ -59,8 +61,8 @@ async def _remote_object_and_execution_context_ownership(
             page_b.goto(f"{fixture}/plain?multi-page-object=b", wait_until="load"),
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page_a),
-            context.new_cdp_session(page_b),
+            new_cdp_session(context, page_a),
+            new_cdp_session(context, page_b),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -186,8 +188,8 @@ async def _target_local_device_metrics(
             page_b.goto(f"{fixture}/plain?multi-page-metrics=b", wait_until="load"),
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page_a),
-            context.new_cdp_session(page_b),
+            new_cdp_session(context, page_a),
+            new_cdp_session(context, page_b),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -284,8 +286,8 @@ async def _new_document_script_session_lifecycle(
     try:
         page_a, page_b = await asyncio.gather(context.new_page(), context.new_page())
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page_a),
-            context.new_cdp_session(page_b),
+            new_cdp_session(context, page_a),
+            new_cdp_session(context, page_b),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -376,7 +378,7 @@ async def _new_document_script_session_lifecycle(
             "explicitly removed new-Document script",
         )
 
-        replacement_session = await context.new_cdp_session(page_a)
+        replacement_session = await new_cdp_session(context, page_a)
         sessions.append(replacement_session)
         replacement_value = await replacement_session.send(
             "Runtime.evaluate",
@@ -424,8 +426,8 @@ async def _same_target_new_document_script_session_ownership(
     try:
         page = await context.new_page()
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -501,7 +503,7 @@ async def _same_target_new_document_script_session_ownership(
             "same-target session-owned scripts after remove and detach",
         )
 
-        replacement_session = await context.new_cdp_session(page)
+        replacement_session = await new_cdp_session(context, page)
         sessions.append(replacement_session)
         replacement_value = await replacement_session.send(
             "Runtime.evaluate",
@@ -549,7 +551,7 @@ async def _isolated_world_script_detach_lifecycle(
     sessions: list[Any] = []
     try:
         page = await context.new_page()
-        owner_session = await context.new_cdp_session(page)
+        owner_session = await new_cdp_session(context, page)
         sessions = [owner_session]
         await owner_session.send("Page.enable")
         registration = await owner_session.send(
@@ -592,7 +594,7 @@ async def _isolated_world_script_detach_lifecycle(
 
         await owner_session.detach()
         sessions.remove(owner_session)
-        replacement_session = await context.new_cdp_session(page)
+        replacement_session = await new_cdp_session(context, page)
         sessions.append(replacement_session)
         await replacement_session.send("Page.enable")
         live_context_id = await _create_isolated_world(
@@ -665,8 +667,8 @@ async def _same_name_isolated_worlds_are_session_local(
     try:
         page = await context.new_page()
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -736,7 +738,7 @@ async def _same_name_isolated_worlds_are_session_local(
 
         await session_a.detach()
         sessions.remove(session_a)
-        replacement_session = await context.new_cdp_session(page)
+        replacement_session = await new_cdp_session(context, page)
         sessions.append(replacement_session)
         await replacement_session.send("Page.enable")
         replacement_contexts = await _create_isolated_worlds_for_frames(
@@ -849,8 +851,8 @@ async def _runtime_binding_session_lifecycle(
             wait_until="load",
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(session_a, ["Runtime.bindingCalled"])
@@ -989,8 +991,8 @@ async def _same_target_remote_objects_are_session_local(
             wait_until="load",
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         contexts_a = attach_cdp_event_collector(
@@ -1175,8 +1177,8 @@ async def _same_target_dom_node_and_backend_node_ownership(
             }"""
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -1297,8 +1299,8 @@ async def _same_source_scripts_keep_session_authority(
     try:
         page = await context.new_page()
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -1472,8 +1474,8 @@ async def _network_enablement_is_session_local(
     try:
         page = await context.new_page()
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(
@@ -1579,8 +1581,8 @@ async def _page_lifecycle_enablement_is_session_local(
     try:
         page = await context.new_page()
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(session_a, ["Page.lifecycleEvent"])
@@ -1692,8 +1694,8 @@ async def _same_name_runtime_bindings_keep_session_authority(
             wait_until="load",
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(session_a, ["Runtime.bindingCalled"])
@@ -1807,8 +1809,8 @@ async def _runtime_enablement_and_context_replay_are_session_local(
             wait_until="load",
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(
@@ -1909,8 +1911,8 @@ async def _session_detach_cancels_only_its_pending_await(
             wait_until="load",
         )
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [session_a, session_b]
         async with pending_runtime_evaluation(session_a) as pending:
@@ -1934,7 +1936,7 @@ async def _session_detach_cancels_only_its_pending_await(
             42,
             "peer Runtime session after pending owner detach",
         )
-        replacement = await context.new_cdp_session(page)
+        replacement = await new_cdp_session(context, page)
         sessions.append(replacement)
         replacement_value = await replacement.send(
             "Runtime.evaluate",
@@ -1979,8 +1981,8 @@ async def _fetch_interception_is_session_local(
     try:
         page = await context.new_page()
         interceptor, peer = await asyncio.gather(
-            context.new_cdp_session(page),
-            context.new_cdp_session(page),
+            new_cdp_session(context, page),
+            new_cdp_session(context, page),
         )
         sessions = [interceptor, peer]
         paused = attach_cdp_event_collector(interceptor, ["Fetch.requestPaused"])
@@ -2095,8 +2097,8 @@ async def _network_profiles_are_target_local_with_shared_native_environment(
     try:
         page_a, page_b = await asyncio.gather(context.new_page(), context.new_page())
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page_a),
-            context.new_cdp_session(page_b),
+            new_cdp_session(context, page_a),
+            new_cdp_session(context, page_b),
         )
         sessions = [session_a, session_b]
         await asyncio.gather(
@@ -2317,8 +2319,8 @@ async def _closed_target_new_document_script_does_not_leak(
     try:
         owner, peer = await asyncio.gather(context.new_page(), context.new_page())
         owner_session, peer_session = await asyncio.gather(
-            context.new_cdp_session(owner),
-            context.new_cdp_session(peer),
+            new_cdp_session(context, owner),
+            new_cdp_session(context, peer),
         )
         sessions = [owner_session, peer_session]
         await asyncio.gather(
@@ -2374,7 +2376,7 @@ async def _closed_target_new_document_script_does_not_leak(
             "peer",
             "closing a scripted target preserves a peer target's script state",
         )
-        replacement_session = await context.new_cdp_session(replacement)
+        replacement_session = await new_cdp_session(context, replacement)
         sessions.append(replacement_session)
         replacement_result = await replacement_session.send(
             "Runtime.evaluate",
@@ -2731,8 +2733,8 @@ async def _network_response_body_target_ownership(
     try:
         page_a, page_b = await asyncio.gather(context.new_page(), context.new_page())
         session_a, session_b = await asyncio.gather(
-            context.new_cdp_session(page_a),
-            context.new_cdp_session(page_b),
+            new_cdp_session(context, page_a),
+            new_cdp_session(context, page_b),
         )
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(
@@ -2831,8 +2833,8 @@ async def _websocket_survives_peer_target_close(
             peer.goto(f"{fixture}/plain?multi-page-websocket=peer", wait_until="load"),
         )
         owner_session, peer_session = await asyncio.gather(
-            context.new_cdp_session(owner),
-            context.new_cdp_session(peer),
+            new_cdp_session(context, owner),
+            new_cdp_session(context, peer),
         )
         sessions = [owner_session, peer_session]
         event_methods = [

@@ -4,6 +4,8 @@ import asyncio
 import inspect
 from typing import Any, Awaitable, Callable
 
+from .diagnostics import record_phase
+
 
 class SmokeError(AssertionError):
     pass
@@ -49,6 +51,7 @@ async def wait_until(
     timeout_ms: int = 10_000,
     interval_ms: int = 50,
 ) -> None:
+    record_phase(label, "waiting")
     timer = asyncio.timeout(timeout_ms / 1000)
     try:
         async with timer:
@@ -57,9 +60,11 @@ async def wait_until(
                 if inspect.isawaitable(result):
                     result = await result
                 if result:
+                    record_phase(label, "observed")
                     return
                 await asyncio.sleep(interval_ms / 1000)
     except TimeoutError as error:
         if not timer.expired():
             raise
+        record_phase(label, "timed_out", error)
         raise SmokeError(f"timed out waiting for {label} after {timeout_ms}ms") from error

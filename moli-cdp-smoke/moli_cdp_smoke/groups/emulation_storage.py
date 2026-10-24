@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+
 import json
 import time
 import urllib.parse
 import urllib.request
 from typing import Any, Awaitable
 
+from ..diagnostics import new_cdp_session
 from ..assertions import SmokeError, assert_equal, record, record_contract
 from ..png_image import decode_png
 
@@ -56,8 +58,8 @@ async def run_geolocation_override_smoke(browser: Any, fixture: str, results: li
     try:
         page = await context.new_page()
         await page.goto(f"{fixture}/plain", wait_until="load", timeout=10_000)
-        primary = await context.new_cdp_session(page)
-        attached = await context.new_cdp_session(page)
+        primary = await new_cdp_session(context, page)
+        attached = await new_cdp_session(context, page)
         try:
             await primary.send(
                 "Emulation.setGeolocationOverride",
@@ -129,7 +131,7 @@ async def run_locale_timezone_runtime_surface_smoke(
         page = await context.new_page()
         await page.goto(f"{fixture}/plain", wait_until="load", timeout=10_000)
         baseline = await _read_locale_timezone_runtime(page)
-        cdp = await context.new_cdp_session(page)
+        cdp = await new_cdp_session(context, page)
         try:
             await cdp.send("Emulation.setLocaleOverride", {"locale": "fr-FR"})
             invalid_timezone_error = await _expect_protocol_error(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import asyncio
 import json
 import re
@@ -7,6 +8,7 @@ import urllib.parse
 
 from playwright.async_api import Error as PlaywrightError, expect
 
+from ..diagnostics import new_cdp_session
 from . import SmokeState
 from ..helpers import capture_layout
 from ..config import is_moli_browser
@@ -1026,7 +1028,7 @@ async def run_keypress_dispatch_workflow(state: SmokeState) -> None:
             </script>
         """))
         session = await await_with_progress(
-            "keypress/new-cdp-session", state.context.new_cdp_session(page),
+            "keypress/new-cdp-session", new_cdp_session(state.context, page),
         )
         full_sequence = ["keydown", "keypress", "beforeinput", "input", "keyup"]
 
@@ -1108,7 +1110,7 @@ async def run_cdp_control_key_name_workflow(state: SmokeState) -> None:
             }"""
         )
         await capture_layout(page)
-        session = await state.context.new_cdp_session(page)
+        session = await new_cdp_session(state.context, page)
 
         # Rod encodes Enter as a carriage-return CDP key string. Chromium
         # converts that spelling to the canonical DOM key before dispatching.

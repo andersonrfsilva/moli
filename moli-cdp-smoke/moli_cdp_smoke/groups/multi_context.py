@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import asyncio
 import os
 import sys
@@ -8,6 +9,7 @@ from typing import Any, Awaitable
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from ..diagnostics import new_cdp_session
 from ..assertions import SmokeError, assert_equal, record, wait_until
 from ..config import is_moli_browser
 from ..helpers import read_io_to_eof, attach_cdp_event_collector
@@ -1616,7 +1618,7 @@ async def _fetch_response_stage_result(page: Any, owner: str) -> dict[str, Any]:
 
 async def _new_cdp_session(context: Any, page: Any, label: str) -> Any:
     try:
-        return await asyncio.wait_for(context.new_cdp_session(page), timeout=5)
+        return await asyncio.wait_for(new_cdp_session(context, page), timeout=5)
     except asyncio.TimeoutError as error:
         raise SmokeError(f"{label} new_cdp_session timed out") from error
 

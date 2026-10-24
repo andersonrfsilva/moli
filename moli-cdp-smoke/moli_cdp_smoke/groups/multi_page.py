@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 import asyncio
 from contextlib import AsyncExitStack
 import hashlib
@@ -10,6 +11,7 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from ..diagnostics import new_cdp_session
 from ..lifecycle import pending_page_evaluation
 from ..assertions import SmokeError, assert_equal, record, wait_until
 from ..helpers import attach_cdp_event_collector, run_worker_command
@@ -71,7 +73,7 @@ async def _page_churn_and_session_reattach(
         )
 
         sessions = await asyncio.gather(
-            *(context.new_cdp_session(page) for page in pages)
+            *(new_cdp_session(context, page) for page in pages)
         )
         writes = await asyncio.gather(
             *(
@@ -97,7 +99,7 @@ async def _page_churn_and_session_reattach(
 
         for index in (1, 3, 5):
             await sessions[index].detach()
-            sessions[index] = await context.new_cdp_session(pages[index])
+            sessions[index] = await new_cdp_session(context, pages[index])
         reads = await asyncio.gather(
             *(
                 _send_cdp(
@@ -269,7 +271,7 @@ async def _mixed_navigation_outcomes_and_recovery(
     try:
         pages = await asyncio.gather(*(context.new_page() for _ in range(5)))
         sessions = await asyncio.gather(
-            *(context.new_cdp_session(page) for page in pages)
+            *(new_cdp_session(context, page) for page in pages)
         )
         responses = await asyncio.gather(
             pages[0].goto(f"{fixture}/redirect-start", wait_until="load"),
@@ -560,10 +562,10 @@ async def _target_local_session_events(
             )
         )
         primaries = await asyncio.gather(
-            *(context.new_cdp_session(page) for page in pages)
+            *(new_cdp_session(context, page) for page in pages)
         )
         auxiliaries = await asyncio.gather(
-            *(context.new_cdp_session(page) for page in pages)
+            *(new_cdp_session(context, page) for page in pages)
         )
         sessions = [*primaries, *auxiliaries]
         collectors = [
@@ -654,7 +656,7 @@ async def _target_local_session_events(
             {"expression": "21 * 2", "returnByValue": True},
         )
         assert_equal(runtime_value(surviving), 42, "attached after primary detach")
-        replacement = await context.new_cdp_session(pages[1])
+        replacement = await new_cdp_session(context, pages[1])
         sessions.append(replacement)
         replacement_read = await _send_cdp(
             replacement,

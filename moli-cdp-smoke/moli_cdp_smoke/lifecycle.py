@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
+from .diagnostics import record_phase
 from .assertions import SmokeError
 
 
@@ -18,6 +19,7 @@ async def _pending_task(
     ready: asyncio.Future[None],
     deadline: float,
 ) -> AsyncIterator[asyncio.Task[Any]]:
+    record_phase(token, "evaluation_sent")
     pending = asyncio.create_task(evaluate(
         f"new Promise(() => {{ console.debug({token!r}); }})"
     ))
@@ -31,8 +33,10 @@ async def _pending_task(
             raise SmokeError(f"evaluation completed before owner teardown: {result!r}")
         if ready not in done:
             raise SmokeError(f"evaluation did not enter its pending state before the deadline; marker={token}")
+        record_phase(token, "evaluation_pending")
         yield pending
     finally:
+        record_phase(token, "evaluation_cleanup")
         ready.cancel()
         if not pending.done():
             pending.cancel()

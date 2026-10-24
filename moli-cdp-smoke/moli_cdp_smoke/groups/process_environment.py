@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+
 import asyncio
 import contextlib
 from typing import Any
 
+from ..diagnostics import new_cdp_session
 from ..assertions import SmokeError, assert_equal, record
 from ..config import is_moli_browser
 
@@ -142,8 +144,8 @@ async def run_process_environment_group(
         peer = await peer_context.new_page()
         await owner.goto(f"{fixture}/plain")
         await peer.goto(f"{fixture}/plain")
-        control = await owner_context.new_cdp_session(owner)
-        other = await peer_context.new_cdp_session(peer)
+        control = await new_cdp_session(owner_context, owner)
+        other = await new_cdp_session(peer_context, peer)
         sessions.extend([control, other])
         baseline = await peer.evaluate(READ_DEFAULTS)
         await _install_workers(peer)
@@ -199,7 +201,7 @@ async def run_process_environment_group(
         assert_equal(await late.evaluate(READ_DEFAULTS), baseline, "no stale navigation replay")
         record(results, "process_environment_detach_restores_all_isolates")
 
-        control = await owner_context.new_cdp_session(owner)
+        control = await new_cdp_session(owner_context, owner)
         sessions.append(control)
         await control.send("Emulation.setLocaleOverride", {"locale": "de_DE"})
         await control.send("Emulation.setTimezoneOverride", {"timezoneId": "Asia/Shanghai"})
@@ -214,7 +216,7 @@ async def run_process_environment_group(
         record(results, "process_environment_target_close_releases_claims")
 
         replacement = await owner_context.new_page()
-        control = await owner_context.new_cdp_session(replacement)
+        control = await new_cdp_session(owner_context, replacement)
         sessions.append(control)
         await control.send("Emulation.setLocaleOverride", {"locale": "de_DE"})
         await control.send("Emulation.setTimezoneOverride", {"timezoneId": "Asia/Shanghai"})

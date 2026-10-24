@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+
 import asyncio
 from typing import Any, Callable, Awaitable
 
+from ..diagnostics import new_cdp_session
 from . import SmokeState
 from ..assertions import SmokeError, assert_equal, wait_until
 from ..pdf_document import assert_pdf_envelope
@@ -341,7 +343,7 @@ async def _verify_playwright_pdf_sample(state: SmokeState) -> None:
 
 async def _verify_playwright_cdp_session_sample(state: SmokeState) -> None:
     async def body(context: Any, page: Any) -> None:
-        session = await context.new_cdp_session(page)
+        session = await new_cdp_session(context, page)
         try:
             version = await session.send("Browser.getVersion")
             if not version.get("protocolVersion"):
@@ -357,7 +359,7 @@ async def _verify_playwright_cdp_session_sample(state: SmokeState) -> None:
 
 async def _verify_playwright_cdp_session_network_event_sample(state: SmokeState) -> None:
     async def body(context: Any, page: Any) -> None:
-        session = await context.new_cdp_session(page)
+        session = await new_cdp_session(context, page)
         events: list[dict[str, Any]] = []
         try:
             session.on("Network.requestWillBeSent", lambda event: events.append(event))
@@ -376,7 +378,7 @@ async def _verify_playwright_cdp_session_network_event_sample(state: SmokeState)
 
 async def _verify_playwright_cdp_session_error_sample(state: SmokeState) -> None:
     async def body(context: Any, page: Any) -> None:
-        session = await context.new_cdp_session(page)
+        session = await new_cdp_session(context, page)
         try:
             error = await _expect_async_error(session.send("ThisCommand.DoesNotExist"))
             if "ThisCommand.DoesNotExist" not in error:
@@ -390,7 +392,7 @@ async def _verify_playwright_cdp_session_error_sample(state: SmokeState) -> None
 
 async def _verify_playwright_main_frame_cdp_session_sample(state: SmokeState) -> None:
     async def body(context: Any, page: Any) -> None:
-        session = await context.new_cdp_session(page.main_frame)
+        session = await new_cdp_session(context, page.main_frame)
         try:
             await session.send("Runtime.enable")
             await session.send("Runtime.evaluate", {"expression": "window.__pwFrameSession = 'ok'"})
@@ -405,7 +407,7 @@ async def _verify_playwright_main_frame_cdp_session_sample(state: SmokeState) ->
 
 async def _verify_playwright_cdp_session_detach_sample(state: SmokeState) -> None:
     async def body(context: Any, page: Any) -> None:
-        session = await context.new_cdp_session(page)
+        session = await new_cdp_session(context, page)
         result = await session.send("Runtime.evaluate", {"expression": "1 + 2", "returnByValue": True})
         assert_equal(result.get("result", {}).get("value"), 3, "Playwright CDPSession before detach")
         await session.detach()
