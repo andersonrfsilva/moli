@@ -710,36 +710,7 @@ fn html_element_semantics(local_name: &str) -> (LayoutElementCategory, Option<La
 }
 
 fn html_input_control_kind(value: Option<&str>) -> LayoutInputControlKind {
-    use LayoutInputControlKind as Input;
-    match value
-        .map(str::trim)
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "button" => Input::Button,
-        "checkbox" => Input::Checkbox,
-        "color" => Input::Color,
-        "date" => Input::Date,
-        "datetime-local" => Input::DateTimeLocal,
-        "email" => Input::Email,
-        "file" => Input::File,
-        "hidden" => Input::Hidden,
-        "image" => Input::Image,
-        "month" => Input::Month,
-        "number" => Input::Number,
-        "password" => Input::Password,
-        "radio" => Input::Radio,
-        "range" => Input::Range,
-        "reset" => Input::Reset,
-        "search" => Input::Search,
-        "submit" => Input::Submit,
-        "tel" => Input::Telephone,
-        "time" => Input::Time,
-        "url" => Input::Url,
-        "week" => Input::Week,
-        _ => Input::Text,
-    }
+    LayoutInputControlKind::from_type_attribute(value)
 }
 
 fn numeric_dimension_attribute(host: &DomHost, node: DomHandle, name: &str) -> Option<f32> {

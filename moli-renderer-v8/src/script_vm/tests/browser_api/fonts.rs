@@ -3,6 +3,7 @@ use base64::Engine;
 use std::time::Duration;
 
 mod automatic;
+mod automatic_controls;
 mod descriptor_ranges;
 mod layers;
 mod matching;

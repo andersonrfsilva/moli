@@ -176,6 +176,39 @@ pub enum LayoutInputControlKind {
 }
 
 impl LayoutInputControlKind {
+    pub fn from_type_attribute(value: Option<&str>) -> Self {
+        use LayoutInputControlKind as Input;
+        match value
+            .map(str::trim)
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "button" => Input::Button,
+            "checkbox" => Input::Checkbox,
+            "color" => Input::Color,
+            "date" => Input::Date,
+            "datetime-local" => Input::DateTimeLocal,
+            "email" => Input::Email,
+            "file" => Input::File,
+            "hidden" => Input::Hidden,
+            "image" => Input::Image,
+            "month" => Input::Month,
+            "number" => Input::Number,
+            "password" => Input::Password,
+            "radio" => Input::Radio,
+            "range" => Input::Range,
+            "reset" => Input::Reset,
+            "search" => Input::Search,
+            "submit" => Input::Submit,
+            "tel" => Input::Telephone,
+            "time" => Input::Time,
+            "url" => Input::Url,
+            "week" => Input::Week,
+            _ => Input::Text,
+        }
+    }
+
     pub const fn debug_name(self) -> &'static str {
         match self {
             Self::Button => "form-input-button",

@@ -49,6 +49,7 @@ pub use capture::{
 };
 pub use environment::LayoutEnvironment;
 pub use error::LayoutError;
+pub use form::form_control_text;
 pub use layout_tree::{
     FrozenCoordinateSpace, FrozenEmbeddedFrame, FrozenLayoutBox, FrozenLayoutTree,
     GeometryProvider, LayoutAnswers, LayoutBoxGeometry, LayoutBoxModel, LayoutCaretPosition,

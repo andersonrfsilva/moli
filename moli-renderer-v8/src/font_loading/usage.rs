@@ -3,6 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use moli_layout::{LayoutFormControlKind, LayoutInputControlKind, form_control_text};
+
 use style::{
     properties::ComputedValues,
     servo_arc::Arc,
@@ -55,8 +57,8 @@ pub(crate) fn collect_font_uses(
         if !native.is_element() {
             continue;
         }
-        let Some((style, before, after)) = observation.read(node).into_element_computed_values()
-        else {
+        let read = observation.read(node);
+        let Some(style) = read.computed_values() else {
             continue;
         };
         if style.clone_display().is_none()
@@ -66,21 +68,44 @@ pub(crate) fn collect_font_uses(
         {
             continue;
         }
-        for pseudo in before.iter().chain(after.iter()) {
+        let control = native.as_element().and_then(|element| {
+            let kind = if element.is_html_input() {
+                LayoutFormControlKind::Input(LayoutInputControlKind::from_type_attribute(
+                    element.attribute("type"),
+                ))
+            } else if element.is_html_textarea() {
+                LayoutFormControlKind::TextArea
+            } else {
+                return None;
+            };
+            Some(form_control_text(
+                kind,
+                &text_control_value(host, node),
+                element.attribute("placeholder").unwrap_or(""),
+            ))
+        });
+        let placeholder = control
+            .as_ref()
+            .filter(|(_, placeholder)| *placeholder)
+            .and_then(|_| read.pseudo_computed_values("placeholder"));
+        let marker = style
+            .clone_display()
+            .is_list_item()
+            .then(|| read.pseudo_computed_values("marker"))
+            .flatten();
+        let (_, before, after) = read.into_element_computed_values().expect("observed style");
+        for pseudo in marker.iter().chain(before.iter()).chain(after.iter()) {
             if !pseudo.clone_display().is_none() {
                 collector.generated_text(pseudo);
             }
         }
-        if matches!(
-            native.as_element().map(|element| element.local_name()),
-            Some("input" | "textarea")
-        ) {
-            let value = text_control_value(host, node);
-            if !value.is_empty() {
-                collector.text(&style, &value);
-            } else if let Some(placeholder) = host.dom_host().get_attribute(node, "placeholder") {
-                collector.text(&style, &placeholder);
-            }
+        if let Some((text, is_placeholder)) = control {
+            let text_style = if is_placeholder {
+                placeholder.as_ref().unwrap_or(&style)
+            } else {
+                &style
+            };
+            collector.text(text_style, &text);
             // A textarea's child text is its default value, not its live value.
             continue;
         }
