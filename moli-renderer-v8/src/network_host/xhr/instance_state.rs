@@ -20,12 +20,7 @@ pub(crate) const XHR_OVERRIDE_MIME_TYPE_SLOT: &str = "__lmXhrOverrideMimeType";
 pub(crate) const XHR_TIMEOUT_SLOT: &str = "__lmXhrTimeout";
 pub(crate) const XHR_TIMEOUT_START_MS_SLOT: &str = "__lmXhrTimeoutStartMs";
 pub(crate) const XHR_TIMEOUT_TIMER_SLOT: &str = "__lmXhrTimeoutTimer";
-pub(crate) const XHR_PROGRESS_TIMER_SLOT: &str = "__lmXhrProgressTimer";
-pub(crate) const XHR_PROGRESS_PENDING_SLOT: &str = "__lmXhrProgressPending";
-pub(crate) const XHR_PROGRESS_HAS_DISPATCHED_SLOT: &str = "__lmXhrProgressHasDispatched";
-pub(crate) const XHR_PROGRESS_LENGTH_COMPUTABLE_SLOT: &str = "__lmXhrProgressLengthComputable";
-pub(crate) const XHR_PROGRESS_LOADED_SLOT: &str = "__lmXhrProgressLoaded";
-pub(crate) const XHR_PROGRESS_TOTAL_SLOT: &str = "__lmXhrProgressTotal";
+pub(super) const XHR_PROGRESS_STATE_SLOT: &str = "__lmXhrProgressState";
 pub(crate) const XHR_WITH_CREDENTIALS_SLOT: &str = "__lmXhrWithCredentials";
 const XHR_EXECUTION_CONTEXT_BINDING_SLOT: &str = "__lmXhrExecutionContextBinding";
 
@@ -83,18 +78,8 @@ struct XmlHttpRequestStateDeclaration {
     timeout_start_ms: (),
     #[webapi(slot = XHR_TIMEOUT_TIMER_SLOT, init = 0)]
     timeout_timer: (),
-    #[webapi(slot = XHR_PROGRESS_TIMER_SLOT, init = 0)]
-    progress_timer: (),
-    #[webapi(slot = XHR_PROGRESS_PENDING_SLOT, init = false)]
-    progress_pending: (),
-    #[webapi(slot = XHR_PROGRESS_HAS_DISPATCHED_SLOT, init = false)]
-    progress_has_dispatched: (),
-    #[webapi(slot = XHR_PROGRESS_LENGTH_COMPUTABLE_SLOT, init = false)]
-    progress_length_computable: (),
-    #[webapi(slot = XHR_PROGRESS_LOADED_SLOT, init = 0)]
-    progress_loaded: (),
-    #[webapi(slot = XHR_PROGRESS_TOTAL_SLOT, init = 0)]
-    progress_total: (),
+    #[webapi(slot = XHR_PROGRESS_STATE_SLOT, init = "null")]
+    progress: (),
     #[webapi(slot = XHR_WITH_CREDENTIALS_SLOT, init = false)]
     with_credentials: (),
     #[webapi(slot = "onreadystatechange", init = "null")]

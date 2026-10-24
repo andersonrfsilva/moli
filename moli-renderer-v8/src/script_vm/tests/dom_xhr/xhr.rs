@@ -2278,6 +2278,102 @@ __streamingXhr.send();
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn streaming_xhr_progress_gate_can_expire_without_pending_data_and_cancel_on_reopen() {
+    let loader = ResourceRequestClient::new(&moli_fetch::FetchConfig::default()).expect("loader");
+    let mut vm = new_storage_test_vm("https://xhr-progress-gate.test/");
+    vm.set_fetch_subresource_interception(true, Some(crate::types::SubresourceResourceType::Xhr));
+    vm.eval(
+        r#"
+globalThis.__xhrGate = new XMLHttpRequest();
+globalThis.__xhrGateEvents = [];
+__xhrGate.onprogress = event => __xhrGateEvents.push(["progress", event.loaded, __xhrGate.responseText]);
+__xhrGate.onabort = () => __xhrGateEvents.push(["abort"]);
+__xhrGate.onload = () => __xhrGateEvents.push(["load", __xhrGate.responseText]);
+__xhrGate.open("GET", "/stream");
+__xhrGate.send();
+"#,
+    )
+    .expect("streaming XHR should be intercepted");
+    let pending = vm.take_pending_subresource_fetch_infos();
+    assert_eq!(pending.len(), 1);
+    let request = &pending[0];
+    let internal_id = request.internal_id;
+    let body_source_id = crate::network_host::new_network_body_source_id();
+    vm.start_streaming_async_subresource_fetch(crate::types::AsyncSubresourceStreamingStarted {
+        skip_fetch_security_validation: false,
+        response_filter: None,
+        internal_id,
+        request_url: request.url.clone(),
+        request_method: "GET".to_owned(),
+        request_headers: Vec::new().into(),
+        request_body: None,
+        body_source_id,
+        head: moli_fetch::ResponseHead {
+            final_url: request.url.clone(),
+            status: 200,
+            status_text: None,
+            headers: vec![("Content-Type".to_owned(), b"text/plain".to_vec())],
+            request_cookie_report: None,
+            cookie_set_reports: Vec::new(),
+            redirected: false,
+            redirect_chain: Vec::new(),
+            from_cache: false,
+            negotiated_http_version: None,
+        },
+        network_request_headers: None,
+    })
+    .expect("streaming response head");
+
+    vm.append_streaming_async_subresource_fetch_chunk(body_source_id, b"a".to_vec());
+    assert!(
+        vm.ms_to_next_timeout().is_some(),
+        "first progress starts the gate even without a deferred update"
+    );
+    vm.advance_timers_until_deadline_for_test(&loader)
+        .await
+        .expect("a gate without pending data should expire quietly");
+    assert!(vm.ms_to_next_timeout().is_none());
+    assert_eq!(
+        vm.eval("JSON.stringify(__xhrGateEvents)")
+            .expect("first progress"),
+        r#"[["progress",1,"a"]]"#
+    );
+
+    vm.append_streaming_async_subresource_fetch_chunk(body_source_id, b"b".to_vec());
+    vm.append_streaming_async_subresource_fetch_chunk(body_source_id, b"c".to_vec());
+    vm.append_streaming_async_subresource_fetch_chunk(body_source_id, b"d".to_vec());
+    assert_eq!(
+        vm.eval("JSON.stringify(__xhrGateEvents)")
+            .expect("coalesced progress"),
+        r#"[["progress",1,"a"],["progress",2,"ab"]]"#
+    );
+    vm.advance_timers_until_deadline_for_test(&loader)
+        .await
+        .expect("the next gate should publish only the latest snapshot");
+    assert_eq!(
+        vm.eval("JSON.stringify(__xhrGateEvents)")
+            .expect("deferred progress"),
+        r#"[["progress",1,"a"],["progress",2,"ab"],["progress",4,"abcd"]]"#
+    );
+    assert!(vm.ms_to_next_timeout().is_none());
+
+    vm.append_streaming_async_subresource_fetch_chunk(body_source_id, b"e".to_vec());
+    vm.append_streaming_async_subresource_fetch_chunk(body_source_id, b"f".to_vec());
+    vm.eval("__xhrGate.abort(); __xhrGate.open('GET', 'data:,new'); __xhrGate.send();")
+        .expect("abort and replace a request with deferred progress");
+    vm.eval("0").expect("replacement completion checkpoint");
+    vm.advance_timers_until_deadline_for_test(&loader)
+        .await
+        .expect("an obsolete progress timer must not affect the replacement");
+    assert_eq!(
+        vm.eval("JSON.stringify([__xhrGate.readyState, __xhrGate.responseText, __xhrGateEvents.slice(-4)])")
+            .expect("replacement response and remaining progress events"),
+        r#"[4,"new",[["progress",5,"abcde"],["abort"],["progress",3,"new"],["load","new"]]]"#
+    );
+    assert!(vm.ms_to_next_timeout().is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn streaming_subresource_finish_preserves_response_head_cache_state() {
     let load_owner =
         crate::network::ResourceRequestClient::new(&moli_fetch::FetchConfig::default())
