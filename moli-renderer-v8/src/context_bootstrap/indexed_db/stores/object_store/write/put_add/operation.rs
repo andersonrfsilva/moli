@@ -27,18 +27,15 @@ pub(super) fn object_store_write_callback<'s>(
     }
     let explicit_key = {
         v8::tc_scope!(let scope, scope);
-        match parse_idb_key(scope, key) {
-            Ok(key) => key,
-            Err(message) => {
-                if scope.has_caught() {
-                    scope.rethrow();
-                } else {
-                    let error = dom_exception_value(scope, message, "DataError");
-                    scope.throw_exception(error);
-                    scope.rethrow();
-                }
-                return;
-            }
+        let converted = parse_idb_key(scope, key);
+        if scope.has_caught() {
+            scope.rethrow();
+            return;
+        }
+        match converted {
+            Ok(Some(key)) => ObjectStoreKey::Key(key),
+            Ok(None) => ObjectStoreKey::Missing,
+            Err(_) => ObjectStoreKey::Invalid,
         }
     };
     // Key conversion can invoke getters too, including one that aborts the transaction.

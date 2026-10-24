@@ -1,9 +1,8 @@
 use super::{
-    CursorDirection, ExtractedObjectStoreKey, INDEXED_DB_CURSOR_ENTRIES_SLOT,
-    INDEXED_DB_CURSOR_KEY_ONLY_SLOT, INDEXED_DB_CURSOR_POSITION_SLOT,
-    INDEXED_DB_CURSOR_REQUEST_SLOT, INDEXED_DB_INDEX_MARKER_SLOT,
+    CursorDirection, INDEXED_DB_CURSOR_ENTRIES_SLOT, INDEXED_DB_CURSOR_KEY_ONLY_SLOT,
+    INDEXED_DB_CURSOR_POSITION_SLOT, INDEXED_DB_CURSOR_REQUEST_SLOT, INDEXED_DB_INDEX_MARKER_SLOT,
     INDEXED_DB_OBJECT_STORE_NAME_SLOT, INDEXED_DB_PENDING_CURSOR_POSITION_SLOT,
-    INDEXED_DB_PENDING_CURSOR_SLOT, INDEXED_DB_TRANSACTION_ACTIVE_SLOT, Key,
+    INDEXED_DB_PENDING_CURSOR_SLOT, INDEXED_DB_TRANSACTION_ACTIVE_SLOT, Key, ObjectStoreKey,
     PreparedObjectStoreKey, PreparedObjectStoreWrite, TransactionHandle, TransactionMode,
     create_request_object, cursor_direction_from_cursor, cursor_entry_object, deserialize_js_value,
     dom_exception_value, execute_object_store_write_request, extract_object_store_key_from_value,
