@@ -27,6 +27,9 @@ as infrastructure trouble or Chromium instability requires evidence and does
 not change its exit status.
 The workflow has no PR-wide cancellation group: pushing a new revision must
 not cancel an older run before its Chromium suite and diagnostics finish.
+Once a PR is merged or closed, the trusted `Cancel closed PR CI` workflow
+requests cancellation of every unfinished CI run associated with that PR,
+including queued runs for older revisions.
 
 Each worker records the actual discovery version, engine, executable command,
 and PID for its managed browser and any nested browser launches. Chromium
