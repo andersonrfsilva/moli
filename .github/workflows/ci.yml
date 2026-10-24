@@ -441,7 +441,11 @@ jobs:
         if: ${{ always() }}
         env:
           CHROMIUM_SMOKE_RESULT: ${{ needs.cdp-smoke-chromium.result }}
-        run: test "$CHROMIUM_SMOKE_RESULT" = success
+        run: |
+          if [ "$CHROMIUM_SMOKE_RESULT" != success ]; then
+            echo "::error::Chromium reference smoke ended with '$CHROMIUM_SMOKE_RESULT'; inspect the 'CDP smoke (Chromium)' job. The preceding step reports the Moli suite result."
+            exit 1
+          fi
       - name: Upload diagnostics
         if: ${{ always() }}
         continue-on-error: true
