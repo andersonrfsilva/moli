@@ -31,6 +31,41 @@ class _Socket:
 
 
 class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_lone_utf16_surrogates_round_trip_in_protocol_and_trace_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            value = "high:\ud800-low:\udfff"
+            with diagnostics_scope(Path(directory) / "worker.json") as diagnostics:
+                record_wire(self, "receive", {"result": {"value": value}})
+                artifact = write_artifact("cpu-trace.json", {"functionName": value})
+            saved = json.loads((diagnostics.directory / "checkpoint.json").read_text())
+            self.assertEqual(saved["lastMessages"][0]["message"]["result"]["value"], value)
+            self.assertEqual(json.loads(Path(artifact).read_text())["functionName"], value)
+            self.assertEqual(diagnostics.errors, [])
+
+    async def test_failed_trace_finalization_still_preserves_received_chunks(self) -> None:
+        from pyee import EventEmitter
+        from moli_cdp_smoke.groups.tracing import _verify_agent_browser_profiler_configuration
+
+        class Session(EventEmitter):
+            async def send(self, method: str, params: Any = None) -> dict[str, Any]:
+                if method == "Tracing.end":
+                    self.emit("Tracing.dataCollected", {"value": [{"name": "received chunk"}]})
+                    raise RuntimeError("tracing finalization failed")
+                return {}
+
+        state = SimpleNamespace(
+            cdp=Session(), fixture="http://fixture.test",
+            page=SimpleNamespace(goto=AsyncMock(), evaluate=AsyncMock(side_effect=RuntimeError("workload failed"))),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            with diagnostics_scope(Path(directory) / "worker.json") as diagnostics:
+                with self.assertRaisesRegex(RuntimeError, "tracing finalization failed") as caught:
+                    await _verify_agent_browser_profiler_configuration(state)
+            self.assertIn("workload failed", str(caught.exception.__context__))
+            trace = json.loads((diagnostics.directory / "tracing-cpu.json").read_text())
+            self.assertEqual(trace["traceEvents"], [{"name": "received chunk"}])
+            self.assertIsNone(trace["tracingComplete"])
+
     async def test_unhandled_callback_failure_is_retained_and_previous_handler_restored(self) -> None:
         loop = asyncio.get_running_loop()
         original = loop.get_exception_handler()

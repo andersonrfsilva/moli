@@ -383,26 +383,28 @@ async def _verify_agent_browser_profiler_configuration(state: SmokeState) -> Non
             finally:
                 await closed_page.close()
         finally:
-            await state.cdp.send("Tracing.end")
-            await wait_until(
-                lambda: any(event["method"] == "Tracing.tracingComplete" for event in events),
-                "Tracing.tracingComplete for agent-browser profiler configuration",
-            )
-            trace_events = [
-                trace_event
-                for event in events
-                if event["method"] == "Tracing.dataCollected"
-                for trace_event in event["params"].get("value", [])
-            ]
-            complete = next(
-                event["params"]
-                for event in reversed(events)
-                if event["method"] == "Tracing.tracingComplete"
-            )
-            artifact = write_artifact("tracing-cpu.json", {
-                "traceEvents": trace_events, "expectedFunctions": sorted(expected_functions),
-                "tracingComplete": complete,
-            })
+            try:
+                await state.cdp.send("Tracing.end")
+                await wait_until(
+                    lambda: any(event["method"] == "Tracing.tracingComplete" for event in events),
+                    "Tracing.tracingComplete for agent-browser profiler configuration",
+                )
+            finally:
+                trace_events = [
+                    trace_event
+                    for event in events
+                    if event["method"] == "Tracing.dataCollected"
+                    for trace_event in event["params"].get("value", [])
+                ]
+                complete = next((
+                    event["params"]
+                    for event in reversed(events)
+                    if event["method"] == "Tracing.tracingComplete"
+                ), None)
+                artifact = write_artifact("tracing-cpu.json", {
+                    "traceEvents": trace_events, "expectedFunctions": sorted(expected_functions),
+                    "tracingComplete": complete,
+                })
         _assert_trace_event_array(trace_events, "agent-browser profiler configuration")
         profile = _assert_cpu_profile_events(trace_events, expected_functions)
         assert_equal(complete.get("dataLossOccurred"), False, "CPU profile data loss")

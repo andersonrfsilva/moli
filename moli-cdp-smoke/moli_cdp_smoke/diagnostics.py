@@ -106,7 +106,10 @@ class Diagnostics:
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
             temporary = path.with_suffix(path.suffix + ".tmp")
-            temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+            # CDP can carry lone UTF-16 surrogates. Escape them losslessly so
+            # legitimate JavaScript strings cannot break UTF-8 diagnostics.
+            temporary.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
+                                 encoding="utf-8")
             os.replace(temporary, path)
         except OSError as error:
             if len(self.errors) < 16:
