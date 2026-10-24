@@ -4998,15 +4998,11 @@ fn indexed_db_cursor_update_and_delete_fail_in_readonly_transactions() {
       const req = db.transaction("kv").objectStore("kv").openCursor();
       req.onsuccess = () => {
         const cursor = req.result;
-        const updateReq = cursor.update({ value: 2 });
-        updateReq.onerror = () => {
-          const deleteReq = cursor.delete();
-          deleteReq.onerror = () => {
-            globalThis.__indexedDbCursorReadonlyError = [
-              updateReq.error && updateReq.error.name,
-              deleteReq.error && deleteReq.error.name
-            ].join("|");
-          };
+        let updateError, deleteError;
+        try { cursor.update({ value: 2 }); } catch (error) { updateError = error.name; }
+        try { cursor.delete(); } catch (error) { deleteError = error.name; }
+        req.transaction.oncomplete = () => {
+          globalThis.__indexedDbCursorReadonlyError = [updateError, deleteError].join("|");
         };
       };
     };
