@@ -4,6 +4,7 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
+from ..navigation import navigate_cdp
 from ..assertions import SmokeError, assert_equal, record_contract, wait_until
 from ..config import is_moli_browser
 from ..helpers import attach_cdp_event_collector
@@ -2159,29 +2160,18 @@ async def _network_profiles_are_target_local_with_shared_native_environment(
         )
 
         tokens = ("multi-page-profile-a", "multi-page-profile-b")
-        navigation_results = await asyncio.gather(
-            session_a.send(
-                "Page.navigate",
-                {"url": f"{fixture}/profile-headers?token={tokens[0]}"},
-            ),
-            session_b.send(
-                "Page.navigate",
-                {"url": f"{fixture}/profile-headers?token={tokens[1]}"},
-            ),
+        await asyncio.gather(
+            navigate_cdp(session_a, f"{fixture}/profile-headers?token={tokens[0]}"),
+            navigate_cdp(session_b, f"{fixture}/profile-headers?token={tokens[1]}"),
         )
-        if any(result.get("errorText") for result in navigation_results):
-            raise SmokeError(f"profile navigation failed: {navigation_results!r}")
         wire_profiles: list[Any] = [None, None]
 
         async def collect_wire_profile(index: int, token: str) -> None:
             async def read_profile() -> bool:
-                try:
-                    profile = await asyncio.to_thread(
-                        read_fixture_json,
-                        f"{fixture}/profile-result?token={token}",
-                    )
-                except Exception:
-                    return False
+                profile = await asyncio.to_thread(
+                    read_fixture_json,
+                    f"{fixture}/profile-result?token={token}",
+                )
                 if profile is None:
                     return False
                 wire_profiles[index] = profile
@@ -2201,30 +2191,13 @@ async def _network_profiles_are_target_local_with_shared_native_environment(
         runtime_profiles: list[Any] = [None, None]
 
         async def collect_runtime_profile(index: int, session: Any) -> None:
-            last_observation: Any = None
-            for _ in range(100):
-                try:
-                    response = await session.send(
-                        "Runtime.evaluate",
-                        {
-                            "expression": runtime_profile,
-                            "returnByValue": True,
-                        },
-                    )
-                except Exception as error:
-                    last_observation = f"{type(error).__name__}: {error}"
-                    await asyncio.sleep(0.05)
-                    continue
-                last_observation = response
-                profile = response.get("result", {}).get("value")
-                if not isinstance(profile, dict):
-                    await asyncio.sleep(0.05)
-                    continue
-                runtime_profiles[index] = profile
-                return
-            raise SmokeError(
-                f"profile target {index} runtime unavailable: {last_observation!r}"
+            response = await session.send(
+                "Runtime.evaluate", {"expression": runtime_profile, "returnByValue": True},
             )
+            profile = response.get("result", {}).get("value")
+            if response.get("exceptionDetails") or not isinstance(profile, dict):
+                raise SmokeError(f"profile target {index} runtime unavailable: {response!r}")
+            runtime_profiles[index] = profile
 
         await asyncio.gather(
             *(

@@ -8,6 +8,7 @@ from typing import Any
 
 from moli_cdp_smoke.assertions import SmokeError
 from moli_cdp_smoke.groups import layout_screenshot as navigation
+from moli_cdp_smoke.navigation import navigate_cdp
 
 
 class _Client:
@@ -127,6 +128,68 @@ class DocumentLoadTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
+
+
+class _Session:
+    def __init__(self, *, early: bool = False, complete: bool = True,
+                 blocked: str | None = None) -> None:
+        self.listeners: dict[str, list[Any]] = {}
+        self.commands: list[str] = []
+        self.early, self.complete, self.blocked = early, complete, blocked
+
+    def on(self, method: str, handler: Any) -> None:
+        self.listeners.setdefault(method, []).append(handler)
+
+    def remove_listener(self, method: str, handler: Any) -> None:
+        self.listeners[method].remove(handler)
+
+    def emit(self, message: dict[str, Any]) -> None:
+        for handler in self.listeners.get(message["method"], []):
+            handler(message["params"])
+
+    def load(self) -> None:
+        self.emit(_commit("new"))
+        self.emit(_load("new"))
+
+    async def send(self, method: str, params: Any = None) -> dict[str, Any]:
+        self.commands.append(method)
+        if method == self.blocked:
+            await asyncio.Event().wait()
+        if method == "Page.setLifecycleEventsEnabled":
+            self.emit(_commit("old"))
+            self.emit(_load("old"))
+        if method == "Page.navigate":
+            self.emit(_load("new", frame="child"))
+            if self.complete:
+                if self.early:
+                    self.load()
+                else:
+                    asyncio.get_running_loop().call_soon(self.load)
+            return {"frameId": "frame", "loaderId": "new"}
+        return {}
+
+
+class SessionDocumentLoadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reply_and_matching_events_can_arrive_in_either_order(self) -> None:
+        for early in [True, False]:
+            with self.subTest(early=early):
+                session = _Session(early=early)
+                await navigate_cdp(session, "http://fixture.test/plain")
+                self.assertTrue(all(not handlers for handlers in session.listeners.values()))
+
+    async def test_replayed_and_child_events_do_not_complete_the_navigation(self) -> None:
+        session = _Session(complete=False)
+        with self.assertRaisesRegex(SmokeError, "frame=frame loader=new.*committed=False"):
+            await navigate_cdp(session, "http://fixture.test/plain", timeout=0.01)
+        self.assertTrue(all(not handlers for handlers in session.listeners.values()))
+
+    async def test_setup_and_navigation_share_the_same_deadline(self) -> None:
+        for method in ["Page.enable", "Page.setLifecycleEventsEnabled", "Page.navigate"]:
+            with self.subTest(method=method):
+                session = _Session(blocked=method)
+                with self.assertRaisesRegex(SmokeError, "navigation reply pending"):
+                    await navigate_cdp(session, "http://fixture.test/plain", timeout=0.01)
+                self.assertTrue(all(not handlers for handlers in session.listeners.values()))
 
 
 if __name__ == "__main__":

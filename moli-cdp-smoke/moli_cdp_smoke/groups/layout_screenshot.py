@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import math
-from collections import deque
-from typing import Any, Literal
+from typing import Any
 
 from ..assertions import SmokeError, assert_equal, record
+from ..navigation import (
+    command as _success, navigate as _navigate, receive_response as _response_for_id,
+    wait_for_load as _wait_for_load,
+)
 from ..jpeg_image import jpeg_dimensions
 from ..png_image import decode_png
 from ..raw_cdp import RawCdpClient, connect_raw_cdp, discover_websocket_url
@@ -20,136 +23,6 @@ SCREENSHOT_UNSUPPORTED = (
 SCREENCAST_UNSUPPORTED = (
     "Page.startScreencast is not supported: renderer layout is disabled."
 )
-
-
-async def _response_for_id(
-    client: RawCdpClient,
-    message_id: int,
-    *,
-    timeout: float = 10.0,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    seen: list[dict[str, Any]] = []
-    deadline = asyncio.get_running_loop().time() + timeout
-    try:
-        async with asyncio.timeout_at(deadline):
-            while True:
-                message = await client.recv()
-                seen.append(message)
-                if message.get("id") == message_id:
-                    return message, seen
-    except TimeoutError as error:
-        raise SmokeError(
-            f"timed out waiting for CDP response id={message_id}; seen={seen[-20:]!r}"
-        ) from error
-
-
-async def _success(
-    client: RawCdpClient,
-    method: str,
-    params: dict[str, Any] | None = None,
-    *,
-    session_id: str | None = None,
-) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
-    message_id = await client.send(method, params, session_id=session_id)
-    try:
-        response, seen = await _response_for_id(client, message_id)
-    except SmokeError as error:
-        raise SmokeError(f"{method} session={session_id}: {error}") from error
-    if "error" in response:
-        raise SmokeError(f"{method} failed: {response['error']!r}")
-    result = response.get("result")
-    if not isinstance(result, dict):
-        raise SmokeError(f"{method} returned no result object: {response!r}")
-    return result, response, seen
-
-
-async def _wait_for_load(
-    client: RawCdpClient,
-    session_id: str,
-    seen: list[dict[str, Any]],
-    *,
-    frame_id: str,
-    loader_id: str | None,
-    previous_loader_id: str | None = None,
-    timeout: float = 10.0,
-) -> None:
-    # Page.loadEventFired has no Document identity. Page.enable and lifecycle
-    # enabling can replay an older document while a new navigation is pending.
-    # Require both this navigation's commit and its loader-scoped load event.
-    committed = False
-    loaded: set[str] = set()
-    trace: deque[dict[str, Any]] = deque(maxlen=20)
-
-    def observe(message: dict[str, Any]) -> bool:
-        nonlocal loader_id, committed
-        trace.append(message)
-        params = message.get("params", {})
-        if (message.get("method") == "Target.detachedFromTarget"
-                and params.get("sessionId") == session_id):
-            raise SmokeError(f"navigation session={session_id} detached: {message!r}")
-        if message.get("sessionId") != session_id:
-            return False
-        if message.get("method") == "Inspector.targetCrashed":
-            raise SmokeError(f"navigation session={session_id} crashed: {message!r}")
-        if message.get("method") == "Page.frameNavigated":
-            frame = params.get("frame", {})
-            candidate = frame.get("loaderId")
-            if frame.get("id") == frame_id and candidate and candidate != previous_loader_id:
-                # Page.reload has no loaderId in its reply. Its new main-frame
-                # commit identifies the loader; initial-document replay cannot.
-                if loader_id is None:
-                    loader_id = candidate
-                if candidate == loader_id:
-                    committed = True
-        if (message.get("method") == "Page.lifecycleEvent"
-                and params.get("frameId") == frame_id and params.get("name") == "load"
-                and params.get("loaderId")):
-            loaded.add(params["loaderId"])
-        return committed and loader_id in loaded
-
-    try:
-        async with asyncio.timeout(timeout):
-            for message in seen:
-                if observe(message):
-                    return
-            while True:
-                if observe(await client.recv()):
-                    return
-    except TimeoutError as error:
-        raise SmokeError(
-            f"timed out waiting for Document load session={session_id} frame={frame_id} "
-            f"loader={loader_id} previousLoader={previous_loader_id} "
-            f"committed={committed} loaded={sorted(loaded)!r}; seen={list(trace)!r}"
-        ) from error
-
-
-async def _navigate(
-    client: RawCdpClient,
-    session_id: str,
-    params: dict[str, Any] | None = None,
-    *,
-    method: Literal["Page.navigate", "Page.reload"] = "Page.navigate",
-) -> None:
-    await _success(client, "Page.setLifecycleEventsEnabled", {"enabled": True}, session_id=session_id)
-    previous_loader = None
-    if method == "Page.reload":
-        tree, _, _ = await _success(client, "Page.getFrameTree", session_id=session_id)
-        frame = tree["frameTree"]["frame"]
-        previous_loader = frame["loaderId"]
-    navigation, _, seen = await _success(client, method, params, session_id=session_id)
-    if navigation.get("errorText") or navigation.get("isDownload"):
-        raise SmokeError(f"{method} did not load a Document: {navigation!r}")
-    if method == "Page.navigate":
-        if not navigation.get("frameId") or not navigation.get("loaderId"):
-            raise SmokeError(f"{method} did not start a new Document: {navigation!r}")
-        frame_id, loader_id = navigation["frameId"], navigation["loaderId"]
-    else:
-        frame_id, loader_id = frame["id"], None
-    try:
-        await _wait_for_load(client, session_id, seen, frame_id=frame_id,
-                             loader_id=loader_id, previous_loader_id=previous_loader)
-    except SmokeError as error:
-        raise SmokeError(f"{method}: {error}") from error
 
 
 async def _open_target(

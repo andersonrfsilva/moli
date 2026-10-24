@@ -7,6 +7,7 @@ import urllib.request
 from typing import Any
 
 from ..assertions import SmokeError, assert_equal, record, record_contract, wait_until
+from ..navigation import navigate as navigate_document
 from ..png_image import DecodedPng, decode_png
 from ..raw_cdp import RawCdpClient, connect_raw_cdp, discover_websocket_url
 
@@ -50,30 +51,6 @@ async def _success(
     return result, seen
 
 
-async def _wait_for_load(
-    client: RawCdpClient,
-    session_id: str,
-    seen: list[dict[str, Any]],
-) -> None:
-    if any(
-        message.get("sessionId") == session_id
-        and message.get("method") == "Page.loadEventFired"
-        for message in seen
-    ):
-        return
-    deadline = asyncio.get_running_loop().time() + 10.0
-    while True:
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
-            raise SmokeError("timed out waiting for action-window Page.loadEventFired")
-        message = await asyncio.wait_for(client.recv(), timeout=remaining)
-        if (
-            message.get("sessionId") == session_id
-            and message.get("method") == "Page.loadEventFired"
-        ):
-            return
-
-
 async def _open_target(
     client: RawCdpClient,
 ) -> tuple[str, str]:
@@ -112,20 +89,8 @@ async def _open_target(
     return context_id, session_id
 
 
-async def _navigate(
-    client: RawCdpClient,
-    session_id: str,
-    url: str,
-) -> None:
-    navigation, seen = await _success(
-        client,
-        "Page.navigate",
-        {"url": url},
-        session_id=session_id,
-    )
-    if navigation.get("errorText"):
-        raise SmokeError(f"Page.navigate failed: {navigation!r}")
-    await _wait_for_load(client, session_id, seen)
+async def _navigate(client: RawCdpClient, session_id: str, url: str) -> None:
+    await navigate_document(client, session_id, {"url": url})
 
 
 async def _evaluate_json(

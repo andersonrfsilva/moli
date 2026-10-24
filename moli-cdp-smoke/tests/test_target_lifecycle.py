@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from moli_cdp_smoke.assertions import SmokeError
+from moli_cdp_smoke.navigation import DocumentLoad
 from moli_cdp_smoke.groups.target_lifecycle import (
     LifecycleProbe, assert_resources_bounded, process_resources, wait_for_resources_bounded,
 )
@@ -45,8 +46,11 @@ class TargetLifecycleTests(unittest.TestCase):
         probe.observe({"method": "Page.loadEventFired", "sessionId": "session-A"})
         probe.observe({"method": "Target.targetCreated", "params": {"targetInfo": {"targetId": "new"}}})
         self.assertEqual(probe.destroyed, {"old"})
-        self.assertEqual(probe.loaded, {"session-A"})
-        self.assertNotIn("session-B", probe.loaded)
+        self.assertNotIn("new", probe.destroyed)
+        document = DocumentLoad("session-A", "frame", "requested-loader")
+        self.assertFalse(document.observe({"method": "Page.loadEventFired", "sessionId": "session-A"}))
+        self.assertFalse(document.observe({"method": "Page.lifecycleEvent", "sessionId": "session-B",
+                                          "params": {"frameId": "frame", "loaderId": "requested-loader", "name": "load"}}))
 
     def test_non_linux_fd_sampling_is_explicitly_unavailable(self) -> None:
         with patch("moli_cdp_smoke.groups.target_lifecycle.sys.platform", "darwin"):

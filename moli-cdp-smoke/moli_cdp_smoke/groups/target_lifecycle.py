@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..assertions import SmokeError, assert_equal, record, wait_until
+from ..navigation import navigate as navigate_document
 from ..raw_cdp import RawCdpClient, connect_raw_cdp
 from ..serve import BrowserProcess
 
@@ -88,13 +89,10 @@ class LifecycleProbe:
     def __init__(self, client: RawCdpClient) -> None:
         self.client = client
         self.destroyed: set[str] = set()
-        self.loaded: set[str] = set()
 
     def observe(self, message: dict[str, Any]) -> None:
         if message.get("method") == "Target.targetDestroyed":
             self.destroyed.add(message["params"]["targetId"])
-        elif message.get("method") == "Page.loadEventFired":
-            self.loaded.add(message["sessionId"])
 
     async def call(self, method: str, params: dict[str, Any] | None = None,
                    session: str | None = None) -> dict[str, Any]:
@@ -147,10 +145,7 @@ class LifecycleProbe:
         target = (await self.call("Target.createTarget", {"url": "about:blank"}))["targetId"]
         session = await self.attach(target)
         await self.call("Page.enable", session=session)
-        response = await self.call("Page.navigate", {"url": url}, session)
-        if response.get("errorText"):
-            raise SmokeError(f"navigation after target churn failed: {response}")
-        await self.wait_for(self.loaded, session, "post-churn Page.loadEventFired")
+        await navigate_document(self.client, session, {"url": url}, on_message=self.observe)
         value = await self.call("Runtime.evaluate", {
             "expression": "document.querySelector('main')?.textContent", "returnByValue": True,
         }, session)
