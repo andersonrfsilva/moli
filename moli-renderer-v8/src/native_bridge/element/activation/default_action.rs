@@ -1803,7 +1803,13 @@ fn send_anchor_ping_requests(
         .split_ascii_whitespace()
         .filter_map(|raw_url| base_url.join(raw_url).ok())
     {
-        crate::network_host::send_link_audit_ping(scope, runtime_ptr, ping_url, destination_url);
+        crate::network_host::send_link_audit_ping(
+            scope,
+            runtime_ptr,
+            handle,
+            ping_url,
+            destination_url,
+        );
     }
 }
 
@@ -1817,10 +1823,8 @@ fn anchor_ping_urls(runtime: &JsContextHost, handle: DomHandle) -> Option<(url::
     {
         return None;
     }
-    let base_url = runtime
-        .dom_host()
-        .document_base_url()
-        .unwrap_or_else(|| runtime.host_document().url().clone());
+    let document = runtime.dom_host().owner_document_handle(handle)?;
+    let base_url = runtime.document_base_url_for_handle(document);
     Some((base_url, ping_urls))
 }
 

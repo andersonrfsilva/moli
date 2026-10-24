@@ -170,6 +170,7 @@ pub(crate) fn navigator_send_beacon_callback<'s>(
 pub(crate) fn send_link_audit_ping(
     scope: &mut v8::PinScope<'_, '_>,
     host_ptr: *mut JsContextHost,
+    link: crate::document_runtime::DomHandle,
     ping_url: url::Url,
     destination_url: &str,
 ) {
@@ -177,7 +178,10 @@ pub(crate) fn send_link_audit_ping(
         return;
     }
     let host = unsafe { &mut *host_ptr };
-    let Some(execution_context) = host.current_runtime_window_execution_context_identity(scope)
+    let Some(owner) = host.owner_dispatch_scope_for_node(link) else {
+        return;
+    };
+    let Some(execution_context) = host.current_registered_window_execution_context_identity(owner)
     else {
         return;
     };
