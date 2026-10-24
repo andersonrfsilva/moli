@@ -3481,7 +3481,9 @@ fn indexed_db_rejects_out_of_range_integer_keys() {
         .eval_after_selected_page_tasks("String(globalThis.__indexedDbOutOfRangeKeyError)")
         .expect("indexeddb out-of-range key result should be readable");
 
-    assert_eq!(result, "TypeError");
+    // The native key model still limits numeric range. Rejecting an unsupported
+    // key is data validation, rather than a WebIDL type conversion failure.
+    assert_eq!(result, "DataError");
 }
 
 #[test]
