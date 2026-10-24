@@ -2216,6 +2216,9 @@ mod native_exception_stack_capture;
 mod no_cors_header_fill;
 mod node_event_worlds;
 mod observer_callbacks;
+
+mod svg_text_position_native_receivers;
+
 mod observer_receivers;
 mod offline_audio_float;
 mod post_parse;
