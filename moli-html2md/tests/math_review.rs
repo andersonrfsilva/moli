@@ -73,6 +73,39 @@ fn verbatim_dollars_fall_back_without_partial_math() {
 }
 
 #[test]
+fn resource_like_verbatim_fallbacks_do_not_expose_inner_math() {
+    for (open, close) in [(r"\(", r"\)"), (r"\[", r"\]")] {
+        for resource in ["[a](b)", "[a][b]", "![[a]]"] {
+            let expression = format!(r"{open}\verb|{resource}$x$|{close}");
+            let result = markdown(&format!("<p>{expression}$y$</p>"));
+            assert_eq!(math_payloads(&result), ["y"], "{expression}: {result}");
+            let text: String = Parser::new_ext(&result, Options::ENABLE_MATH)
+                .filter_map(|event| match event {
+                    Event::Text(value) => Some(value.into_string()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(text, expression, "{result}");
+        }
+    }
+}
+
+#[test]
+fn dollar_resource_rejection_retries_at_the_closing_delimiter() {
+    for resource in ["[a](b)", "[a][b]", "![[a]]"] {
+        let result = markdown(&format!("<p>${resource}$x$</p>"));
+        assert_eq!(math_payloads(&result), ["x"], "{resource}: {result}");
+        let text: String = Parser::new_ext(&result, Options::ENABLE_MATH)
+            .filter_map(|event| match event {
+                Event::Text(value) => Some(value.into_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, format!("${resource}"), "{result}");
+    }
+}
+
+#[test]
 fn mathml_alternatives_preserve_links_and_inline_semantics() {
     for (open, close) in [
         ("<a href=\"/details\">", "</a>"),

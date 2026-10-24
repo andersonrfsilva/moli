@@ -124,12 +124,20 @@ fn accept_candidate(
         return false;
     }
     let content = &text[content_start..content_end];
-    if contains_markdown_resource(content) {
+    let span = &text[start..end];
+    let has_resource = contains_markdown_resource(content);
+    // Dollar candidates must retain their currency/resource rejection and retry
+    // rules. Explicit delimiters still own a resource-like literal fallback.
+    if has_resource && !span.starts_with('\\') {
         return false;
     }
     // A rejected complete span still claims its range, so an inner dollar
     // pair cannot turn part of a verbatim fallback into a different formula.
-    let normalized = normalized_span(&text[start..end]);
+    let normalized = if has_resource {
+        None
+    } else {
+        normalized_span(span)
+    };
     candidates.push((start, end, normalized));
     true
 }
