@@ -195,6 +195,7 @@ async def _wait_for_witness(
     while asyncio.get_running_loop().time() < deadline:
         if await _witness_count(fixture) >= expected:
             return
+        # smoke-timing: poll the fixture count within the three-second deadline.
         await asyncio.sleep(0.025)
     raise SmokeError(
         f"timed out waiting for action-window witness count {expected}; "
@@ -216,6 +217,7 @@ async def _wait_for_intersections(
         )
         if state == expected:
             return
+        # smoke-timing: poll the required observer state within a two-second deadline.
         await asyncio.sleep(0.025)
     raise SmokeError(f"IntersectionObserver state: expected {expected!r}, got {state!r}")
 
@@ -243,6 +245,7 @@ async def _run_deadline_contract(
             # The final admission lands about half a window after the first.
             # A fixed deadline still releases near 1.0s; a sliding debounce
             # would move the release to roughly 1.5s.
+            # smoke-timing: space test inputs to distinguish a fixed deadline from debounce.
             await asyncio.sleep(0.25)
 
     await _wait_for_witness(fixture, 1)
@@ -392,10 +395,12 @@ async def _run_capture_barrier_contract(
 
     # These two half-window waits straddle the retired window's old deadline
     # while remaining before the second wheel's fresh deadline.
+    # smoke-timing: cross the retired window's deadline, not a document readiness wait.
     await asyncio.sleep(0.55)
     second_opened_at = asyncio.get_running_loop().time()
     await _dispatch_wheel(client, session_id, 20)
     assert_equal(await _witness_count(fixture), 1, "second wheel starts a fresh window")
+    # smoke-timing: the old deadline must not release this new window's input.
     await asyncio.sleep(0.55)
     assert_equal(
         await _witness_count(fixture),
@@ -454,6 +459,7 @@ async def _run_replacement_contract(
     await _capture_png(client, session_id)
     for delta_y in (10, 20, 30):
         await _dispatch_wheel(client, session_id, delta_y)
+    # smoke-timing: observe retirement through the one-second action-window deadline.
     await asyncio.sleep(1.1)
     state = await _evaluate_json(
         client,

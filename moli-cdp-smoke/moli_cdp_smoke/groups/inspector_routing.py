@@ -2784,4 +2784,5 @@ async def _wait_for_witness(fixture: str, *, expected_count: int) -> None:
             raise SmokeError(
                 f"timed out waiting for active-JS witness count {expected_count}: {status}"
             )
+        # smoke-timing: poll the server witness proving JavaScript entered its busy loop.
         await asyncio.sleep(0.01)

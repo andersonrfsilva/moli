@@ -157,6 +157,7 @@ def _input(method: str, params: dict[str, Any], event: str) -> Operation:
         while expected_event not in await probe.evaluate("inputEvents"):
             if asyncio.get_running_loop().time() >= deadline:
                 raise SmokeError(f"{method} did not dispatch {event} in phase {phase}: " + str(await probe.evaluate("({events:inputEvents,focus:document.hasFocus(),rect:document.getElementById('probe').getBoundingClientRect().toJSON()})")))
+            # smoke-timing: poll the dispatched DOM event within the four-second deadline.
             await asyncio.sleep(0.02)
         if method == "Input.dispatchTouchEvent":
             await probe.call(method, {"type": "touchEnd", "touchPoints": []})

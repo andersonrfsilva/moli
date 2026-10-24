@@ -161,10 +161,12 @@ async def _verify_playwright_context_route_fallback_sample(state: SmokeState) ->
 async def _verify_playwright_route_times_sample(state: SmokeState) -> None:
     async def body(context: Any, page: Any) -> None:
         hits: list[str] = []
+        entered, release = asyncio.Event(), asyncio.Event()
 
         async def once(route: Any) -> None:
             hits.append("once")
-            await asyncio.sleep(0.05)
+            entered.set()
+            await release.wait()
             await route.fulfill(
                 status=200,
                 content_type="text/html; charset=utf-8",
@@ -172,7 +174,14 @@ async def _verify_playwright_route_times_sample(state: SmokeState) -> None:
             )
 
         await context.route("**/playwright-route-times", once, times=1)
-        await page.goto(f"{state.fixture}/playwright-route-times", wait_until="load", timeout=10_000)
+        navigation = asyncio.create_task(page.goto(
+            f"{state.fixture}/playwright-route-times", wait_until="load", timeout=10_000,
+        ))
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=10)
+        finally:
+            release.set()
+            await navigation
         assert_equal(await page.text_content("body"), "intercepted", "Playwright route times first navigation")
         await page.goto(f"{state.fixture}/playwright-route-times", wait_until="load", timeout=10_000)
         assert_equal(await page.text_content("main"), "server fallback", "Playwright route times second navigation")

@@ -18,6 +18,50 @@ from moli_cdp_smoke.supervisor import WorkerJob, WorkerOutcome, _coverage_error,
 
 
 class BrowserCoverageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_strict_full_suite_rejects_every_partial_execution_path(self) -> None:
+        for options in (
+            ["--group", "network"], ["--endpoint", "http://127.0.0.1:9222"],
+            ["--fail-fast"], ["--list-groups"],
+        ):
+            with self.subTest(options=options):
+                args = parse_args(["--strict-full-suite", *options])
+                with self.assertRaisesRegex(RuntimeError, "strict full-suite mode forbids"):
+                    await run_supervisor(args)
+        for variable in ("MOLI_SMOKE_GROUPS", "MOLI_MULTI_PAGE_CASES", "MOLI_MULTI_PAGE_SHARD"):
+            with self.subTest(variable=variable), patch.dict(os.environ, {variable: "filtered"}):
+                with self.assertRaisesRegex(RuntimeError, variable):
+                    await run_supervisor(parse_args(["--strict-full-suite"]))
+
+    async def test_every_repetition_runs_and_one_failure_cannot_become_a_retry_success(self) -> None:
+        for engine in ("moli", "chromium"):
+            for failure in ("failed", "timed_out", "crashed", "skipped"):
+                with (self.subTest(engine=engine, failure=failure),
+                      tempfile.TemporaryDirectory() as directory,
+                      patch.dict(os.environ, {name: "" for name in (
+                          "MOLI_SMOKE_GROUPS", "MOLI_MULTI_PAGE_CASES", "MOLI_MULTI_PAGE_SHARD",
+                      )})):
+                    expected = [(group.name, attempt)
+                                for group in resolve_group_selection().groups
+                                for attempt in (1, 2)]
+                    seen = []
+
+                    async def worker(job, output, timeout):
+                        seen.append((job.group.name, job.attempt))
+                        status = failure if len(seen) == 1 else "passed"
+                        return WorkerOutcome(job, status, 0, 1 if status != "passed" else 0,
+                                             output / "log", output / "result", 1)
+
+                    args = parse_args(["--browser", engine, "--strict-full-suite", "--repeat", "2",
+                                       "--jobs", "1", "--output-dir", directory])
+                    with patch("moli_cdp_smoke.supervisor._run_worker_job", worker):
+                        code, summary = await run_supervisor(args)
+                    self.assertEqual(code, 1)
+                    self.assertFalse(summary["ok"])
+                    self.assertTrue(summary["strictFullSuite"])
+                    self.assertEqual(seen, expected)
+                    self.assertEqual(summary["groups"][0]["status"], failure)
+                    self.assertEqual(summary["groups"][1]["status"], "passed")
+
     async def test_both_engines_schedule_every_default_group(self) -> None:
         schedules = {}
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"MOLI_SMOKE_GROUPS": ""}):

@@ -436,7 +436,7 @@ jobs:
         run: |
           export MOLI_BIN="$PWD/target/ci-bin/moli-release-head/moli"
           uv run --project moli-cdp-smoke --no-sync moli-cdp-smoke \
-            --browser moli --jobs 4 --output-dir target/smoke/cdp-ci
+            --browser moli --strict-full-suite --repeat 2 --jobs 4 --output-dir target/smoke/cdp-ci
       - name: Require full Chromium smoke
         if: ${{ always() }}
         env:
@@ -448,12 +448,11 @@ jobs:
           fi
       - name: Upload diagnostics
         if: ${{ always() }}
-        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cdp-smoke-diagnostics
           path: target/smoke/cdp-ci
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
 
   cdp-smoke-chromium:
@@ -485,15 +484,14 @@ jobs:
       - name: Run full CDP smoke on Chromium
         run: |
           uv run --project moli-cdp-smoke --no-sync moli-cdp-smoke \
-            --browser chromium --jobs 4 --output-dir target/smoke/cdp-chromium-ci
+            --browser chromium --strict-full-suite --repeat 2 --jobs 4 --output-dir target/smoke/cdp-chromium-ci
       - name: Upload Chromium diagnostics
         if: ${{ always() }}
-        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: cdp-smoke-chromium-diagnostics
           path: target/smoke/cdp-chromium-ci
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
 
   native-pdf:

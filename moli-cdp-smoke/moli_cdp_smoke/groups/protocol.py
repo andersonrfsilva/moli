@@ -741,6 +741,7 @@ async def _navigation_suspension_command_routing_matches_chromium(
             break
         if asyncio.get_running_loop().time() >= deadline:
             raise SmokeError(f"navigation suspension fixture saw no request: {status}")
+        # smoke-timing: poll the fixture gate proving navigation reached the server.
         await asyncio.sleep(0.01)
 
     debugger_id = await client.send("Debugger.enable", session_id=session_id)

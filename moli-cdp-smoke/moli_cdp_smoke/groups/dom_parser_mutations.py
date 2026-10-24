@@ -36,6 +36,7 @@ async def _wait_for_fixture_request(fixture: str) -> None:
             raise SmokeError(
                 f"parser-blocking script did not reach the fixture gate: {status!r}"
             )
+        # smoke-timing: poll the actual fixture request within the five-second deadline.
         await asyncio.sleep(0.01)
 
 

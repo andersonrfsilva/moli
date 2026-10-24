@@ -130,6 +130,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Do not start queued workers after the first failure.",
     )
     parser.add_argument(
+        "--strict-full-suite",
+        action="store_true",
+        help="Require all default groups in owned browsers, without filters or fail-fast.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Directory for per-worker logs/results and summary.json.",
@@ -349,7 +354,24 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _validate_full_suite(args: argparse.Namespace) -> None:
+    if not args.strict_full_suite:
+        return
+    forbidden = [
+        name for name, enabled in [
+            ("--group", args.group), ("--endpoint", args.endpoint),
+            ("--fail-fast", args.fail_fast), ("--list-groups", args.list_groups),
+            *[(name, os.environ.get(name)) for name in (
+                "MOLI_SMOKE_GROUPS", "MOLI_MULTI_PAGE_CASES", "MOLI_MULTI_PAGE_SHARD",
+            )],
+        ] if enabled
+    ]
+    if forbidden:
+        raise RuntimeError("strict full-suite mode forbids " + ", ".join(forbidden))
+
+
 async def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    _validate_full_suite(args)
     selection = resolve_group_selection(args.group)
     output_dir = (args.output_dir or _default_output_dir()).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -416,6 +438,7 @@ async def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]
         "jobs": args.jobs,
         "timeoutSeconds": args.timeout,
         "repeat": args.repeat,
+        "strictFullSuite": args.strict_full_suite,
         "externalEndpoint": args.endpoint,
         "browser": args.browser or ("external" if args.endpoint else "moli"),
         "outputDirectory": str(output_dir),
@@ -448,6 +471,7 @@ async def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]
 async def async_main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     if args.list_groups:
+        _validate_full_suite(args)
         print(json.dumps({"groups": group_listing()}, indent=2, ensure_ascii=False))
         return 0
     exit_code, _ = await run_supervisor(args)

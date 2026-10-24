@@ -6,14 +6,25 @@ The suite covers real CDP-client workflows: `connect_over_cdp`, concurrent brows
 
 ## Chromium Behavior Evidence
 
-CI runs the entire default group list twice: `CDP smoke` uses the HEAD Moli
+CI runs every default group twice per engine: `CDP smoke` uses the HEAD Moli
 release and `CDP smoke (Chromium)` uses the Chromium revision bundled with the
-Playwright version in `uv.lock`. Both jobs select all default groups, including
-newly registered groups, without maintaining separate allowlists. The
+Playwright version in `uv.lock`. These are independent executions, not retries:
+one failure fails the job even if the other execution passes. Both jobs select
+all default groups, including newly registered groups, without separate allowlists. The
 `chromium-cdp` group is a collection of protocol scenarios; its name alone does
 not identify the browser under test.
 The existing `CDP smoke` check also requires the Chromium job to succeed, so it
 cannot remain green when the Chromium suite fails.
+
+Both jobs use `--strict-full-suite --repeat 2`. Strict mode rejects `--group`,
+`--endpoint`, `--fail-fast`, `--list-groups`, and nonempty `MOLI_SMOKE_GROUPS`,
+`MOLI_MULTI_PAGE_CASES`, or `MOLI_MULTI_PAGE_SHARD`. A failure does not prevent
+the remaining groups from running. Browser crashes, timeouts, failed assertions,
+unhandled asyncio callback/task exceptions, incomplete/empty results, and
+diagnostic capture/upload failures remain CI errors. Chromium failures are
+never downgraded to warnings or treated as Moli passes. Classifying a failure
+as infrastructure trouble or Chromium instability requires evidence and does
+not change its exit status.
 
 Each worker records the actual discovery version, engine, executable command,
 and PID for its managed browser and any nested browser launches. Chromium
@@ -22,6 +33,58 @@ scenarios, and `not_applicable`/`applicable: false` results fail the supervisor.
 Use managed `--browser chromium` runs for the full oracle, including process
 resource sampling; sharing an external `--endpoint` does not provide the same
 process isolation or owned PID.
+
+## Synchronization and diagnostics
+
+Wait for the condition needed by the assertion, using the identity of the
+operation being tested:
+
+| Assertion needs | Synchronization |
+| --- | --- |
+| A newly loaded Document | Session, main frame, returned loader, commit, and loader-scoped load; `navigation.py` serves raw CDP and Python SDK clients |
+| A frontend's response body | That frontend's request/loader and `Network.loadingFinished`; Page load or response headers are insufficient |
+| Closing/detaching during evaluation | A unique marker emitted inside the pending evaluation, followed by its completion or expected rejection |
+| A worker has initialized | A fixture request/reply, before testing its runtime values |
+| An old Document's work is retired | The replacement Document's commit plus the specific pending-operation terminal |
+
+`wait_until` bounds the entire async predicate and propagates protocol, fixture,
+and evaluation errors immediately. Such errors must not become `False` followed
+by a successful retry. Error documents, downloads, same-document navigations,
+and deliberately gated navigations keep their own explicit contracts.
+
+Event collectors have weak callbacks and explicit `close()`/context-manager
+cleanup. Automatic cleanup schedules unsubscription on the event loop: a GC
+finalizer must never reenter an event emitter's non-reentrant lock. Paused-page
+cleanup must still attempt resume, evaluation drain, and debugger disable if
+listener removal or assertions fail; those errors remain observable.
+
+Fixed waits in Python groups require an adjacent `# smoke-timing:` explanation,
+checked by `test_synchronization_policy.py`. The remaining positive delays are
+bounded condition polls, inputs exercising the action-window deadline, or
+bounded negative wheel observations with a positive scrolling control.
+`sleep(0)` only yields scheduling; it is not evidence of browser readiness.
+New readiness tests should use explicit gates/events instead of elapsed time.
+
+Each worker writes `<result>.diagnostics/checkpoint.json` during execution,
+containing recent phases, a bounded protocol tail, outstanding commands, and
+CPU affinity/cgroup/memory information. Raw connections retain real wire IDs;
+Python SDK observations use clearly labelled local call IDs. Collection adds
+no browser commands or alternate readers. A watchdog independently prints
+Python thread stacks before the worker deadline, including when the event loop
+is blocked. The deadline and failure status do not change.
+
+CPU traces are saved in full before validation, for both successful and failed
+workloads. Profile IDs are scoped by process; an expected hot function must be
+on an actually sampled stack, not merely declared in the profile's node table.
+The closed-page workload duration and its missing-function assertion remain
+unchanged. A missing sample remains a failure to investigate with the saved
+trace, browser identity, resource evidence, and a minimal executable probe;
+it is not proof of either Chromium instability or a Moli adaptation bug.
+
+For local investigation, use filtered groups without `--strict-full-suite`.
+Keep every failed execution and report the denominator; a later pass does not
+erase earlier failures. Before changing a Chromium-derived expectation, follow
+the executable calibration procedure below.
 
 The `Browser.close` lifecycle contract requires an acknowledgment followed by a
 natural, zero-status exit of the owned browser process before cleanup. It
