@@ -490,15 +490,23 @@ mod tests {
         for (html, expected) in [
             (
                 "<a href='/a' title='one\n  two'>link</a>",
-                "[link](/a \"one&#10;two\")",
+                "[link](/a \"one two\")",
             ),
             (
                 "<img src='/i' alt='one\n  two' title='one\n  two'>",
-                "![one two](/i \"one&#10;two\")",
+                "![one two](/i \"one two\")",
             ),
             (
                 "<h2><a href='/a' title='one\n  two'>link</a></h2>",
-                "## [link](/a \"one&#10;two\")",
+                "## [link](/a \"one two\")",
+            ),
+            (
+                "<a href='/feed.atom' title=\"Armin Ronacher's\n            Thoughts and Writings\">atom</a>",
+                "[atom](/feed.atom \"Armin Ronacher's Thoughts and Writings\")",
+            ),
+            (
+                "<a href='/a' title='one&amp;#10;two'>link</a>",
+                "[link](/a \"one&amp;#10;two\")",
             ),
         ] {
             assert_eq!(markdown_from_html(html), expected, "{html}");

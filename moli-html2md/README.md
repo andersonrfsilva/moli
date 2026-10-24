@@ -60,8 +60,10 @@ cell in each column supplies its `align` attribute; a preceding caption remains
 a separate Markdown block.
 
 Cells retain inline formatting, links, images and code. Literal pipes are escaped,
-and cell line breaks and paragraph boundaries use inline `<br>` tags. Attribute
-newlines are encoded or normalized so they cannot break a table row. GFM supplies
+and cell line breaks and paragraph boundaries use inline `<br>` tags. Image labels
+and link/image titles collapse HTML whitespace to ordinary spaces in every
+context, keeping links on one line. Unicode spaces and literal entity text are
+retained; URLs use destination escaping. GFM supplies
 missing trailing cells in short rows; the converter does not allocate a padded grid.
 
 Tables with `role="presentation"` or `role="none"` retain ordinary block expansion,
@@ -100,7 +102,7 @@ strip/base/frame transformations remain the responsibility of the caller.
 whitespace, escaping, code, tables, depth limits, and 20,000 nested nodes on a
 64 KiB thread stack. The [Turndown differential suite](tests/turndown/README.md)
 pins 147 upstream fixtures and 50 additional cases. It compares rendered meaning,
-checks DOM immutability, and explicitly asserts 13 documented differences that
+checks DOM immutability, and explicitly asserts 16 documented differences that
 preserve Moli's handling of literal text, code, emphasis, and list boundaries.
 Targeted regressions also cover empty elements, links, attributes in headings and
 tables, code whitespace and language names, list numbering, and loose lists.

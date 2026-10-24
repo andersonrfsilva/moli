@@ -349,18 +349,75 @@ fn adjacent_code_preserves_documentation_examples_as_literal_text() {
 }
 
 #[test]
-fn attribute_newlines_remove_indentation_without_joining_words() {
-    for separator in ["\n ", "\r\n\t", "\n  \n \t  "] {
-        let html = format!("<a href='/a' title='first{separator}second'>link</a>");
+fn attribute_whitespace_collapses_without_joining_words() {
+    for separator in [
+        "\n ",
+        "\r\n\t",
+        "\n  \n \t  ",
+        "\t",
+        "\r",
+        "\u{c}",
+        "   ",
+        "&#10;",
+        "&#13;",
+        "&#9;",
+        "&#12;",
+    ] {
+        let html = format!("<a href='/a' title=' \tfirst{separator}second \t '>link</a>");
+        let result = markdown(&html, false);
+        assert_eq!(result, "[link](/a \"first second\")", "{html}");
         assert_eq!(
-            rendered_html(&markdown(&html, false)),
-            "<p><a href=\"/a\" title=\"first\nsecond\">link</a></p>\n"
+            rendered_html(&result),
+            "<p><a href=\"/a\" title=\"first second\">link</a></p>\n"
         );
+        let html = format!(
+            "<img src='/i' alt=' \tfirst{separator}second \t ' title=' \tfirst{separator}second \t '>"
+        );
+        let result = markdown(&html, false);
+        assert_eq!(result, "![first second](/i \"first second\")", "{html}");
+        assert_eq!(
+            rendered_html(&result),
+            "<p><img src=\"/i\" alt=\"first second\" title=\"first second\" /></p>\n"
+        );
+    }
+}
+
+#[test]
+fn template_formatted_feed_titles_stay_readable_on_one_line() {
+    let html = "<footer><a href='/feed.atom' title=\"Armin Ronacher's\n            Thoughts and Writings\">atom</a> / <a href='/feed.xml' title=\"Armin Ronacher's\n            Thoughts and Writings\">RSS</a></footer>";
+    assert_eq!(
+        markdown(html, false),
+        concat!(
+            "[atom](/feed.atom \"Armin Ronacher's Thoughts and Writings\")",
+            " / [RSS](/feed.xml \"Armin Ronacher's Thoughts and Writings\")"
+        )
+    );
+}
+
+#[test]
+fn attribute_whitespace_does_not_change_urls_or_literal_entities() {
+    let html = "<a href='/with  spaces' title='first\n  second'>link</a>";
+    assert_eq!(
+        markdown(html, false),
+        "[link](/with%20%20spaces \"first second\")"
+    );
+    let html = "<a href='/a' title='literal &amp;#10; &amp;copy;'>link</a>";
+    let result = markdown(html, false);
+    assert_eq!(result, "[link](/a \"literal &amp;#10; &amp;copy;\")");
+    assert_eq!(
+        rendered_html(&result),
+        "<p><a href=\"/a\" title=\"literal &amp;#10; &amp;copy;\">link</a></p>\n"
+    );
+}
+
+#[test]
+fn unicode_attribute_spaces_remain_literal() {
+    for separator in ['\u{a0}', '\u{2003}', '\u{202f}'] {
         let html =
             format!("<img src='/i' alt='first{separator}second' title='first{separator}second'>");
         assert_eq!(
-            rendered_html(&markdown(&html, false)),
-            "<p><img src=\"/i\" alt=\"first second\" title=\"first\nsecond\" /></p>\n"
+            markdown(&html, false),
+            format!("![first{separator}second](/i \"first{separator}second\")")
         );
     }
 }

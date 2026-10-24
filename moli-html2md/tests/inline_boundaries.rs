@@ -269,9 +269,9 @@ fn multiline_image_alt_preserves_the_image() {
 #[test]
 fn multiline_link_title_preserves_the_link() {
     let result = markdown("<a href='/' title='first\n# heading'>link</a>");
-    // Turndown has this loss too; the link and its title must survive rendering.
+    // Keep the link intact while normalizing its title to one readable line.
     let actual_html = rendered_html(&result);
-    let desired_html = "<p><a href=\"/\" title=\"first\n# heading\">link</a></p>\n";
+    let desired_html = "<p><a href=\"/\" title=\"first # heading\">link</a></p>\n";
     assert_eq!(
         actual_html, desired_html,
         "link title survives Markdown rendering"

@@ -263,8 +263,6 @@ impl<'a> Writer<'a> {
                     self.output.push(ch);
                 }
                 '&' => self.output.push_str("&amp;"),
-                // Keep label line breaks from opening Markdown block syntax.
-                '\n' => self.output.push(' '),
                 _ => self.output.push(ch),
             }
         }
@@ -610,8 +608,6 @@ fn destination(output: &mut String, href: &str, title: Option<&str>) {
                     output.push(ch);
                 }
                 '&' => output.push_str("&amp;"),
-                // Preserve the attribute value without opening Markdown blocks.
-                '\n' => output.push_str("&#10;"),
                 _ => output.push(ch),
             }
         }
@@ -619,15 +615,11 @@ fn destination(output: &mut String, href: &str, title: Option<&str>) {
     }
 }
 
-// Attribute newlines are significant in labels and titles; indentation after a
-// newline is not. Collapse each newline/whitespace run without flattening it.
+// Normalize textual attributes for single-line dumps while retaining Unicode spaces.
 fn clean_attribute(value: &str) -> impl Iterator<Item = char> + '_ {
-    let mut after_newline = false;
-    value.chars().filter(move |&ch| {
-        if after_newline && ch.is_whitespace() {
-            return false;
-        }
-        after_newline = ch == '\n';
-        true
-    })
+    value
+        .split(is_space)
+        .filter(|word| !word.is_empty())
+        .enumerate()
+        .flat_map(|(index, word)| (index > 0).then_some(' ').into_iter().chain(word.chars()))
 }
