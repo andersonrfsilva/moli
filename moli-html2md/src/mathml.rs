@@ -7,7 +7,7 @@ pub(crate) fn primary_alternative<D: Dom + ?Sized>(
     dom: &D,
     node: D::NodeId,
     limit: usize,
-) -> Option<(D::NodeId, usize)> {
+) -> Option<D::NodeId> {
     let mut primary = None;
     let mut alternative = false;
     let mut child = dom.first_child(node);
@@ -30,9 +30,11 @@ pub(crate) fn primary_alternative<D: Dom + ?Sized>(
         let mut found = None;
         // Bound wrapper inspection per node; deeply nested ordinary prose must
         // not cause repeated whole-subtree scans.
-        for depth in 1..limit.min(9) {
+        for _ in 1..limit.min(9) {
             if dom.node_kind(candidate) == NodeKind::Element("math") {
-                found = Some((candidate, depth));
+                // Retain the original branch, including links and styles
+                // around the formula, for ordinary DOM traversal.
+                found = Some(id);
                 break;
             }
             let mut children = dom.first_child(candidate);
@@ -90,9 +92,15 @@ pub(crate) fn render<D: Dom + ?Sized>(dom: &D, root: D::NodeId, max_depth: usize
                 match dom.node_kind(node) {
                     NodeKind::Text(text) => escape(text, &mut output, true),
                     NodeKind::Element("annotation" | "annotation-xml" | "script" | "style") => {}
-                    NodeKind::Element("semantics") => {
+                    NodeKind::Element(tag @ ("semantics" | "maction")) => {
                         // Presentation is the first child; subsequent annotation
                         // children are alternate representations, not more terms.
+                        // maction likewise displays its first element, and its
+                        // replacement must remain one argument even when empty.
+                        if tag == "maction" {
+                            output.push_str("<mrow>");
+                            tasks.push(Task::Close("mrow".to_owned()));
+                        }
                         let mut child = dom.first_child(node);
                         while let Some(id) = child {
                             if matches!(dom.node_kind(id), NodeKind::Element(_)) {
@@ -103,21 +111,22 @@ pub(crate) fn render<D: Dom + ?Sized>(dom: &D, root: D::NodeId, max_depth: usize
                         }
                     }
                     NodeKind::Element(tag) => {
-                        if allowed_tag(tag) {
-                            output.push('<');
-                            output.push_str(tag);
-                            for name in ATTRIBUTES {
-                                if let Some(value) = dom.attribute(node, name) {
-                                    output.push(' ');
-                                    output.push_str(name);
-                                    output.push_str("=\"");
-                                    escape(value, &mut output, false);
-                                    output.push('"');
-                                }
+                        // Unknown containers still occupy one child position in
+                        // fractions, scripts and roots. Keep their grouping.
+                        let tag = if allowed_tag(tag) { tag } else { "mrow" };
+                        output.push('<');
+                        output.push_str(tag);
+                        for name in ATTRIBUTES {
+                            if let Some(value) = dom.attribute(node, name) {
+                                output.push(' ');
+                                output.push_str(name);
+                                output.push_str("=\"");
+                                escape(value, &mut output, false);
+                                output.push('"');
                             }
-                            output.push('>');
-                            tasks.push(Task::Close(tag.to_owned()));
                         }
+                        output.push('>');
+                        tasks.push(Task::Close(tag.to_owned()));
                         tasks.push(Task::Sibling(dom.first_child(node), depth + 1));
                     }
                     NodeKind::Document => {

@@ -350,15 +350,10 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
             }
             _ => {}
         }
-        if let Some((math, relative_depth)) =
+        if let Some(primary) =
             crate::mathml::primary_alternative(self.dom, node, self.options.max_depth - depth)
         {
-            let markup = crate::mathml::render(
-                self.dom,
-                math,
-                self.options.max_depth - depth - relative_depth,
-            );
-            self.writer().inline_html(&markup);
+            self.tasks.push(Task::Visit(primary, depth + 1));
             return;
         }
         if let Some(label) =

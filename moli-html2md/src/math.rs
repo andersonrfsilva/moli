@@ -56,14 +56,20 @@ fn spans_counted(text: &str, steps: &mut usize) -> Vec<(usize, usize, String)> {
                 Some(b'[') => {
                     bracket.get_or_insert(index);
                 }
-                Some(b')') => {
-                    if let Some(start) = paren.take() {
+                Some(b')' | b']') => {
+                    let start = if bytes[index + 1] == b')' {
+                        paren.take()
+                    } else {
+                        bracket.take()
+                    };
+                    if let Some(start) = start {
                         accept_candidate(text, start, index + 2, 2, false, &mut candidates);
-                    }
-                }
-                Some(b']') => {
-                    if let Some(start) = bracket.take() {
-                        accept_candidate(text, start, index + 2, 2, false, &mut candidates);
+                        // Complete explicit spans own their inner delimiters,
+                        // even when the payload needs a literal fallback.
+                        dollar = dollar.filter(|inner| *inner < start);
+                        double_dollar = double_dollar.filter(|inner| *inner < start);
+                        paren = paren.filter(|inner| *inner < start);
+                        bracket = bracket.filter(|inner| *inner < start);
                     }
                 }
                 _ => {}
@@ -91,6 +97,9 @@ fn spans_counted(text: &str, steps: &mut usize) -> Vec<(usize, usize, String)> {
         keep
     });
     candidates
+        .into_iter()
+        .filter_map(|(start, end, normalized)| normalized.map(|value| (start, end, value)))
+        .collect()
 }
 
 fn accept_candidate(
@@ -99,7 +108,7 @@ fn accept_candidate(
     end: usize,
     delimiter: usize,
     single_dollar: bool,
-    candidates: &mut Vec<(usize, usize, String)>,
+    candidates: &mut Vec<(usize, usize, Option<String>)>,
 ) -> bool {
     let content_start = start + delimiter;
     let content_end = end - delimiter;
@@ -118,9 +127,9 @@ fn accept_candidate(
     if contains_markdown_resource(content) {
         return false;
     }
-    let Some(normalized) = normalized_span(&text[start..end]) else {
-        return false;
-    };
+    // A rejected complete span still claims its range, so an inner dollar
+    // pair cannot turn part of a verbatim fallback into a different formula.
+    let normalized = normalized_span(&text[start..end]);
     candidates.push((start, end, normalized));
     true
 }
@@ -142,6 +151,7 @@ fn normalized_span(text: &str) -> Option<String> {
     let mut output = String::new();
     let mut chars = text[delimiter..text.len() - delimiter].chars().peekable();
     let mut escaped = false;
+    let mut control_word = false;
     let mut space = false;
     let mut text_depth = 0usize;
     while let Some(ch) = chars.next() {
@@ -178,6 +188,7 @@ fn normalized_span(text: &str) -> Option<String> {
                 if !closed {
                     return None;
                 }
+                control_word = false;
                 continue;
             }
             const TEXT_COMMANDS: &[&str] = &[
@@ -206,17 +217,26 @@ fn normalized_span(text: &str) -> Option<String> {
                     output.push('{');
                     chars = probe;
                     text_depth += 1;
+                    control_word = false;
                     continue;
                 }
             }
         }
         if ch == '%' && !escaped {
-            for part in chars.by_ref() {
-                if matches!(part, '\n' | '\r') {
+            while let Some(part) = chars.next() {
+                if part == '\r' {
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    break;
+                }
+                if part == '\n' {
                     break;
                 }
             }
-            space = true;
+            // TeX removes the comment and newline without inserting a token.
+            // Separate a control word only when concatenation would rename it.
+            space |= control_word && chars.peek().is_some_and(char::is_ascii_alphabetic);
             continue;
         }
         if matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
@@ -226,7 +246,11 @@ fn normalized_span(text: &str) -> Option<String> {
                 space = true;
             }
             escaped = false;
+            control_word = false;
             continue;
+        }
+        if space {
+            control_word = false;
         }
         flush_space(&mut output, &mut space);
         if html_start(ch, chars.peek().copied()) {
@@ -244,9 +268,10 @@ fn normalized_span(text: &str) -> Option<String> {
                 text_depth -= 1;
             }
         }
+        control_word = ch.is_ascii_alphabetic() && (escaped || control_word);
         escaped = ch == '\\' && !escaped;
     }
-    if output.is_empty() || text_depth > 0 {
+    if output.is_empty() || text_depth > 0 || !markdown_payload_is_safe(&output) {
         return None;
     }
     let inline = text.starts_with("\\(") || delimiter == 1;
@@ -257,6 +282,18 @@ fn normalized_span(text: &str) -> Option<String> {
     }
     let marker = if inline { "$" } else { "$$" };
     Some(format!("{marker}{output}{marker}"))
+}
+
+fn markdown_payload_is_safe(text: &str) -> bool {
+    let mut escaped = false;
+    for ch in text.chars() {
+        if ch == '$' && !escaped {
+            return false;
+        }
+        escaped = ch == '\\' && !escaped;
+    }
+    // A trailing control escape would consume the closing Markdown delimiter.
+    !escaped
 }
 
 fn flush_space(output: &mut String, pending: &mut bool) {

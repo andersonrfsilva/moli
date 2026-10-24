@@ -258,7 +258,7 @@ impl<'a> Writer<'a> {
         // Image labels are literal text, not a second Markdown input.
         for ch in clean_attribute(alt) {
             match ch {
-                '\\' | '[' | ']' | '*' | '_' | '`' | '<' | '>' => {
+                '\\' | '[' | ']' | '*' | '_' | '`' | '<' | '>' | '$' => {
                     self.output.push('\\');
                     self.output.push(ch);
                 }
