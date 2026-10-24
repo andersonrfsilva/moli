@@ -7,7 +7,7 @@ use crate::web_api_interfaces;
 use moli_webapi_declare::WebApiFunctionTemplate;
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::IDBCursor, enumerable)]
+#[webapi(interface = web_api_interfaces::IDBCursor, enumerable, receiver)]
 struct IdbCursorPrototypeDeclaration {
     #[webapi(method, length = 1, callback = idb_cursor_advance_callback)]
     advance: (),
