@@ -2194,6 +2194,9 @@ mod gamepad_interfaces;
 
 mod dom_elements;
 mod dom_exception_proxy_identity;
+
+mod exception_utf16_arguments;
+
 mod dom_xhr;
 
 mod svg_length_list_native_receivers;

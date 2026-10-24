@@ -21,10 +21,10 @@ const WEBSOCKET_ERROR_REASON_SLOT: &str = "__lmWebSocketErrorReason";
 #[derive(webidl::WebIdlArgs)]
 #[webidl(prefix = "DOMException")]
 struct DomExceptionConstructorArgs {
-    #[webidl(default = "")]
-    message: String,
-    #[webidl(default = "Error")]
-    name: String,
+    #[webidl(default = Vec::new(), converter = "dom_string16")]
+    message: Vec<u16>,
+    #[webidl(default = "Error".encode_utf16().collect::<Vec<u16>>(), converter = "dom_string16")]
+    name: Vec<u16>,
 }
 
 #[derive(webidl::WebIdlArgs)]
@@ -50,8 +50,8 @@ struct QuotaExceededErrorOptions {
 #[derive(webidl::WebIdlArgs)]
 #[webidl(prefix = "QuotaExceededError")]
 struct QuotaExceededErrorConstructorArgs {
-    #[webidl(default = "")]
-    message: String,
+    #[webidl(default = Vec::new(), converter = "dom_string16")]
+    message: Vec<u16>,
     #[webidl(dictionary)]
     options: QuotaExceededErrorOptions,
 }
@@ -287,14 +287,9 @@ fn dom_exception_name_getter_callback<'s>(
         return;
     };
     let name = get_private_value(scope, receiver, DOM_EXCEPTION_NAME_SLOT)
-        .and_then(|value| value.to_string(scope))
-        .map(|value| value.to_rust_string_lossy(scope))
-        .unwrap_or_else(|| "Error".to_owned());
-    if let Some(name) = v8_string(scope, &name) {
-        rv.set(name.into());
-    } else {
-        rv.set_empty_string();
-    }
+        .and_then(|value| v8::Local::<v8::String>::try_from(value).ok())
+        .unwrap_or_else(|| v8str(scope, "Error"));
+    rv.set(name.into());
 }
 
 fn dom_exception_code_getter_callback<'s>(
@@ -500,11 +495,11 @@ fn nullable_double_slot_value<'s>(
 fn initialize_quota_exceeded_error<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     exception: v8::Local<'s, v8::Object>,
-    message: &str,
+    message: v8::Local<'s, v8::String>,
     quota: Option<f64>,
     requested: Option<f64>,
 ) {
-    QuotaExceededErrorObjectDeclaration::new(v8_string(scope, message))
+    QuotaExceededErrorObjectDeclaration::new(Some(message))
         .initialize(scope, exception)
         .expect("QuotaExceededError declaration should initialize");
     QuotaExceededErrorOptions { quota, requested }
@@ -595,8 +590,20 @@ pub(crate) fn dom_exception_constructor_callback<'s>(
         rv.set_undefined();
         return;
     };
-    let exception = args.this();
-    initialize_dom_exception(scope, exception, &parsed.message, &parsed.name);
+    let code = String::from_utf16(&parsed.name).map_or(0, |name| dom_exception_legacy_code(&name));
+    let Some(message) =
+        v8::String::new_from_two_byte(scope, &parsed.message, v8::NewStringType::Normal)
+    else {
+        return;
+    };
+    let Some(name) = v8::String::new_from_two_byte(scope, &parsed.name, v8::NewStringType::Normal)
+    else {
+        return;
+    };
+    DomExceptionObjectDeclaration::new(Some(message), Some(name), f64::from(code))
+        .initialize(scope, args.this())
+        .expect("DOMException declaration should initialize");
+    capture_dom_exception_stack(scope, args.this());
     rv.set(args.this().into());
 }
 
@@ -658,11 +665,16 @@ pub(crate) fn quota_exceeded_error_constructor_callback<'s>(
         rv.set_undefined();
         return;
     };
+    let Some(message) =
+        v8::String::new_from_two_byte(scope, &parsed.message, v8::NewStringType::Normal)
+    else {
+        return;
+    };
     let exception = args.this();
     initialize_quota_exceeded_error(
         scope,
         exception,
-        &parsed.message,
+        message,
         parsed.options.quota,
         parsed.options.requested,
     );
