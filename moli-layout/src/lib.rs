@@ -39,6 +39,7 @@ mod stylo_to_parley;
 mod table;
 mod taffy_tree;
 mod text;
+mod text_normalization;
 mod world;
 
 pub use anonymous_style::LayoutAnonymousStyleContext;
@@ -110,4 +111,9 @@ pub use text::{
 pub use world::{
     LayoutAnonymousReason, LayoutBox, LayoutBoxId, LayoutBoxKind, LayoutCapabilityDiagnostic,
     LayoutWorld,
+};
+
+pub use text_normalization::{
+    TextCaseMapping, TextCharacter, TextTransform, TextTransformState, TextWhiteSpaceCollapse,
+    classify_text_character,
 };
