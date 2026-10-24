@@ -518,17 +518,23 @@ impl NativeDom {
         document_handle: NativeNodeId,
         host: Option<NativeNodeId>,
     ) -> NativeNodeId {
-        let url = self
+        let (url, is_html_document) = self
             .node(document_handle)
             .and_then(Node::as_document)
-            .map(|document| document.url().clone())
-            .unwrap_or_else(|| url::Url::parse("about:blank").expect("about:blank is valid"));
-        let owner_document = self.create_node(
-            NodeData::Document(Box::new(Document::new_html(url))),
-            None,
-            false,
-            false,
-        );
+            .map(|document| (document.url().clone(), document.is_html_document()))
+            .unwrap_or_else(|| {
+                (
+                    url::Url::parse("about:blank").expect("about:blank is valid"),
+                    true,
+                )
+            });
+        let document = if is_html_document {
+            Document::new_html(url)
+        } else {
+            Document::new_xml(url)
+        };
+        let owner_document =
+            self.create_node(NodeData::Document(Box::new(document)), None, false, false);
         self.create_node(
             NodeData::DocumentFragment(DocumentFragment::new(host)),
             Some(owner_document),
