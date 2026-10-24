@@ -37,6 +37,15 @@ browser from an already reaped browser whose descendants still own output pipes;
 diagnostic collection does not relax the natural-exit deadline or count forced
 cleanup as a successful exit.
 
+Layout and scrollbar probes wait for the requested Document's main-frame
+commit and loader-scoped `Page.lifecycleEvent` named `load`. A session-level
+`Page.loadEventFired` cannot identify the Document and cannot release that
+wait. Reloads must commit a loader different from the previous Document;
+events received before the command reply are retained. Navigation failures
+record the command, session, frame, loader, commit/load state, and recent wire
+messages. Layout-policy scenario failures also retain their original traceback,
+and failed initial navigation closes the target it created.
+
 Lifecycle artifacts retain total FDs for both engines. Chromium also records
 FDs for regular files inside its owned profile: delayed database initialization
 opens these independently of target churn. Its fixed FD budget covers the
