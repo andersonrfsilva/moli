@@ -70,9 +70,7 @@ pub(super) fn xhr_send_callback<'s>(
     };
 
     cancel_xhr_timeout(scope, xhr);
-    set_xhr_state_bool(scope, xhr, XHR_SEND_FLAG_SLOT, true);
-    set_xhr_state_bool(scope, xhr, XHR_ABORTED_SLOT, false);
-    set_xhr_state_number(scope, xhr, XHR_ACTIVE_INTERNAL_ID_SLOT, 0.0);
+    begin_xhr_send(scope, xhr);
 
     let prepared = match prepare_xhr_send_request(scope, host, xhr, method, prepared_body) {
         Ok(prepared) => prepared,

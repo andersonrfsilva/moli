@@ -3,6 +3,7 @@ mod delivery;
 mod events;
 mod header_surface;
 mod instance_state;
+mod request_state;
 mod response_type;
 mod send;
 
@@ -57,17 +58,22 @@ pub(crate) use self::delivery::{
 };
 pub(crate) use self::instance_state::xhr_has_upload_listeners;
 pub(crate) use self::instance_state::{
-    XHR_METHOD_SLOT, XHR_OPEN_GENERATION_SLOT, XHR_READY_STATE_SLOT, XHR_REQUEST_HEADERS_SLOT,
-    XHR_RESPONSE_URL_SLOT, XHR_RESPONSE_XML_SLOT, XHR_STATUS_SLOT, XHR_STATUS_TEXT_SLOT,
-    XHR_TIMEOUT_SLOT, XHR_TIMEOUT_START_MS_SLOT, XHR_TIMEOUT_TIMER_SLOT, XHR_URL_SLOT,
-    XHR_WITH_CREDENTIALS_SLOT, set_xhr_state_bool, set_xhr_state_number, set_xhr_state_string,
-    set_xhr_state_value, xhr_execution_context_binding, xhr_state_bool_property,
-    xhr_state_number_property, xhr_state_string_property,
+    XHR_METHOD_SLOT, XHR_OPEN_GENERATION_SLOT, XHR_REQUEST_HEADERS_SLOT, XHR_RESPONSE_URL_SLOT,
+    XHR_RESPONSE_XML_SLOT, XHR_STATUS_SLOT, XHR_STATUS_TEXT_SLOT, XHR_TIMEOUT_SLOT,
+    XHR_TIMEOUT_START_MS_SLOT, XHR_TIMEOUT_TIMER_SLOT, XHR_URL_SLOT, XHR_WITH_CREDENTIALS_SLOT,
+    set_xhr_state_bool, set_xhr_state_number, set_xhr_state_string, set_xhr_state_value,
+    xhr_execution_context_binding, xhr_state_bool_property, xhr_state_number_property,
+    xhr_state_string_property,
 };
 use self::instance_state::{
-    XHR_OVERRIDE_MIME_TYPE_SLOT, XHR_RESPONSE_HEADERS_SLOT, XHR_RESPONSE_SLOT,
-    XHR_RESPONSE_TEXT_SLOT, XHR_RESPONSE_TYPE_SLOT, configure_xml_http_request_instance_template,
-    initialize_xml_http_request_instance, xhr_state_value, xhr_upload_object,
+    XHR_OVERRIDE_MIME_TYPE_SLOT, XHR_READY_STATE_SLOT, XHR_RESPONSE_HEADERS_SLOT,
+    XHR_RESPONSE_SLOT, XHR_RESPONSE_TEXT_SLOT, XHR_RESPONSE_TYPE_SLOT,
+    configure_xml_http_request_instance_template, initialize_xml_http_request_instance,
+    xhr_state_value, xhr_upload_object,
+};
+pub(crate) use self::request_state::begin_xhr_send;
+use self::request_state::{
+    XhrReadyState, clear_xhr_active_request, set_xhr_ready_state, xhr_ready_state,
 };
 use self::response_type::XmlHttpRequestResponseType;
 #[cfg(test)]
@@ -116,9 +122,9 @@ pub(crate) fn xhr_ensure_send_allowed(
     scope: &mut v8::PinScope<'_, '_>,
     xhr: v8::Local<'_, v8::Object>,
 ) -> bool {
-    let ready_state = xhr_state_number_property(scope, xhr, XHR_READY_STATE_SLOT).unwrap_or(0.0);
+    let ready_state = xhr_ready_state(scope, xhr);
     let send_flag = xhr_state_bool_property(scope, xhr, XHR_SEND_FLAG_SLOT).unwrap_or(false);
-    if ready_state as u32 == 1 && !send_flag {
+    if ready_state == XhrReadyState::Opened && !send_flag {
         return true;
     }
     xhr_throw_invalid_state(

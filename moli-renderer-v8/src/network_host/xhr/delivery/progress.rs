@@ -91,12 +91,11 @@ fn dispatch_xhr_progress_snapshot(
     internal_id: u64,
     snapshot: XhrProgressSnapshot,
 ) -> bool {
-    let ready_state =
-        xhr_state_number_property(scope, xhr, XHR_READY_STATE_SLOT).unwrap_or(0.0) as u32;
+    let ready_state = xhr_ready_state(scope, xhr);
     let has_dispatched =
         xhr_state_bool_property(scope, xhr, XHR_PROGRESS_HAS_DISPATCHED_SLOT).unwrap_or(false);
-    if ready_state != 3 || has_dispatched {
-        xhr_fire_readystatechange(scope, xhr, 3);
+    if ready_state != XhrReadyState::Loading || has_dispatched {
+        xhr_fire_readystatechange(scope, xhr, XhrReadyState::Loading);
         if scope.is_execution_terminating() || !xhr_stream_is_current(scope, xhr, internal_id) {
             return false;
         }

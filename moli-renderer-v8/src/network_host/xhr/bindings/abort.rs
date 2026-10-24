@@ -10,9 +10,7 @@ pub(super) fn xhr_abort_callback(
     }
 
     let xhr = args.this();
-    super::super::delivery::cancel_xhr_timeout(scope, xhr);
-    super::super::delivery::clear_xhr_progress_throttle(scope, xhr);
-    super::super::delivery::clear_xhr_timeout_start(scope, xhr);
+    super::super::delivery::clear_xhr_request_timers(scope, xhr);
     let internal_id =
         xhr_state_number_property(scope, xhr, XHR_ACTIVE_INTERNAL_ID_SLOT).unwrap_or(0.0) as u64;
     if internal_id != 0

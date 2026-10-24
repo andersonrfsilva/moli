@@ -34,9 +34,9 @@ pub(super) fn xhr_set_request_header_callback<'s>(
     let Some(parsed) = webidl::parse_args::<XhrSetRequestHeaderArgs>(scope, &args) else {
         return;
     };
-    let ready_state = xhr_state_number_property(scope, xhr, XHR_READY_STATE_SLOT).unwrap_or(0.0);
+    let ready_state = xhr_ready_state(scope, xhr);
     let send_flag = xhr_state_bool_property(scope, xhr, XHR_SEND_FLAG_SLOT).unwrap_or(false);
-    if ready_state as u32 != 1 || send_flag {
+    if ready_state != XhrReadyState::Opened || send_flag {
         xhr_throw_invalid_state(
             scope,
             "XMLHttpRequest.setRequestHeader cannot be called in the current state.",
@@ -175,8 +175,8 @@ pub(super) fn xhr_override_mime_type_callback<'s>(
     let Some(parsed) = webidl::parse_args::<XhrOverrideMimeTypeArgs>(scope, &args) else {
         return;
     };
-    let ready_state = xhr_state_number_property(scope, xhr, XHR_READY_STATE_SLOT).unwrap_or(0.0);
-    if matches!(ready_state as u32, 3 | 4) {
+    let ready_state = xhr_ready_state(scope, xhr);
+    if matches!(ready_state, XhrReadyState::Loading | XhrReadyState::Done) {
         xhr_throw_invalid_state(
             scope,
             "XMLHttpRequest.overrideMimeType() cannot be called once loading has started.",

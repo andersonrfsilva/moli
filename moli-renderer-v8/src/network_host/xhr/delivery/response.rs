@@ -346,7 +346,7 @@ pub(crate) fn apply_xhr_streaming_response_head(
         return false;
     }
     set_xhr_response_head(scope, xhr, head, None);
-    super::super::events::xhr_fire_readystatechange(scope, xhr, 2);
+    super::super::events::xhr_fire_readystatechange(scope, xhr, XhrReadyState::HeadersReceived);
     !scope.is_execution_terminating()
         && super::progress::xhr_stream_is_current(scope, xhr, internal_id)
 }
@@ -399,8 +399,7 @@ fn prepare_xhr_response(
     }
     super::cancel_xhr_timeout(scope, xhr);
     super::clear_xhr_timeout_start(scope, xhr);
-    set_xhr_state_number(scope, xhr, XHR_ACTIVE_INTERNAL_ID_SLOT, 0.0);
-    set_xhr_state_bool(scope, xhr, XHR_SEND_FLAG_SLOT, false);
+    clear_xhr_active_request(scope, xhr);
     if xhr_is_aborted(scope, xhr) {
         return None;
     }
@@ -457,7 +456,7 @@ fn finish_xhr_response(
     let dispatch_intermediate_events =
         matches!(mode, XhrResponseDeliveryMode::Buffered) && xhr_is_async(scope, xhr);
     if dispatch_intermediate_events {
-        super::super::events::xhr_fire_readystatechange(scope, xhr, 2);
+        super::super::events::xhr_fire_readystatechange(scope, xhr, XhrReadyState::HeadersReceived);
         if scope.is_execution_terminating() {
             return;
         }
@@ -468,7 +467,7 @@ fn finish_xhr_response(
     set_xhr_state_string(scope, xhr, XHR_RESPONSE_TEXT_SLOT, response_text);
     set_xhr_state_value(scope, xhr, XHR_RESPONSE_SLOT, response_val);
     if dispatch_intermediate_events {
-        super::super::events::xhr_fire_readystatechange(scope, xhr, 3);
+        super::super::events::xhr_fire_readystatechange(scope, xhr, XhrReadyState::Loading);
         if scope.is_execution_terminating() {
             return;
         }
@@ -492,7 +491,7 @@ fn finish_xhr_response(
             return;
         }
     }
-    super::super::events::xhr_fire_readystatechange(scope, xhr, 4);
+    super::super::events::xhr_fire_readystatechange(scope, xhr, XhrReadyState::Done);
     if scope.is_execution_terminating() {
         return;
     }
