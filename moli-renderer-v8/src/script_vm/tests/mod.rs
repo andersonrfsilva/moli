@@ -2169,6 +2169,9 @@ mod canvas_webgl;
 mod child_dynamic_inline_scripts;
 mod credential_interface_exposure_interfaces;
 mod credential_interfaces;
+
+mod audio_param_native_receivers;
+
 mod css_keyframes_mutations;
 mod css_keyframes_receivers;
 mod device_events;
