@@ -3,7 +3,7 @@ use crate::web_api_interfaces;
 use moli_webapi_declare::WebApiFunctionTemplate;
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::IDBDatabase, enumerable)]
+#[webapi(interface = web_api_interfaces::IDBDatabase, enumerable, receiver)]
 struct IdbDatabasePrototypeDeclaration {
     #[webapi(method, length = 2, callback = idb_database_create_object_store_callback)]
     create_object_store: (),
