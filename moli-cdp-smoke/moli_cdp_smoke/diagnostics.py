@@ -129,7 +129,10 @@ class Diagnostics:
             "messageCount": self.message_count, "lastMessages": list(self.messages),
             "pendingCommands": list(self.pending.values()), "phases": list(self.phases),
             "artifacts": self.artifacts, "diagnosticErrors": self.errors,
-            "playwrightIds": "Local call identifiers, not CDP wire request IDs.",
+            "playwrightIds": {
+                "playwright": "Local CDPSession call identifiers, not CDP wire request IDs.",
+                "playwright-driver": "Python SDK/driver RPC identifiers, not CDP wire request IDs.",
+            },
         })
 
     def finish(self) -> dict[str, Any]:
@@ -195,6 +198,37 @@ def write_artifact(name: str, payload: Any) -> str | None:
     if diagnostics := _ACTIVE.get():
         return diagnostics.write(name, payload)
     return None
+
+
+@contextmanager
+def observe_playwright_connection(playwright: Any) -> Iterator[None]:
+    """Observe the pinned Python SDK's existing transport, including Page.goto.
+
+    CDPSession wrappers cannot see the SDK's own navigation and locator traffic.
+    Fail explicitly if a future SDK changes this adapter; never silently lose
+    that evidence. This delegates the same messages to the same reader/writer.
+    """
+    try:
+        transport = playwright._impl_obj._connection._transport
+        send, receive = transport.send, transport.on_message
+        if not callable(send) or not callable(receive):
+            raise AttributeError("transport callbacks are not callable")
+    except AttributeError as error:
+        raise RuntimeError("Playwright transport changed; update the smoke diagnostic adapter") from error
+
+    def observed_send(message: dict[str, Any]) -> None:
+        record_wire(transport, "send", message, transport="playwright-driver")
+        send(message)
+
+    def observed_receive(message: dict[str, Any]) -> None:
+        record_wire(transport, "receive", message, transport="playwright-driver")
+        receive(message)
+
+    transport.send, transport.on_message = observed_send, observed_receive
+    try:
+        yield
+    finally:
+        transport.send, transport.on_message = send, receive
 
 
 class ObservedCdpSession:

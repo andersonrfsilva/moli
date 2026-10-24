@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 from moli_cdp_smoke.assertions import wait_until
 from moli_cdp_smoke.diagnostics import (
     Diagnostics, ObservedCdpSession, current_diagnostics, diagnostics_scope,
-    record_phase, record_wire, write_artifact,
+    observe_playwright_connection, record_phase, record_wire, write_artifact,
 )
 from moli_cdp_smoke.raw_cdp import RawCdpClient
 from moli_cdp_smoke.helpers import attach_cdp_event_collector
@@ -263,6 +263,50 @@ class _Session:
 
 
 class SessionObservationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sdk_navigation_and_frame_events_are_observed_without_mutating_transport(self) -> None:
+        sent, received = [], []
+        send, receive = sent.append, received.append
+        transport = SimpleNamespace(send=send, on_message=receive)
+        playwright = SimpleNamespace(_impl_obj=SimpleNamespace(
+            _connection=SimpleNamespace(_transport=transport),
+        ))
+        command = {"id": 7, "guid": "frame", "method": "goto", "params": {"url": "http://fixture.test/"}}
+        event = {"guid": "frame", "method": "navigated", "params": {"url": "http://fixture.test/"}}
+        reply = {"id": 7, "result": {"response": {"guid": "response"}}}
+        with diagnostics_scope(None) as diagnostics:
+            with observe_playwright_connection(playwright):
+                transport.send(command)
+                self.assertTrue(diagnostics.pending)
+                transport.on_message(event)
+                transport.on_message(reply)
+            self.assertIs(transport.send, send)
+            self.assertIs(transport.on_message, receive)
+            self.assertEqual(diagnostics.pending, {})
+            self.assertEqual([m["message"] for m in diagnostics.messages], [command, event, reply])
+            self.assertTrue(all(m["transport"] == "playwright-driver" for m in diagnostics.messages))
+        self.assertIs(sent[0], command)
+        self.assertIs(received[0], event)
+        self.assertIs(received[1], reply)
+
+    async def test_sdk_transport_failure_is_preserved_and_hooks_are_restored(self) -> None:
+        error = ValueError("driver write failed")
+
+        def fail(message: Any) -> None:
+            raise error
+
+        transport = SimpleNamespace(send=fail, on_message=lambda _: None)
+        playwright = SimpleNamespace(_impl_obj=SimpleNamespace(
+            _connection=SimpleNamespace(_transport=transport),
+        ))
+        with self.assertRaises(ValueError) as caught:
+            with observe_playwright_connection(playwright):
+                transport.send({"id": 1, "method": "goto"})
+        self.assertIs(caught.exception, error)
+        self.assertIs(transport.send, fail)
+        with self.assertRaisesRegex(RuntimeError, "Playwright transport changed"):
+            with observe_playwright_connection(SimpleNamespace()):
+                self.fail("unsupported SDK must not disable diagnosis silently")
+
     async def test_multiple_scenario_listeners_do_not_duplicate_the_protocol_evidence(self) -> None:
         class Session(_Session):
             def __init__(self) -> None:

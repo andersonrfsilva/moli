@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import traceback
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
@@ -15,7 +16,7 @@ from typing import Any, Awaitable, Callable, Iterable
 
 from playwright.async_api import async_playwright
 
-from .diagnostics import current_diagnostics, diagnostics_scope, new_cdp_session
+from .diagnostics import current_diagnostics, diagnostics_scope, new_cdp_session, observe_playwright_connection
 from .assertions import record
 from .config import clear_current_process_proxy_env
 from .fixture import FixtureServer
@@ -568,10 +569,12 @@ async def run_smoke(
         results = []
     temp_dir = Path(tempfile.mkdtemp(prefix="moli-pw-smoke-"))
     playwright = None
+    observations = ExitStack()
     try:
         playwright = await await_with_progress(
             "playwright/start", async_playwright().start()
         )
+        observations.enter_context(observe_playwright_connection(playwright))
         browser = await await_with_progress(
             "playwright/connect-over-cdp",
             playwright.chromium.connect_over_cdp(endpoint, timeout=10_000),
@@ -649,9 +652,12 @@ async def run_smoke(
         finally:
             await await_with_progress("playwright/browser-close", browser.close())
     finally:
-        if playwright is not None:
-            await await_with_progress("playwright/stop", playwright.stop())
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        try:
+            if playwright is not None:
+                await await_with_progress("playwright/stop", playwright.stop())
+        finally:
+            observations.close()
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
