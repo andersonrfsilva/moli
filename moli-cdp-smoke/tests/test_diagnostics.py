@@ -15,6 +15,7 @@ from moli_cdp_smoke.diagnostics import (
     record_phase, record_wire, write_artifact,
 )
 from moli_cdp_smoke.raw_cdp import RawCdpClient
+from moli_cdp_smoke.helpers import attach_cdp_event_collector
 
 
 class _Socket:
@@ -148,6 +149,40 @@ class _Session:
 
 
 class SessionObservationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_multiple_scenario_listeners_do_not_duplicate_the_protocol_evidence(self) -> None:
+        class Session(_Session):
+            def __init__(self) -> None:
+                super().__init__()
+                self.handlers: dict[str, list[Any]] = {}
+
+            def on(self, method: str, handler: Any) -> None:
+                self.handlers.setdefault(method, []).append(handler)
+
+            def remove_listener(self, method: str, handler: Any) -> None:
+                self.handlers[method].remove(handler)
+
+            def emit(self, method: str, params: Any) -> None:
+                for handler in list(self.handlers.get(method, [])):
+                    handler(params)
+
+        original = Session()
+        session = ObservedCdpSession(original)
+        with diagnostics_scope(None) as diagnostics:
+            first = attach_cdp_event_collector(session, ["Page.lifecycleEvent"])
+            peer = attach_cdp_event_collector(session, ["Page.lifecycleEvent"])
+            original.emit("Page.lifecycleEvent", {"loaderId": "first"})
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len(peer), 1)
+            self.assertEqual(len(diagnostics.messages), 1)
+            first.close()
+            original.emit("Page.lifecycleEvent", {"loaderId": "second"})
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len(peer), 2)
+            self.assertEqual(len(diagnostics.messages), 2)
+            await session.detach()
+            peer.close()
+            self.assertEqual(original.handlers["Page.lifecycleEvent"], [])
+
     async def test_sdk_calls_keep_their_original_result_and_exception(self) -> None:
         original = _Session()
         session = ObservedCdpSession(original)

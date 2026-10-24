@@ -65,13 +65,10 @@ for (;;) {}""",
         )
 
         async def busy_loop_entered() -> bool:
-            try:
-                status = await asyncio.to_thread(
-                    read_fixture_json,
-                    f"{fixture}/inspector-routing-witness/status",
-                )
-            except Exception:
-                return False
+            status = await asyncio.to_thread(
+                read_fixture_json,
+                f"{fixture}/inspector-routing-witness/status",
+            )
             return status.get("enteredCount") == 1
 
         await wait_until(

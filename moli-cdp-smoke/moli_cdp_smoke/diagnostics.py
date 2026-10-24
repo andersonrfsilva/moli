@@ -8,6 +8,7 @@ import itertools
 import os
 import sys
 import time
+import weakref
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -175,9 +176,30 @@ class ObservedCdpSession:
 
     def __init__(self, session: Any) -> None:
         self._session = session
+        self._event_loggers: dict[str, Any] = {}
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._session, name)
+
+    def _observe_event(self, method: str) -> None:
+        if method not in self._event_loggers:
+            reference = weakref.ref(self)
+
+            def observed(params: Any) -> None:
+                if client := reference():
+                    record_wire(client, "event", {"method": method, "params": params},
+                                transport="playwright")
+
+            self._session.on(method, observed)
+            self._event_loggers[method] = observed
+
+    def on(self, method: str, handler: Any) -> Any:
+        self._observe_event(method)
+        return self._session.on(method, handler)
+
+    def once(self, method: str, handler: Any) -> Any:
+        self._observe_event(method)
+        return self._session.once(method, handler)
 
     async def _call(self, method: str, params: Any, invoke: Any) -> Any:
         return await _observe_call(self, method, params, invoke)
@@ -186,7 +208,12 @@ class ObservedCdpSession:
         return await self._call(method, params, lambda: self._session.send(method, params))
 
     async def detach(self) -> None:
-        return await self._call("CDPSession.detach", None, self._session.detach)
+        try:
+            return await self._call("CDPSession.detach", None, self._session.detach)
+        finally:
+            for method, handler in self._event_loggers.items():
+                self._session.remove_listener(method, handler)
+            self._event_loggers.clear()
 
 
 async def new_cdp_session(context: Any, page: Any) -> ObservedCdpSession:

@@ -88,11 +88,28 @@ async def _override_while_peer_paused(control: Any, peer: Any, baseline: list[An
         if not paused.done():
             paused.set_result(event)
 
-    peer.once("Debugger.paused", on_paused)
+    peer.on("Debugger.paused", on_paused)
     evaluation = asyncio.create_task(peer.send("Runtime.evaluate", {
         "expression": "debugger;",
     }))
-    try:
+
+    async def cleanup_command(method: str) -> None:
+        await asyncio.wait_for(peer.send(method), timeout=5)
+
+    async def resume() -> None:
+        if paused.done() and not paused.cancelled():
+            await cleanup_command("Debugger.resume")
+
+    async def finish_evaluation() -> None:
+        await asyncio.wait_for(evaluation, timeout=5)
+
+    async with contextlib.AsyncExitStack() as cleanup:
+        # Every cleanup must run even if an earlier step fails. AsyncExitStack
+        # preserves those failures through exception chaining.
+        cleanup.push_async_callback(cleanup_command, "Debugger.disable")
+        cleanup.push_async_callback(finish_evaluation)
+        cleanup.push_async_callback(resume)
+        cleanup.callback(peer.remove_listener, "Debugger.paused", on_paused)
         event = await asyncio.wait_for(paused, timeout=10)
         transitions = [
             ("fr_FR", "Europe/Paris", ["fr-FR", "Europe/Paris", -60, -120]),
@@ -118,13 +135,6 @@ async def _override_while_peer_paused(control: Any, peer: Any, baseline: list[An
             assert_equal(result.get("result", {}).get("value"),
                          [expected, expected[2]],
                          f"paused isolate and existing Date observe {locale}/{timezone}")
-    finally:
-        peer.remove_listener("Debugger.paused", on_paused)
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(peer.send("Debugger.resume"), timeout=5)
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(evaluation, timeout=5)
-        await peer.send("Debugger.disable")
 
 
 async def run_process_environment_group(

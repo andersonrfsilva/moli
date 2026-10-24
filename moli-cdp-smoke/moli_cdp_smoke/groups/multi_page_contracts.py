@@ -10,7 +10,7 @@ from ..lifecycle import pending_runtime_evaluation
 from ..navigation import navigate_cdp
 from ..assertions import SmokeError, assert_equal, record_contract, wait_until
 from ..config import is_moli_browser
-from ..helpers import attach_cdp_event_collector
+from ..helpers import attach_cdp_event_collector, wait_for_document_request
 from .multi_page_support import (
     MultiPageCase,
     close_context,
@@ -1480,20 +1480,24 @@ async def _network_enablement_is_session_local(
         sessions = [session_a, session_b]
         events_a = attach_cdp_event_collector(
             session_a,
-            ["Network.responseReceived", "Network.loadingFinished"],
+            ["Network.requestWillBeSent", "Network.responseReceived",
+             "Network.loadingFinished", "Network.loadingFailed"],
         )
         events_b = attach_cdp_event_collector(
             session_b,
-            ["Network.responseReceived", "Network.loadingFinished"],
+            ["Network.requestWillBeSent", "Network.responseReceived",
+             "Network.loadingFinished", "Network.loadingFailed"],
         )
         await asyncio.gather(
             session_a.send("Network.enable"),
             session_b.send("Network.enable"),
         )
         first_url = f"{fixture}/plain?multi-page-network-sessions=both"
-        await page.goto(first_url, wait_until="load")
-        request_a = _document_request_id(events_a, first_url)
-        request_b = _document_request_id(events_b, first_url)
+        first_navigation = await navigate_cdp(session_a, first_url)
+        request_a, request_b = await asyncio.gather(
+            wait_for_document_request(events_a, first_url, loader_id=first_navigation["loaderId"]),
+            wait_for_document_request(events_b, first_url, loader_id=first_navigation["loaderId"]),
+        )
 
         events_a.clear()
         events_b.clear()
@@ -1512,10 +1516,9 @@ async def _network_enablement_is_session_local(
                 f"{retained_body_b!r}"
             )
         second_url = f"{fixture}/plain?multi-page-network-sessions=b-only"
-        await page.goto(second_url, wait_until="load")
-        await wait_until(
-            lambda: _has_document_response(events_b, second_url),
-            "surviving Network session after peer disable",
+        second_navigation = await navigate_cdp(session_b, second_url)
+        request_b_only = await wait_for_document_request(
+            events_b, second_url, loader_id=second_navigation["loaderId"],
         )
         await session_a.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
@@ -1523,7 +1526,6 @@ async def _network_enablement_is_session_local(
             False,
             "Network.disable silences only its own session",
         )
-        request_b_only = _document_request_id(events_b, second_url)
         body_b = await session_b.send(
             "Network.getResponseBody",
             {"requestId": request_b_only},
@@ -1535,16 +1537,10 @@ async def _network_enablement_is_session_local(
         events_a.clear()
         events_b.clear()
         third_url = f"{fixture}/plain?multi-page-network-sessions=reenabled"
-        await page.goto(third_url, wait_until="load")
+        third_navigation = await navigate_cdp(session_a, third_url)
         await asyncio.gather(
-            wait_until(
-                lambda: _has_document_response(events_a, third_url),
-                "re-enabled Network session",
-            ),
-            wait_until(
-                lambda: _has_document_response(events_b, third_url),
-                "continuously enabled Network session",
-            ),
+            wait_for_document_request(events_a, third_url, loader_id=third_navigation["loaderId"]),
+            wait_for_document_request(events_b, third_url, loader_id=third_navigation["loaderId"]),
         )
         record_contract(
             results,
@@ -1597,17 +1593,16 @@ async def _page_lifecycle_enablement_is_session_local(
         )
         events_a.clear()
         events_b.clear()
-        await page.goto(
-            f"{fixture}/plain?multi-page-lifecycle=both",
-            wait_until="load",
+        first_navigation = await navigate_cdp(
+            session_b, f"{fixture}/plain?multi-page-lifecycle=both",
         )
         await asyncio.gather(
             wait_until(
-                lambda: _has_lifecycle_event(events_a, "load"),
+                lambda: _has_lifecycle_event(events_a, "load", first_navigation),
                 "session A Page.lifecycleEvent load",
             ),
             wait_until(
-                lambda: _has_lifecycle_event(events_b, "load"),
+                lambda: _has_lifecycle_event(events_b, "load", first_navigation),
                 "session B Page.lifecycleEvent load",
             ),
         )
@@ -1618,17 +1613,16 @@ async def _page_lifecycle_enablement_is_session_local(
         )
         events_a.clear()
         events_b.clear()
-        await page.goto(
-            f"{fixture}/plain?multi-page-lifecycle=b-only",
-            wait_until="load",
+        second_navigation = await navigate_cdp(
+            session_b, f"{fixture}/plain?multi-page-lifecycle=b-only",
         )
         await wait_until(
-            lambda: _has_lifecycle_event(events_b, "load"),
+            lambda: _has_lifecycle_event(events_b, "load", second_navigation),
             "surviving Page lifecycle observer",
         )
         await session_a.send("Runtime.evaluate", {"expression": "void 0"})
         assert_equal(
-            _has_lifecycle_event(events_a, "load"),
+            _has_lifecycle_event(events_a, "load", second_navigation),
             False,
             "disabling lifecycle events silences only one session",
         )
@@ -1638,22 +1632,21 @@ async def _page_lifecycle_enablement_is_session_local(
             {"enabled": True},
         )
         await wait_until(
-            lambda: _has_lifecycle_event(events_a, "load"),
+            lambda: _has_lifecycle_event(events_a, "load", second_navigation),
             "re-enabled session current lifecycle snapshot",
         )
         events_a.clear()
         events_b.clear()
-        await page.goto(
-            f"{fixture}/plain?multi-page-lifecycle=reenabled",
-            wait_until="load",
+        third_navigation = await navigate_cdp(
+            session_b, f"{fixture}/plain?multi-page-lifecycle=reenabled",
         )
         await asyncio.gather(
             wait_until(
-                lambda: _has_lifecycle_event(events_a, "load"),
+                lambda: _has_lifecycle_event(events_a, "load", third_navigation),
                 "re-enabled Page lifecycle observer",
             ),
             wait_until(
-                lambda: _has_lifecycle_event(events_b, "load"),
+                lambda: _has_lifecycle_event(events_b, "load", third_navigation),
                 "continuous Page lifecycle observer",
             ),
         )
@@ -2954,10 +2947,12 @@ def _default_execution_context_id(events: list[dict[str, Any]]) -> int | None:
     return None
 
 
-def _has_lifecycle_event(events: list[dict[str, Any]], name: str) -> bool:
+def _has_lifecycle_event(events: list[dict[str, Any]], name: str, navigation: dict[str, Any]) -> bool:
     return any(
         event.get("method") == "Page.lifecycleEvent"
         and event.get("params", {}).get("name") == name
+        and event.get("params", {}).get("frameId") == navigation["frameId"]
+        and event.get("params", {}).get("loaderId") == navigation["loaderId"]
         for event in events
     )
 

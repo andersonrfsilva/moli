@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import sys
 import unittest
 import weakref
 from typing import Any
@@ -76,8 +77,8 @@ class _Payload:
     pass
 
 
-class EventCollectorLifetimeTests(unittest.TestCase):
-    def test_explicit_scope_stops_collecting_even_when_results_remain_owned(self) -> None:
+class EventCollectorLifetimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_scope_stops_collecting_even_when_results_remain_owned(self) -> None:
         client = _Emitter()
         with attach_cdp_event_collector(client, ["event"]) as events:
             client.emit("event", {"id": 1})
@@ -86,7 +87,7 @@ class EventCollectorLifetimeTests(unittest.TestCase):
         self.assertEqual(events, [{"method": "event", "params": {"id": 1}}])
         self.assertEqual(client.handlers["event"], [])
 
-    def test_finished_scenario_releases_events_and_listeners(self) -> None:
+    async def test_finished_scenario_releases_events_and_listeners(self) -> None:
         client, payload = _Emitter(), _Payload()
         observer = attach_cdp_event_collector(client, ["event"])
         reference = weakref.ref(payload)
@@ -95,9 +96,10 @@ class EventCollectorLifetimeTests(unittest.TestCase):
         del observer, payload
         gc.collect()
         self.assertIsNone(reference(), "client retained a finished scenario's event payloads")
+        await asyncio.sleep(0)
         self.assertEqual(client.handlers["event"], [])
 
-    def test_live_observers_keep_independent_event_order_and_payloads(self) -> None:
+    async def test_live_observers_keep_independent_event_order_and_payloads(self) -> None:
         client = _Emitter()
         first = attach_cdp_event_collector(client, ["first", "second"])
         peer = attach_cdp_event_collector(client, ["second"])
@@ -110,6 +112,34 @@ class EventCollectorLifetimeTests(unittest.TestCase):
         gc.collect()
         client.emit("second", {"id": 3})
         self.assertEqual([event["params"]["id"] for event in peer], [2, 3])
+
+    async def test_gc_inside_the_emitter_lock_does_not_reenter_it(self) -> None:
+        script = """
+import asyncio, gc
+from pyee import EventEmitter
+from moli_cdp_smoke.helpers import attach_cdp_event_collector
+async def run():
+    gc.disable()
+    emitter = EventEmitter()
+    events = attach_cdp_event_collector(emitter, ['event'])
+    events.append({'cycle': events})
+    del events
+    with emitter._lock:
+        gc.collect()
+    await asyncio.sleep(0)
+    assert emitter.listeners('event') == []
+asyncio.run(run())
+"""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, "-c", script, stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, error = await asyncio.wait_for(process.communicate(), timeout=5)
+            self.assertEqual(process.returncode, 0, error.decode())
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
 
 
 if __name__ == "__main__":
