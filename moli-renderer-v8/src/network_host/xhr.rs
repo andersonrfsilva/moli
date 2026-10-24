@@ -53,9 +53,8 @@ pub(crate) use self::delivery::{
     apply_xhr_failure, apply_xhr_response, apply_xhr_response_body_source,
     apply_xhr_response_body_source_with_status_text, apply_xhr_streaming_response_body_source,
     apply_xhr_streaming_response_chunk, apply_xhr_streaming_response_head, apply_xhr_timeout,
-    reset_xhr_response_for_request_error, throw_synchronous_xhr_failure,
+    finish_xhr_abort, throw_synchronous_xhr_failure,
 };
-pub(crate) use self::events::xhr_dispatch_progress_event;
 pub(crate) use self::instance_state::xhr_has_upload_listeners;
 pub(crate) use self::instance_state::{
     XHR_METHOD_SLOT, XHR_OPEN_GENERATION_SLOT, XHR_READY_STATE_SLOT, XHR_REQUEST_HEADERS_SLOT,
@@ -75,8 +74,7 @@ use self::response_type::XmlHttpRequestResponseType;
 pub(crate) use self::send::prepare_xhr_send_body;
 pub(crate) use self::send::{
     PreparedXhrSendBody, convert_xhr_send_body_from_args, dispatch_xhr_loadstart,
-    dispatch_xhr_upload_abort_if_in_progress, dispatch_xhr_upload_complete,
-    xhr_author_request_headers,
+    dispatch_xhr_upload_complete, xhr_author_request_headers,
 };
 
 pub(crate) fn install_progress_event_template_bindings<'s>(
