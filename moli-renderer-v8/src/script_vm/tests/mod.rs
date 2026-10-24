@@ -2328,6 +2328,9 @@ mod navigation_timing_inheritance;
 mod payment_response_interfaces;
 
 mod body_mime_consolidation;
+
+mod websocket_close_dictionary;
+
 mod response_blob_mime;
 
 mod intersection_target_order;
