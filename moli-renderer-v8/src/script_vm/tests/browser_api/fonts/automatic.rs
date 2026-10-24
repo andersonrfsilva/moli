@@ -139,6 +139,73 @@ fn font_discovery_reuses_clean_inputs_and_rechecks_cssom_changes() {
 }
 
 #[test]
+fn child_font_discovery_rechecks_parent_cssom_viewport_changes() {
+    let mut vm = automatic_vm();
+    vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
+    let (_, wide) = order_font_data();
+    vm.eval(&format!(r#"
+        globalThis.parentStyle=document.createElement('style');
+        parentStyle.textContent='iframe {{width:200px;height:150px}}';document.head.append(parentStyle);
+        globalThis.child=document.getElementById('frame').contentDocument;
+        child.head.innerHTML='<style>span {{font-family:serif}} @media (min-width:500px) {{span {{font-family:LateFace}}}}</style>';
+        child.body.innerHTML='<span id="text">AAAA</span>';
+        globalThis.face=new FontFace('LateFace','url(data:font/ttf;base64,{wide})');
+        child.fonts.add(face);
+    "#)).unwrap();
+    vm.reconcile_document_font_resources();
+    run_font_tasks(&mut vm);
+    assert_eq!(vm.eval("face.status").unwrap(), "unloaded");
+    let before = discovery_count(&mut vm);
+    let dom_version = vm._context_host.borrow().dom_host().dom_version();
+    let visual_generation = vm._context_host.borrow().visual_state_generation();
+    vm.eval("parentStyle.sheet.insertRule('iframe {width:600px}',1)")
+        .unwrap();
+    assert_eq!(
+        vm._context_host.borrow().dom_host().dom_version(),
+        dom_version
+    );
+    assert_eq!(
+        vm._context_host.borrow().visual_state_generation(),
+        visual_generation
+    );
+    vm.reconcile_document_font_resources();
+    run_font_tasks(&mut vm);
+    assert_eq!(vm.eval("face.status").unwrap(), "loaded");
+    assert!(discovery_count(&mut vm) > before);
+    assert_eq!(vm.layout_pass_observability_for_test().1, 0);
+}
+
+#[test]
+fn child_font_ready_observes_parent_cssom_in_the_same_script() {
+    let mut vm = automatic_vm();
+    vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
+    let (_, wide) = order_font_data();
+    vm.eval(&format!(r#"
+        globalThis.parentStyle=document.createElement('style');
+        parentStyle.textContent='iframe {{width:200px}}';document.head.append(parentStyle);
+        globalThis.child=document.getElementById('frame').contentDocument;
+        child.head.innerHTML='<style>span {{font-family:serif}} @media (min-width:500px) {{span {{font-family:LateFace}}}}</style>';
+        child.body.innerHTML='<span>AAAA</span>';
+        globalThis.face=new FontFace('LateFace','url(data:font/ttf;base64,{wide})');child.fonts.add(face);
+        globalThis.states=[];
+    "#)).unwrap();
+    vm.reconcile_document_font_resources();
+    run_font_tasks(&mut vm);
+    assert_eq!(vm.eval("face.status").unwrap(), "unloaded");
+    vm.eval(
+        r#"
+        parentStyle.sheet.insertRule('iframe {width:600px}',1);
+        child.fonts.ready.then(()=>states.push(face.status));
+    "#,
+    )
+    .unwrap();
+    run_font_tasks(&mut vm);
+    assert_eq!(vm.eval("face.status").unwrap(), "loaded");
+    assert_eq!(vm.eval("JSON.stringify(states)").unwrap(), r#"["loaded"]"#);
+    assert_eq!(vm.layout_pass_observability_for_test().1, 0);
+}
+
+#[test]
 fn resources_load_used_faces_without_loading_unused_hidden_empty_or_range_misses() {
     let mut vm = automatic_vm();
     let (_, wide) = order_font_data();

@@ -10,7 +10,10 @@ use crate::{
         demand::{FontSourceSignature, pending_families, requested_sources},
         usage::collect_font_uses,
     },
-    native_bridge::{JsContextHost, WindowExecutionContextOwner},
+    native_bridge::{
+        JsContextHost, WindowExecutionContextOwner,
+        element::{StyleObservation, style_viewport_for_document},
+    },
     style_engine::{StyleViewport, StyloStyleEnvironment},
     types::SubresourceResourceType,
     util::{get_private_value, set_private_value},
@@ -49,11 +52,33 @@ struct Inputs {
 
 impl Inputs {
     fn new(host: &JsContextHost, document: DomHandle, faces: &[FontFaceLoad]) -> Self {
+        // A ready getter can run before the resource phase has observed an
+        // ancestor's CSSOM edits. Refresh embedding styles before consulting
+        // the inferred viewport cache, from the outermost frame inward.
+        let mut frames = Vec::new();
+        let mut ancestor = document;
+        while let Some(frame) = host.child_browsing_context_host_for_document_handle(ancestor) {
+            if frames.contains(&frame) {
+                break;
+            }
+            frames.push(frame);
+            let Some(parent) = host.dom_host().owner_document_handle(frame) else {
+                break;
+            };
+            ancestor = parent;
+        }
+        {
+            let mut observation = StyleObservation::new(host);
+            for frame in frames.into_iter().rev() {
+                observation.read(frame);
+            }
+        }
+        let viewport = style_viewport_for_document(host, document);
         Self {
             dom_version: host.dom_host().dom_version(),
             style_generations: host.document_style_input_generations(document),
             visual_generation: host.visual_state_generation(),
-            viewport: host.style_viewport(),
+            viewport,
             environment: StyloStyleEnvironment::from_emulated_media(host.emulated_media()),
             faces: faces.iter().map(FontSourceSignature::new).collect(),
         }

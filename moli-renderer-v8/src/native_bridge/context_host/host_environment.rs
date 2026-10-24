@@ -922,9 +922,22 @@ impl JsContextHost {
 
     pub(crate) fn document_style_input_generations(
         &self,
-        document: DomHandle,
+        mut document: DomHandle,
     ) -> Vec<(DomHandle, u64, u64)> {
-        self.style_engine.visual_style_input_generations([document])
+        // An embedding element's computed size can change through ancestor
+        // CSSOM alone, without changing the child DOM or visual generation.
+        let mut documents = Vec::new();
+        while !documents.contains(&document) {
+            documents.push(document);
+            let Some(parent) = self
+                .child_browsing_context_host_for_document_handle(document)
+                .and_then(|frame| self.dom_host().owner_document_handle(frame))
+            else {
+                break;
+            };
+            document = parent;
+        }
+        self.style_engine.visual_style_input_generations(documents)
     }
 
     /// Initialize sources when taking ownership of an already constructed DOM.
