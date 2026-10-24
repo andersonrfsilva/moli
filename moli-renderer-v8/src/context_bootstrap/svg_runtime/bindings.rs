@@ -1583,7 +1583,7 @@ struct SvgFitToViewBoxPrototypeAccessorsDeclaration {
 }
 
 #[derive(WebApiFunctionTemplate)]
-#[webapi(interface = web_api_interfaces::SVGImageElement, enumerable)]
+#[webapi(interface = web_api_interfaces::SVGImageElement, enumerable, receiver)]
 struct SvgImagePreserveAspectRatioPrototypeAccessorsDeclaration {
     #[webapi(
         accessor_property = "preserveAspectRatio",
