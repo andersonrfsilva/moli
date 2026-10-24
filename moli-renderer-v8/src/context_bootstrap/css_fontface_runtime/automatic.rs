@@ -12,6 +12,7 @@ use crate::{
     },
     native_bridge::{JsContextHost, WindowExecutionContextOwner},
     style_engine::{StyleViewport, StyloStyleEnvironment},
+    types::SubresourceResourceType,
     util::{get_private_value, set_private_value},
 };
 
@@ -167,26 +168,41 @@ pub(crate) fn discover_requests(scope: &mut v8::PinScope<'_, '_>) {
     let Some(host_ptr) = crate::util::context_host_ptr_from_global_bridge(scope) else {
         return;
     };
-    let pending = store
-        .borrow()
-        .sets
-        .iter()
-        .filter(|(_, entry)| {
-            entry.host == host_ptr as usize
-                && entry.faces[entry.manual_start..]
-                    .iter()
-                    .any(|face| face.borrow().status() == FontFaceStatus::Unloaded)
-        })
-        .map(|(&id, entry)| {
-            (
-                id,
-                entry.document,
-                entry.owner,
-                entry.faces.clone(),
-                entry.manual_start,
-            )
-        })
-        .collect::<Vec<_>>();
+    let pending = {
+        let host = unsafe { &*host_ptr };
+        store
+            .borrow()
+            .sets
+            .iter()
+            .filter(|(_, entry)| {
+                entry.host == host_ptr as usize
+                    // Implicit requests share the CSS font resource opt-in.
+                    // Check before scanning faces or observing document styles.
+                    && host
+                        .owner_dispatch_scope_for_node(entry.document)
+                        .and_then(|dispatch| {
+                            host.document_resource_loader_for_dispatch_scope(dispatch)
+                        })
+                        .is_some_and(|loader| {
+                            loader
+                                .request_client()
+                                .optional_resource_fetch_enabled(SubresourceResourceType::Font)
+                        })
+                    && entry.faces[entry.manual_start..]
+                        .iter()
+                        .any(|face| face.borrow().status() == FontFaceStatus::Unloaded)
+            })
+            .map(|(&id, entry)| {
+                (
+                    id,
+                    entry.document,
+                    entry.owner,
+                    entry.faces.clone(),
+                    entry.manual_start,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
     for (id, document, owner, sources, manual_start) in pending {
         let requests = {
             let host = unsafe { &*host_ptr };

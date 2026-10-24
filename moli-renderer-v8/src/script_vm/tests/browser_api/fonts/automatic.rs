@@ -1,9 +1,89 @@
 use super::selection_order::{order_font_data, order_vm};
 use super::*;
+use crate::protocol_types::OptionalResourceFetchMask;
+
+fn automatic_vm() -> StandaloneScriptVmHarness {
+    let vm = order_vm();
+    vm.current_main_document_resource_loader()
+        .unwrap()
+        .request_client()
+        .set_optional_resource_fetch_mask(OptionalResourceFetchMask::FONT);
+    vm
+}
+
+#[test]
+fn automatic_font_requests_follow_the_document_resource_policy() {
+    let (_, wide) = order_font_data();
+    for mask in [
+        OptionalResourceFetchMask::NONE,
+        OptionalResourceFetchMask::IMAGE,
+        OptionalResourceFetchMask::FONT,
+        OptionalResourceFetchMask::ALL,
+    ] {
+        for child in [false, true] {
+            let mut vm = order_vm();
+            vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
+            vm.current_main_document_resource_loader()
+                .unwrap()
+                .request_client()
+                .set_optional_resource_fetch_mask(mask);
+            let document = if child {
+                "document.getElementById('frame').contentDocument"
+            } else {
+                "document"
+            };
+            vm.eval(&format!(r#"
+                globalThis.targetDocument={document};
+                globalThis.face=new FontFace('PolicyFace','url(data:font/ttf;base64,{wide})');
+                targetDocument.fonts.add(face);
+                const style=targetDocument.createElement('style');
+                style.textContent='@font-face{{font-family:CssPolicyFace;src:url(data:font/ttf;base64,{wide})}}';
+                targetDocument.head.append(style);
+                targetDocument.body.innerHTML='<span style="font-family:PolicyFace">AAAA</span><span style="font-family:CssPolicyFace">AAAA</span>';
+                globalThis.cssFace=[...targetDocument.fonts].find(face=>face.family==='CssPolicyFace');
+                globalThis.ready=[];
+            "#)).unwrap();
+            vm.prime_document_lifecycle_processing_and_record_stylesheet_network_results();
+            vm.eval("targetDocument.fonts.ready.then(()=>ready.push(true));void targetDocument.fonts.status")
+                .unwrap();
+            run_font_tasks(&mut vm);
+            let enabled = mask.contains(OptionalResourceFetchMask::FONT);
+            assert_eq!(
+                vm.eval("[face.status,cssFace.status].join(',')").unwrap(),
+                if enabled {
+                    "loaded,loaded"
+                } else {
+                    "unloaded,unloaded"
+                },
+                "mask={mask:?}, child={child}"
+            );
+            assert_eq!(vm.eval("JSON.stringify(ready)").unwrap(), "[true]");
+            if !enabled {
+                assert_eq!(discovery_count(&mut vm), 0);
+            }
+            assert_eq!(vm.layout_pass_observability_for_test().1, 0);
+        }
+    }
+}
+
+#[test]
+fn explicit_font_loading_keeps_working_without_automatic_font_requests() {
+    let mut vm = order_vm();
+    let (_, wide) = order_font_data();
+    vm.eval(&format!(r#"
+        globalThis.face=new FontFace('OrderFace','url(data:font/ttf;base64,{wide})');
+        document.fonts.add(face);
+        globalThis.results=[];
+        face.load().then(value=>results.push(value===face));
+        document.fonts.load('40px OrderFace','AAAA').then(faces=>results.push(faces.length===1 && faces[0]===face));
+    "#)).unwrap();
+    assert_eq!(vm.eval("face.status").unwrap(), "loaded");
+    assert_eq!(vm.eval("JSON.stringify(results)").unwrap(), "[true,true]");
+}
 
 #[test]
 fn document_resources_load_fonts_even_when_layout_is_disabled() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
     vm.eval(
         r#"
@@ -29,7 +109,7 @@ fn document_resources_load_fonts_even_when_layout_is_disabled() {
 
 #[test]
 fn font_discovery_reuses_clean_inputs_and_rechecks_cssom_changes() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
         globalThis.face=new FontFace('LaterFace','url(data:font/ttf;base64,{wide})');document.fonts.add(face);
@@ -60,7 +140,7 @@ fn font_discovery_reuses_clean_inputs_and_rechecks_cssom_changes() {
 
 #[test]
 fn resources_load_used_faces_without_loading_unused_hidden_empty_or_range_misses() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
         globalThis.result=[];
@@ -101,7 +181,7 @@ fn resources_load_used_faces_without_loading_unused_hidden_empty_or_range_misses
 #[test]
 fn implicit_load_errors_preserve_observed_promises_and_font_set_events() {
     for observe in [false, true] {
-        let mut vm = order_vm();
+        let mut vm = automatic_vm();
         vm.eval(r#"
             globalThis.result=[];globalThis.rejections=[];globalThis.errors=[];
             addEventListener('unhandledrejection',event=>{rejections.push(event.reason.name);event.preventDefault()});
@@ -130,7 +210,7 @@ fn implicit_load_errors_preserve_observed_promises_and_font_set_events() {
 
 #[test]
 fn resources_match_capabilities_before_unicode_ranges() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
         globalThis.regular=new FontFace('OrderFace','url(data:font/ttf;base64,{wide})',{{weight:'400',unicodeRange:'U+4E00'}});
@@ -159,7 +239,7 @@ fn resources_match_capabilities_before_unicode_ranges() {
 
 #[test]
 fn font_resource_requests_run_as_window_owned_tasks() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!("globalThis.face=new FontFace('OrderFace','url(data:font/ttf;base64,{wide})');document.fonts.add(face)")).unwrap();
     vm.reconcile_document_font_resources();
@@ -178,7 +258,7 @@ fn font_resource_requests_run_as_window_owned_tasks() {
 
 #[test]
 fn font_set_ready_observes_resource_requests_before_their_tasks_run() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!("globalThis.face=new FontFace('OrderFace','url(data:font/ttf;base64,{wide})');document.fonts.add(face)")).unwrap();
     vm.reconcile_document_font_resources();
@@ -196,7 +276,7 @@ fn font_set_ready_observes_resource_requests_before_their_tasks_run() {
 
 #[test]
 fn resources_keep_lower_priority_faces_unloaded_until_they_are_selected() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (narrow, wide) = order_font_data();
     vm.eval(&format!(r#"
         globalThis.pending=new FontFace('OrderFace','url(data:font/ttf;base64,{wide})');
@@ -225,7 +305,7 @@ fn resources_keep_lower_priority_faces_unloaded_until_they_are_selected() {
 
 #[test]
 fn geometry_and_screenshots_do_not_start_or_advance_font_loads() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
         globalThis.face=new FontFace('OrderFace','url(data:font/ttf;base64,{wide})');document.fonts.add(face);
@@ -252,7 +332,7 @@ fn geometry_and_screenshots_do_not_start_or_advance_font_loads() {
 
 #[test]
 fn another_document_requests_a_shared_face_in_its_creation_window() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
         globalThis.face=new FontFace('ChildDemand','url(data:font/ttf;base64,{wide})');
@@ -269,7 +349,7 @@ fn another_document_requests_a_shared_face_in_its_creation_window() {
 
 #[tokio::test]
 async fn implicit_font_network_load_waits_for_completion_and_font_set_ready() {
-    let (url, request_rx, release_tx, server) = spawn_gated_font_resource_server().await;
+    let (url, mut request_rx, release_tx, server) = spawn_gated_font_resource_server().await;
     let loader = ResourceRequestClient::new(&moli_fetch::FetchConfig::default()).unwrap();
     let document_url = url.replace("/print-only.woff2", "/page");
     let (mut vm, mut completions) = new_parsed_test_vm_with_loader_and_resource_completion_queue(
@@ -283,8 +363,36 @@ async fn implicit_font_network_load_waits_for_completion_and_font_set_ready() {
         globalThis.face=new FontFace('NetworkFace','url("{url}")');document.fonts.add(face);
         document.fonts.addEventListener('loadingdone',event=>events.push(event.fontfaces.length,event.fontfaces[0]===face));
         face.loaded.then(value=>result.push(value===face));
-        document.fonts.ready.then(value=>result.push(value===document.fonts));
+        globalThis.disabledReady=false;
+        document.fonts.ready.then(()=>disabledReady=true);
     "#)).unwrap();
+    vm.prime_document_lifecycle_processing_and_record_stylesheet_network_results();
+    run_font_tasks(&mut vm);
+    assert_eq!(
+        vm.eval("JSON.stringify([face.status,document.fonts.status,disabledReady,result])")
+            .unwrap(),
+        r#"["unloaded","loaded",true,[]]"#
+    );
+    assert_eq!(
+        vm._context_host
+            .borrow()
+            .pending_subresource_request_count(),
+        0
+    );
+    assert!(matches!(
+        request_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+    assert_eq!(discovery_count(&mut vm), 0);
+
+    loader.set_optional_resource_fetch_mask(OptionalResourceFetchMask::FONT);
+    vm.reconcile_document_font_resources();
+    vm.eval(
+        r#"
+        document.fonts.ready.then(value=>result.push(value===document.fonts));
+    "#,
+    )
+    .unwrap();
     let request = tokio::time::timeout(Duration::from_secs(2), request_rx)
         .await
         .unwrap()
@@ -339,7 +447,7 @@ fn discovery_count(vm: &mut ScriptVm) -> u64 {
 
 #[test]
 fn resources_recheck_live_control_values_and_shadow_slot_text_without_layout() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
@@ -369,7 +477,7 @@ fn resources_recheck_live_control_values_and_shadow_slot_text_without_layout() {
 
 #[test]
 fn resources_match_generated_and_transformed_text() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
@@ -384,7 +492,7 @@ fn resources_match_generated_and_transformed_text() {
 
 #[test]
 fn font_requests_follow_text_and_descriptor_changes_without_geometry() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     vm.set_layout_policy(moli_page_types::LayoutPolicy::Mock);
     let (_, wide) = order_font_data();
     vm.eval(&format!(r#"
@@ -407,7 +515,7 @@ fn font_requests_follow_text_and_descriptor_changes_without_geometry() {
 
 #[test]
 fn failed_faces_allow_lower_priority_font_resources_to_load() {
-    let mut vm = order_vm();
+    let mut vm = automatic_vm();
     let (_, wide) = order_font_data();
     vm.eval(&format!(
         r#"
