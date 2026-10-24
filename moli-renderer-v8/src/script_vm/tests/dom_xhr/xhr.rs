@@ -1526,6 +1526,84 @@ fn xml_http_request_data_url_loads_materialized_body() {
 }
 
 #[test]
+fn xml_http_request_queued_deliveries_keep_their_own_request_and_payload() {
+    let mut vm = new_storage_test_vm("https://xhr-pending-owner.test/");
+    vm.eval(
+        r#"
+(() => {
+  const events = globalThis.__xhrPendingOwners = [];
+  const cases = [
+    ["text", "", "data:,old", "data:text/plain,new", xhr => xhr.responseText],
+    ["binary", "arraybuffer", "data:,old", "data:application/octet-stream;base64,AP+A",
+      xhr => Array.from(new Uint8Array(xhr.response))],
+    ["json", "json", "data:,old", 'data:application/json,%7B%22new%22%3Atrue%7D',
+      xhr => xhr.response],
+    ["failure", "", "http://xhr-pending-owner.test:1/blocked", "data:text/plain,recovered",
+      xhr => xhr.responseText]
+  ];
+  for (const [name, responseType, oldURL, newURL, read] of cases) {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => events.push([name, "load", xhr.status, read(xhr)]);
+    xhr.onerror = () => events.push([name, "error"]);
+    xhr.open("GET", oldURL);
+    xhr.responseType = responseType;
+    xhr.send();
+    queueMicrotask(() => events.push([name, "marker"]));
+    xhr.open("GET", newURL);
+    xhr.send();
+  }
+})()
+"#,
+    )
+    .expect("XHR replacements should enqueue independent outcomes");
+    vm.eval("0")
+        .expect("queued XHR deliveries should reach their checkpoint");
+    assert_eq!(
+        vm.eval("JSON.stringify(__xhrPendingOwners)")
+            .expect("XHR delivery order and response data"),
+        r#"[["text","marker"],["text","load",200,"new"],["binary","marker"],["binary","load",200,[0,255,128]],["json","marker"],["json","load",200,{"new":true}],["failure","marker"],["failure","load",200,"recovered"]]"#
+    );
+}
+
+#[test]
+fn xml_http_request_queued_delivery_cannot_complete_an_aborted_or_reopened_request() {
+    let mut vm = new_storage_test_vm("https://xhr-pending-retirement.test/");
+    vm.eval(
+        r#"
+(() => {
+  const events = globalThis.__xhrPendingRetirement = [];
+  const aborted = globalThis.__xhrPendingAborted = new XMLHttpRequest();
+  aborted.onload = () => events.push("unexpected aborted load");
+  aborted.onabort = () => events.push(`abort:${aborted.readyState}`);
+  aborted.onloadend = () => events.push(`loadend:${aborted.readyState}`);
+  aborted.open("GET", "data:,aborted");
+  aborted.send();
+  aborted.abort();
+
+  const reopened = globalThis.__xhrPendingReopened = new XMLHttpRequest();
+  reopened.onload = () => events.push("unexpected reopened load");
+  reopened.open("GET", "data:,obsolete");
+  reopened.send();
+  reopened.open("GET", "data:,not-sent");
+  queueMicrotask(() => events.push("checkpoint"));
+})()
+"#,
+    )
+    .expect("pending XHRs should be cancellable or reusable before delivery");
+    vm.eval("0")
+        .expect("obsolete XHR deliveries should be discarded at the checkpoint");
+    assert_eq!(
+        vm.eval(
+            "JSON.stringify([__xhrPendingRetirement, \
+             [__xhrPendingAborted.readyState, __xhrPendingAborted.status, __xhrPendingAborted.responseText], \
+             [__xhrPendingReopened.readyState, __xhrPendingReopened.status, __xhrPendingReopened.responseText]])"
+        )
+        .expect("retired XHR deliveries must not change current state"),
+        r#"[["abort:4","loadend:4","checkpoint"],[0,0,""],[1,0,""]]"#
+    );
+}
+
+#[test]
 fn xml_http_request_dispatches_download_progress_before_done() {
     let mut vm = new_storage_test_vm("https://xhr-download-progress.test/");
 

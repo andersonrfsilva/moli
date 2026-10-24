@@ -76,7 +76,7 @@ pub(super) fn xhr_send_callback<'s>(
         Ok(prepared) => prepared,
         Err(XhrSendPrepareError::ExecutionContext) => {
             if async_request {
-                queue_xhr_failure_delivery(scope, host, xhr);
+                queue_xhr_failure_delivery(scope, xhr);
             } else {
                 let request_url =
                     xhr_state_string_property(scope, xhr, XHR_URL_SLOT).unwrap_or_default();
@@ -87,7 +87,7 @@ pub(super) fn xhr_send_callback<'s>(
         }
         Err(XhrSendPrepareError::Url(message)) => {
             if async_request {
-                queue_xhr_failure_delivery(scope, host, xhr);
+                queue_xhr_failure_delivery(scope, xhr);
             } else {
                 let request_url =
                     xhr_state_string_property(scope, xhr, XHR_URL_SLOT).unwrap_or_default();

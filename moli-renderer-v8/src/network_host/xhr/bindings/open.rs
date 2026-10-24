@@ -76,18 +76,7 @@ pub(super) fn xhr_open_callback<'s>(
     set_xhr_state_bool(scope, xhr, XHR_ASYNC_SLOT, parsed.async_request);
     set_xhr_ready_state(scope, xhr, XhrReadyState::Opened);
     super::super::delivery::reset_xhr_response(scope, xhr);
-    set_xhr_state_string(scope, xhr, XHR_PENDING_KIND_SLOT, "");
-    set_xhr_state_string(scope, xhr, XHR_PENDING_URL_SLOT, "");
-    set_xhr_state_string(scope, xhr, XHR_PENDING_BODY_SLOT, "");
-    set_xhr_state_value(
-        scope,
-        xhr,
-        XHR_PENDING_BODY_BYTES_SLOT,
-        v8::undefined(scope).into(),
-    );
-    set_xhr_state_string(scope, xhr, XHR_PENDING_HEADERS_SLOT, "[]");
     set_xhr_state_number(scope, xhr, XHR_ACTIVE_INTERNAL_ID_SLOT, 0.0);
-    set_xhr_state_number(scope, xhr, XHR_PENDING_STATUS_SLOT, 0.0);
     set_xhr_state_bool(scope, xhr, XHR_ABORTED_SLOT, false);
     set_xhr_state_bool(scope, xhr, XHR_SEND_FLAG_SLOT, false);
     set_xhr_state_bool(scope, xhr, XHR_UPLOAD_LISTENER_SLOT, false);
