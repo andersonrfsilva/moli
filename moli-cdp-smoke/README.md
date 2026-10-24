@@ -25,6 +25,8 @@ diagnostic capture/upload failures remain CI errors. Chromium failures are
 never downgraded to warnings or treated as Moli passes. Classifying a failure
 as infrastructure trouble or Chromium instability requires evidence and does
 not change its exit status.
+The workflow has no PR-wide cancellation group: pushing a new revision must
+not cancel an older run before its Chromium suite and diagnostics finish.
 
 Each worker records the actual discovery version, engine, executable command,
 and PID for its managed browser and any nested browser launches. Chromium
@@ -68,8 +70,13 @@ New readiness tests should use explicit gates/events instead of elapsed time.
 Each worker writes `<result>.diagnostics/checkpoint.json` during execution,
 containing recent phases, a bounded protocol tail, outstanding commands, and
 CPU affinity/cgroup/memory information. Raw connections retain real wire IDs;
-Python SDK observations use clearly labelled local call IDs. Collection adds
-no browser commands or alternate readers. A watchdog independently prints
+Python CDPSession observations use clearly labelled local call IDs. The SDK's
+existing Python/driver transport also records its RPC IDs, object GUIDs,
+navigation/locator commands and document events, including Page operations that
+do not pass through a manual CDPSession. These IDs are not CDP wire IDs. This
+small adapter targets the pinned Playwright version and fails explicitly if
+that transport changes. Collection adds no browser commands or alternate
+readers. A watchdog independently prints
 Python thread stacks before the worker deadline, including when the event loop
 is blocked. The deadline and failure status do not change.
 
