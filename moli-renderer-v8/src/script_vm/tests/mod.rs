@@ -2250,6 +2250,8 @@ mod midi_owner_interfaces;
 mod mouse_snapshot;
 mod native_bridge_identity;
 
+mod document_implementation_realm;
+
 mod svg_animated_value_native_receivers;
 
 mod native_exception_stack_capture;
