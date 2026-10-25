@@ -1,4 +1,8 @@
 use crate::output::Output;
+use icu_properties::{
+    CodePointMapData,
+    props::{GeneralCategory, GeneralCategoryGroup},
+};
 
 // Formatting is delayed until visible content arrives. This keeps whitespace
 // outside newly opened/closed marks and coalesces adjacent identical styles.
@@ -381,7 +385,7 @@ impl<'a> Writer<'a> {
                     None => next,
                 }
             };
-            let html = is_punctuation(first) && self.last_char().is_some_and(char::is_alphanumeric);
+            let html = is_punctuation(first) && self.last_char().is_some_and(is_wordlike);
             match style {
                 Style::Strong => self.output.push_str(if html { "<strong>" } else { "**" }),
                 Style::Emphasis => self.output.push_str(if html { "<em>" } else { "*" }),
@@ -472,8 +476,7 @@ impl<'a> Writer<'a> {
                     && (closed_script
                         || opened.has_closed_script
                         || closing_run.is_some_and(|(previous, _)| previous == marker_byte)))
-                    || (next.is_some_and(char::is_alphanumeric)
-                        && preceding.is_some_and(is_punctuation));
+                    || (next.is_some_and(is_wordlike) && preceding.is_some_and(is_punctuation));
                 if opened.html || closing_needs_html {
                     if !opened.html {
                         // Only the converter's output changes. Remaining open
@@ -571,10 +574,18 @@ impl<'a> Writer<'a> {
     }
 }
 
+fn is_wordlike(ch: char) -> bool {
+    !ch.is_whitespace() && !is_punctuation(ch)
+}
+
 fn is_punctuation(ch: char) -> bool {
-    // Conservatively include Unicode symbols and combining marks; choosing
-    // inline HTML for these edges is preferable to emitting literal delimiters.
-    !ch.is_alphanumeric() && !ch.is_whitespace()
+    // CommonMark punctuation includes both Unicode punctuation and symbols.
+    if ch.is_ascii() {
+        return ch.is_ascii_punctuation();
+    }
+    GeneralCategoryGroup::Punctuation
+        .union(GeneralCategoryGroup::Symbol)
+        .contains(CodePointMapData::<GeneralCategory>::new().get(ch))
 }
 
 pub(crate) fn longest_run(text: &str, marker: char) -> usize {

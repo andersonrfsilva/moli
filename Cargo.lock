@@ -2984,6 +2984,7 @@ name = "moli-html2md"
 version = "0.1.0"
 dependencies = [
  "html5ever 0.39.0",
+ "icu_properties",
  "markup5ever_rcdom",
  "pulldown-cmark",
  "serde_json",

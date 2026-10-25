@@ -199,6 +199,61 @@ fn nested_emphasis_closes_with_markdown_before_a_word() {
 }
 
 #[test]
+fn combining_marks_and_format_characters_use_markdown_emphasis() {
+    for character in ['\u{0301}', '\u{20dd}', '\u{200d}'] {
+        for (tag, delimiter) in [("strong", "**"), ("em", "*"), ("del", "~~")] {
+            for content in [character.to_string(), format!("x{character}")] {
+                let source = format!("a<{tag}>{content}</{tag}>b");
+                let result = markdown(&source);
+                assert_eq!(
+                    result,
+                    format!("a{delimiter}{content}{delimiter}b"),
+                    "{source}"
+                );
+                assert_eq!(rendered_html(&result), format!("<p>{source}</p>\n"));
+            }
+        }
+    }
+}
+
+#[test]
+fn unicode_non_punctuation_preserves_emphasis_on_both_boundaries() {
+    for character in ['\u{0301}', '\u{20dd}', '\u{200d}'] {
+        for tag in ["em", "strong", "del"] {
+            for source in [
+                format!("<{tag}>!</{tag}>{character}"),
+                format!("{character}<{tag}>!</{tag}>"),
+                format!("{character}<{tag}>!</{tag}>{character}"),
+                format!("{character}<{tag}><a href=\"/\">!</a></{tag}>{character}"),
+            ] {
+                let result = markdown(&source);
+                assert_eq!(
+                    rendered_html(&result),
+                    format!("<p>{source}</p>\n"),
+                    "{source}: {result}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn unicode_punctuation_and_symbols_preserve_intraword_emphasis() {
+    for character in ['。', '€', '🦀', '+'] {
+        for tag in ["strong", "em", "del"] {
+            for content in [character.to_string(), format!("x{character}")] {
+                let source = format!("a<{tag}>{content}</{tag}>b");
+                assert_eq!(
+                    rendered_html(&markdown(&source)),
+                    format!("<p>{source}</p>\n"),
+                    "{source}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn nested_emphasis_still_uses_html_after_literal_punctuation() {
     for text in ["word!", "word*", "word`", "word)", "日本語。"] {
         for (outer, inner) in [("em", "strong"), ("strong", "em")] {

@@ -1,8 +1,10 @@
 # moli-html2md
 
 Convert an existing DOM to Markdown through a small read-only interface. This
-is an independent implementation with no runtime dependencies, HTML parser, or
-intermediate DOM. `moli-dom::native::NativeDom` implements the interface directly.
+is an independent implementation without an HTML parser or intermediate DOM.
+Unicode character classification uses `icu_properties`, with an ASCII fast path.
+MathML escaping stays fused with Markdown protection and whitespace handling.
+`moli-dom::native::NativeDom` implements the interface directly.
 
 ```rust
 let root = dom.body_node_id().unwrap_or(dom.document_node_id());
@@ -113,7 +115,9 @@ move into parent buffers without copying their text. A repeated flatten/copy
 regression fails without timing thresholds.
 Dropping 20,000 nested fragments is also tested on a 64 KiB thread stack.
 Emphasis tests cover adjacent links that can use Markdown delimiters and
-intraword link boundaries that still require inline HTML.
+intraword link boundaries that still require inline HTML. Combining marks and
+format characters retain Markdown emphasis; Unicode punctuation and symbols
+keep their required HTML fallback.
 
 The HTML parser, reference JSON reader, and `pulldown-cmark` renderer are all
 **test-only** dependencies. Tests use checked-in reference outputs and require
