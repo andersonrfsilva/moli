@@ -144,8 +144,8 @@ pub struct FetchArgs {
     #[arg(short = 'H', long = "header", value_name = "HEADER", value_parser = parse_request_header_arg)]
     pub headers: Vec<RequestHeaderArg>,
 
-    /// Write final unpartitioned cookies to a Netscape cookie file.
-    #[arg(long, value_name = "FILE")]
+    /// Write final unpartitioned cookies to a Netscape file, or - for stdout.
+    #[arg(long, value_name = "FILE", overrides_with = "cookie_jar")]
     pub cookie_jar: Option<String>,
 
     /// Disable page-authored JavaScript before the Document starts parsing.
@@ -616,8 +616,12 @@ pub struct CommonArgs {
     )]
     pub scrollbars: bool,
 
-    /// Read initial cookies from a Netscape/curl cookie file. May be repeated.
-    #[arg(long = "cookie", visible_alias = "cookie-file", value_name = "FILE")]
+    /// Send Cookie header data or load a cookie file. Use - for stdin. May be repeated.
+    #[arg(
+        long = "cookie",
+        visible_alias = "cookie-file",
+        value_name = "DATA|FILE"
+    )]
     pub cookie_file: Vec<String>,
 
     #[arg(long)]

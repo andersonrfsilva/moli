@@ -33,6 +33,7 @@ pub struct Request {
     /// Wire bytes, with the source encoding resolved before header merging.
     pub request_headers: crate::RequestHeaders,
     redirect_headers: Option<crate::RequestHeaders>,
+    additional_cookies: Option<String>,
     cache_mode: RequestCacheMode,
     pub resource_type: RequestResourceType,
     subresource_request_metadata: Option<SubresourceRequestMetadata>,
@@ -463,6 +464,17 @@ impl RequestAuth {
 }
 
 impl Request {
+    /// Literal Cookie option data, kept separate from the browser cookie store.
+    /// It follows this HTTP exchange's redirects without entering stored state.
+    pub fn with_additional_cookies(mut self, cookies: Option<String>) -> Self {
+        self.additional_cookies = cookies;
+        self
+    }
+
+    pub fn additional_cookies(&self) -> Option<&str> {
+        self.additional_cookies.as_deref()
+    }
+
     /// Constructs a plain HTTP GET. Browser callers must supply an environment
     /// origin using `new_browser` or `with_request_origin`.
     pub fn get(raw_url: &str) -> Result<Self> {
@@ -474,6 +486,7 @@ impl Request {
             body: None,
             request_headers: crate::RequestHeaders::default(),
             redirect_headers: None,
+            additional_cookies: None,
             cache_mode: RequestCacheMode::Default,
             resource_type: RequestResourceType::Raw,
             subresource_request_metadata: None,
@@ -507,6 +520,7 @@ impl Request {
             body: None,
             request_headers: crate::RequestHeaders::default(),
             redirect_headers: None,
+            additional_cookies: None,
             cache_mode: RequestCacheMode::Default,
             resource_type: RequestResourceType::Raw,
             subresource_request_metadata: None,
@@ -573,6 +587,7 @@ impl Request {
             body,
             request_headers: request_headers.into(),
             redirect_headers: None,
+            additional_cookies: None,
             cache_mode: RequestCacheMode::Default,
             resource_type: RequestResourceType::Raw,
             subresource_request_metadata: None,

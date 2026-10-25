@@ -179,6 +179,29 @@ fn outgoing_request_header_bytes_for_url(
 ) -> crate::RequestHeaders {
     let mut outgoing = crate::RequestHeaders::default();
 
+    let additional = request
+        .additional_cookies()
+        .or_else(|| config.additional_cookies())
+        .filter(|value| !value.is_empty())
+        .filter(|_| {
+            !request
+                .request_headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("cookie"))
+                && !config
+                    .default_request_headers()
+                    .iter()
+                    .any(|(name, _)| name.eq_ignore_ascii_case("cookie"))
+        });
+    let cookie_header = match (cookie_header, additional) {
+        (Some(stored), Some(literal)) => {
+            Some(std::borrow::Cow::Owned(format!("{stored}; {literal}")))
+        }
+        (Some(value), None) | (None, Some(value)) => Some(std::borrow::Cow::Borrowed(value)),
+        (None, None) => None,
+    };
+    let cookie_header = cookie_header.as_deref();
+
     if let Some(cookie_header) = cookie_header {
         outgoing.push(("Cookie".to_owned(), cookie_header.as_bytes().to_vec()));
     }

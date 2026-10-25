@@ -41,6 +41,8 @@ use tracing_subscriber::fmt::MakeWriter;
 
 #[path = "fetch_cli/anubis_deferred_module.rs"]
 mod anubis_deferred_module;
+#[path = "fetch_cli/cookies.rs"]
+mod cookies;
 #[path = "fetch_cli/disable_css.rs"]
 mod disable_css;
 #[path = "fetch_cli/disable_css_boundaries.rs"]

@@ -10,6 +10,7 @@ use crate::WebBotAuthSigner;
 pub struct FetchConfig {
     browser_identity: BrowserIdentityProfile,
     default_request_headers: Vec<(String, String)>,
+    additional_cookies: Option<String>,
     request_timeout_ms: u64,
     http_connect_timeout_ms: Option<u64>,
     obey_robots: bool,
@@ -65,6 +66,15 @@ impl FetchConfig {
 
     pub fn browser_identity(&self) -> &BrowserIdentityProfile {
         &self.browser_identity
+    }
+
+    /// Unscoped Cookie option data for embedders serving multiple requests.
+    pub fn additional_cookies(&self) -> Option<&str> {
+        self.additional_cookies.as_deref()
+    }
+
+    pub fn set_additional_cookies(&mut self, cookies: Option<String>) {
+        self.additional_cookies = cookies;
     }
 
     pub fn default_request_headers(&self) -> &[(String, String)] {
@@ -307,6 +317,7 @@ impl Default for FetchConfig {
         Self {
             browser_identity: BrowserIdentityProfile::default(),
             default_request_headers: Vec::new(),
+            additional_cookies: None,
             request_timeout_ms: 30_000,
             http_connect_timeout_ms: None,
             obey_robots: false,

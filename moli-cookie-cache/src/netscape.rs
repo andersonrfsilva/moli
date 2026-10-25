@@ -24,6 +24,11 @@ pub fn load_cookie_file(path: impl AsRef<Path>) -> Result<Vec<StoredCookie>> {
         .with_context(|| format!("failed to parse cookie file `{}`", path.display()))
 }
 
+/// Reads Netscape cookie records from an input stream.
+pub fn read_cookie_file(reader: impl std::io::BufRead) -> Result<Vec<StoredCookie>> {
+    parse_netscape_cookie_file(reader)
+}
+
 /// Saves unexpired, unpartitioned cookies in the interoperable Netscape format.
 ///
 /// Netscape cookie files cannot represent partition keys, so partitioned
@@ -34,6 +39,30 @@ pub fn save_cookie_file(
     cookies: impl IntoIterator<Item = StoredCookie>,
 ) -> Result<CookieFileSaveReport> {
     let path = path.as_ref();
+    let serialized = serialize_cookie_file(cookies)?;
+    write_file_atomically(path, serialized.content.as_bytes(), "cookie jar")?;
+    Ok(serialized.report)
+}
+
+/// Writes the same Netscape representation as `save_cookie_file` to a stream.
+pub fn write_cookie_file(
+    mut writer: impl std::io::Write,
+    cookies: impl IntoIterator<Item = StoredCookie>,
+) -> Result<CookieFileSaveReport> {
+    let serialized = serialize_cookie_file(cookies)?;
+    writer.write_all(serialized.content.as_bytes())?;
+    writer.flush()?;
+    Ok(serialized.report)
+}
+
+struct SerializedCookieFile {
+    content: String,
+    report: CookieFileSaveReport,
+}
+
+fn serialize_cookie_file(
+    cookies: impl IntoIterator<Item = StoredCookie>,
+) -> Result<SerializedCookieFile> {
     let mut output = NETSCAPE_COOKIE_FILE_HEADER.to_owned();
     let mut report = CookieFileSaveReport::default();
 
@@ -50,8 +79,10 @@ pub fn save_cookie_file(
         report.written += 1;
     }
 
-    write_file_atomically(path, output.as_bytes(), "cookie jar")?;
-    Ok(report)
+    Ok(SerializedCookieFile {
+        content: output,
+        report,
+    })
 }
 
 fn append_netscape_cookie(output: &mut String, cookie: &StoredCookie) -> Result<()> {
