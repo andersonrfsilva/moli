@@ -504,5 +504,9 @@ mod tests {
             escape_attr("a \"quoted\" > b && a < c"),
             "a &quot;quoted&quot; &gt; b &amp;&amp; a &lt; c"
         );
+        assert_eq!(
+            escape_attr("\t\n\rcafé<&\"'尾\n\u{a0}&#10;"),
+            "&#9;&#10;&#13;café&lt;&amp;&quot;'尾&#10;\u{a0}&amp;#10;"
+        );
     }
 }

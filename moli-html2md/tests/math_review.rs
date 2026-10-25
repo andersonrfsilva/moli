@@ -186,6 +186,39 @@ fn dollar_resource_rejection_retries_at_the_closing_delimiter() {
 }
 
 #[test]
+fn mathml_escaping_preserves_literal_syntax_and_attributes() {
+    let source = concat!(
+        "<math><mtext mathvariant=\"x&amp;&lt;&gt;&quot;'&#10;&#9;\">",
+        "A&amp;B &lt;C&gt; &quot;D&quot; \\*_`~[]$ &amp;#36; café&#10;&#9;尾&nbsp;",
+        "</mtext></math>"
+    );
+    let result = markdown(source);
+    assert_eq!(
+        result,
+        concat!(
+            "<math><mtext mathvariant=\"x&amp;&lt;&gt;&quot;'  \">",
+            "A&amp;B &lt;C&gt; &quot;D&quot; &#92;&#42;&#95;&#96;&#126;&#91;&#93;&#36; &amp;#36; café  尾\u{a0}",
+            "</mtext></math>"
+        )
+    );
+    assert!(math_payloads(&result).is_empty(), "{result}");
+    let rendered = Tree::parse(&rendered_math_html(&result));
+    let mtext = rendered
+        .nodes
+        .iter()
+        .find(|node| node.tag.as_deref() == Some("mtext"))
+        .unwrap();
+    assert_eq!(
+        mtext.attrs,
+        [("mathvariant".to_owned(), "x&<>\"'  ".to_owned())]
+    );
+    assert_eq!(
+        rendered.nodes[mtext.first.unwrap()].text.as_deref(),
+        Some("A&B <C> \"D\" \\*_`~[]$ &#36; café  尾\u{a0}")
+    );
+}
+
+#[test]
 fn mathml_alternatives_preserve_links_and_inline_semantics() {
     for (open, close) in [
         ("<a href=\"/details\">", "</a>"),

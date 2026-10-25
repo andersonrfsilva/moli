@@ -117,7 +117,8 @@ Dropping 20,000 nested fragments is also tested on a 64 KiB thread stack.
 Emphasis tests cover adjacent links that can use Markdown delimiters and
 intraword link boundaries that still require inline HTML. Combining marks and
 format characters retain Markdown emphasis; Unicode punctuation and symbols
-keep their required HTML fallback.
+keep their required HTML fallback. MathML tests check attribute encoding,
+literal entity text, Markdown punctuation, Unicode and line normalization.
 
 The HTML parser, reference JSON reader, and `pulldown-cmark` renderer are all
 **test-only** dependencies. Tests use checked-in reference outputs and require
