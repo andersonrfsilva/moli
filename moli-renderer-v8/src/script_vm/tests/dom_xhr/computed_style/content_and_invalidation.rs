@@ -492,6 +492,50 @@ fn modal_dialog_top_layer_adjusts_non_absolute_positions() {
 }
 
 #[test]
+fn links_use_user_agent_colors_and_underline_with_author_overrides() {
+    let mut vm = new_parsed_test_vm(
+        "https://link-defaults.test/",
+        r#"<!doctype html>
+<style>
+  #overridden { color: rgb(1, 2, 3); text-decoration: none; }
+  #dark { color-scheme: dark; }
+</style>
+<a id="link" href="/target">link</a>
+<a id="empty" href="">empty href</a>
+<a id="plain">no href</a>
+<a id="overridden" href="/target">overridden</a>
+<a id="dark" href="/target">dark</a>"#,
+    );
+
+    let result = vm
+        .eval(
+            r#"
+(() => {
+  const read = id => {
+    const style = getComputedStyle(document.getElementById(id));
+    return `${style.color}:${style.textDecorationLine}`;
+  };
+  const values = ['link', 'empty', 'plain', 'overridden', 'dark'].map(read);
+  const plain = document.getElementById('plain');
+  plain.href = '/target';
+  values.push(read('plain'));
+  plain.removeAttribute('href');
+  values.push(read('plain'));
+  return values.join('|');
+})()
+"#,
+        )
+        .expect("link defaults and href changes should evaluate");
+
+    assert_eq!(
+        result,
+        "rgb(0, 0, 238):underline|rgb(0, 0, 238):underline|rgb(0, 0, 0):none|\
+         rgb(1, 2, 3):none|rgb(158, 158, 255):underline|\
+         rgb(0, 0, 238):underline|rgb(0, 0, 0):none"
+    );
+}
+
+#[test]
 fn semantic_text_decoration_uses_user_agent_defaults() {
     let mut vm = new_parsed_test_vm(
         "https://semantic-text-decoration.test/",

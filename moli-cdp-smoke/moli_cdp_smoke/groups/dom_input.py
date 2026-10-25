@@ -155,6 +155,13 @@ async def run_dom_input_group(state: SmokeState) -> None:
     await page.set_content(f'<a id="go" href="{fixture}/plain">go</a>')
     await capture_layout(page)
     assert_equal(await page.get_attribute("#go", "href"), f"{fixture}/plain", "link navigation href")
+    assert_equal(
+        await page.locator("#go").evaluate(
+            "link => [getComputedStyle(link).color, getComputedStyle(link).textDecorationLine]"
+        ),
+        ["rgb(0, 0, 238)", "underline"],
+        "link user-agent color and decoration",
+    )
     await _navigate_until_dom_ready(state, f"{fixture}/plain")
     assert_equal(await page.text_content("main"), "plain ok", "click navigation target text")
     state.record("click_navigation")
