@@ -22,6 +22,7 @@ struct OpenStyle<'a> {
     start: usize,
     html: bool,
     has_closed_child: bool,
+    has_closed_script: bool,
 }
 
 #[derive(Default)]
@@ -400,6 +401,7 @@ impl<'a> Writer<'a> {
                 start,
                 html,
                 has_closed_child: false,
+                has_closed_script: false,
             });
         }
     }
@@ -426,6 +428,7 @@ impl<'a> Writer<'a> {
 
     fn close_to(&mut self, count: usize, next: Option<char>) {
         let mut closing_run = None;
+        let mut closed_script = false;
         let closed_child = self.emitted.len() > count;
         while self.emitted.len() > count {
             let opened = self.emitted.pop().expect("nonempty style stack");
@@ -440,6 +443,7 @@ impl<'a> Writer<'a> {
                         "</sub>"
                     });
                     closing_run = None;
+                    closed_script = true;
                     None
                 }
                 Style::Link { href, title, .. } => {
@@ -465,7 +469,9 @@ impl<'a> Writer<'a> {
                     _ => self.last_char(),
                 };
                 let closing_needs_html = (opened.has_closed_child
-                    && closing_run.is_some_and(|(previous, _)| previous == marker_byte))
+                    && (closed_script
+                        || opened.has_closed_script
+                        || closing_run.is_some_and(|(previous, _)| previous == marker_byte)))
                     || (next.is_some_and(char::is_alphanumeric)
                         && preceding.is_some_and(is_punctuation));
                 if opened.html || closing_needs_html {
@@ -490,6 +496,9 @@ impl<'a> Writer<'a> {
             // Keep the conservative edge check for those interrupted spans.
             for opened in &mut self.emitted {
                 opened.has_closed_child = true;
+                // Sup/sub tags interrupt closing runs without isolating their
+                // Markdown markers. Remember them across subsequent text.
+                opened.has_closed_script |= closed_script;
             }
         }
     }

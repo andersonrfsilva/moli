@@ -7,6 +7,7 @@ use crate::{Dom, NodeKind, Options};
 enum Task<'a, Id> {
     Visit(Id, usize),
     Children(Option<Id>, usize),
+    MathChildren(Option<Id>, usize),
     Boundary,
     ChoiceBoundary,
     Fallback(String, usize),
@@ -69,7 +70,18 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         .push(Task::Children(self.dom.next_sibling(node), depth));
                     self.tasks.push(Task::Visit(node, depth));
                 }
-                Task::Children(None, _) | Task::RawChildren(None, _, _) => {}
+                Task::MathChildren(Some(node), depth) => {
+                    self.tasks
+                        .push(Task::MathChildren(self.dom.next_sibling(node), depth));
+                    // The recognized group contains one semantic branch,
+                    // whitespace and hidden copies. Keep text in DOM order.
+                    if !crate::mathml::is_hidden_alternative(self.dom, node) {
+                        self.tasks.push(Task::Visit(node, depth));
+                    }
+                }
+                Task::Children(None, _)
+                | Task::MathChildren(None, _)
+                | Task::RawChildren(None, _, _) => {}
                 Task::Boundary => self.writer().boundary(2),
                 Task::ChoiceBoundary => self.writer().boundary(1),
                 Task::Fallback(label, before) => {
@@ -350,10 +362,11 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
             }
             _ => {}
         }
-        if let Some(primary) =
-            crate::mathml::primary_alternative(self.dom, node, self.options.max_depth - depth)
+        if crate::mathml::primary_alternative(self.dom, node, self.options.max_depth - depth)
+            .is_some()
         {
-            self.tasks.push(Task::Visit(primary, depth + 1));
+            self.tasks
+                .push(Task::MathChildren(self.dom.first_child(node), depth + 1));
             return;
         }
         if let Some(label) =

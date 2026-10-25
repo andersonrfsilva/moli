@@ -16,10 +16,7 @@ pub(crate) fn primary_alternative<D: Dom + ?Sized>(
         if ignorable(dom.node_kind(id)) {
             continue;
         }
-        if dom
-            .attribute(id, "aria-hidden")
-            .is_some_and(|value| value.eq_ignore_ascii_case("true"))
-        {
+        if is_hidden_alternative(dom, id) {
             alternative = true;
             continue;
         }
@@ -54,6 +51,13 @@ pub(crate) fn primary_alternative<D: Dom + ?Sized>(
         primary = Some(found?);
     }
     if alternative { primary } else { None }
+}
+
+pub(crate) fn is_hidden_alternative<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> bool {
+    matches!(dom.node_kind(node), NodeKind::Element(_))
+        && dom
+            .attribute(node, "aria-hidden")
+            .is_some_and(|value| value.eq_ignore_ascii_case("true"))
 }
 
 fn ignorable(kind: NodeKind<'_>) -> bool {

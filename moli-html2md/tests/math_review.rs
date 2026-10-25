@@ -20,7 +20,13 @@ fn math_payloads(markdown: &str) -> Vec<String> {
 
 fn rendered_math_html(markdown: &str) -> String {
     let mut html = String::new();
-    pulldown_cmark::html::push_html(&mut html, Parser::new_ext(markdown, Options::ENABLE_MATH));
+    pulldown_cmark::html::push_html(
+        &mut html,
+        Parser::new_ext(
+            markdown,
+            Options::ENABLE_MATH | Options::ENABLE_STRIKETHROUGH,
+        ),
+    );
     html
 }
 
@@ -69,6 +75,80 @@ fn verbatim_dollars_fall_back_without_partial_math() {
     for payload in [r"\verb|a  b|", r"\verb|\$|", r"\verb*|50%|"] {
         let result = markdown(&format!(r"<p>\({payload}\)</p>"));
         assert_eq!(math_payloads(&result), [payload], "{result}");
+    }
+}
+
+#[test]
+fn unbalanced_verbatim_braces_fall_back_without_consuming_later_math() {
+    for payload in [
+        r"\verb|}|",
+        r"\verb|{|",
+        r"\verb|}{|",
+        r"\verb*|a}b{|",
+        r"\verb|\\}|",
+        r"\verb|\\{|",
+    ] {
+        for (open, close) in [(r"\(", r"\)"), (r"\[", r"\]"), ("$", "$"), ("$$", "$$")] {
+            let expression = format!("{open}{payload}{close}");
+            for (following, expected_math) in [("", vec![]), (r"\(x\)", vec!["x"])] {
+                let result = markdown(&format!("<p>{expression}{following}</p>"));
+                assert_eq!(math_payloads(&result), expected_math, "{result}");
+                let text: String = Parser::new_ext(&result, Options::ENABLE_MATH)
+                    .filter_map(|event| match event {
+                        Event::Text(value) => Some(value.into_string()),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(text, expression, "{result}");
+            }
+        }
+    }
+}
+
+#[test]
+fn balanced_and_escaped_math_braces_remain_literal_payloads() {
+    for payload in [
+        r"\verb|{}|",
+        r"\verb|a{b}c|",
+        r"\verb|\}|",
+        r"\verb|\{|",
+        r"\verb|\\{}|",
+        r"\frac{x_i}{y}",
+        r"\left\{x\right\}",
+    ] {
+        let result = markdown(&format!(r"<p>\({payload}\)\(x\)</p>"));
+        assert_eq!(math_payloads(&result), [payload, "x"], "{result}");
+    }
+}
+
+#[test]
+fn script_boundaries_preserve_ancestor_emphasis_and_nested_content() {
+    for (outer, inner) in [("strong", "em"), ("em", "strong")] {
+        for script in ["sub", "sup"] {
+            for (content, expected_content, expected_math) in [
+                ("b", "b", vec![]),
+                (
+                    r"\(b\)",
+                    "<span class=\"math math-inline\">b</span>",
+                    vec!["b"],
+                ),
+                ("<del>b</del>", "<del>b</del>", vec![]),
+            ] {
+                for tail in ["", "c"] {
+                    for after in ["", "after"] {
+                        let source = format!(
+                            "<{outer}><{inner}>a</{inner}><{script}><{inner}>{content}</{inner}></{script}>{tail}</{outer}>{after}"
+                        );
+                        let result = markdown(&source);
+                        assert_eq!(math_payloads(&result), expected_math, "{source}: {result}");
+                        let expected = format!(
+                            "<p><{outer}><{inner}>a</{inner}><{script}><{inner}>{expected_content}</{inner}></{script}>{tail}</{outer}>{after}</p>\n"
+                        );
+                        assert_eq!(rendered_math_html(&result), expected, "{source}: {result}");
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -126,6 +206,28 @@ fn mathml_alternatives_preserve_links_and_inline_semantics() {
             assert!(html.contains(&primary), "{result}: {html}");
             assert_eq!(html.matches("<math>").count(), 1, "{html}");
             assert!(!html.contains("visual-only"), "{html}");
+        }
+    }
+}
+
+#[test]
+fn mathml_alternatives_keep_surrounding_whitespace() {
+    for (source_space, expected_space) in [(" ", " "), ("&nbsp;", "\u{a0}")] {
+        for hidden_first in [false, true] {
+            let primary = "<math><mi>x</mi></math>";
+            let hidden = "<span aria-hidden=\"true\">visual-only x</span>";
+            let children = if hidden_first {
+                format!("{hidden}{primary}")
+            } else {
+                format!("{primary}{hidden}")
+            };
+            let source = format!(
+                "<p>Let<span>{source_space}{children}{source_space}</span>be positive.</p>"
+            );
+            let result = markdown(&source);
+            let expected = format!("Let{expected_space}{primary}{expected_space}be positive.");
+            assert_eq!(result, expected, "{source}");
+            assert_eq!(rendered_math_html(&result), format!("<p>{expected}</p>\n"));
         }
     }
 }

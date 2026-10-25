@@ -294,14 +294,20 @@ fn normalized_span(text: &str) -> Option<String> {
 
 fn markdown_payload_is_safe(text: &str) -> bool {
     let mut escaped = false;
+    let mut brace_depth = 0usize;
     for ch in text.chars() {
-        if ch == '$' && !escaped {
-            return false;
+        // The math reader tracks brace contexts even inside TeX's \verb.
+        match (ch, escaped) {
+            ('$', false) => return false,
+            ('{', false) => brace_depth += 1,
+            ('}', false) if brace_depth == 0 => return false,
+            ('}', false) => brace_depth -= 1,
+            _ => {}
         }
         escaped = ch == '\\' && !escaped;
     }
     // A trailing control escape would consume the closing Markdown delimiter.
-    !escaped
+    !escaped && brace_depth == 0
 }
 
 fn flush_space(output: &mut String, pending: &mut bool) {

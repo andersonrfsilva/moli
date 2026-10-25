@@ -486,6 +486,27 @@ mod tests {
     }
 
     #[test]
+    fn markdown_renderer_preserves_combined_math_and_formatting_boundaries() {
+        for (source, expected) in [
+            (r"<p>\(\verb|}|\)\(x\)</p>", r"\\(\\verb|}|\\)$x$"),
+            (
+                r"<strong><em>a</em><sub><em>\(b\)</em></sub></strong>",
+                "<strong>*a*<sub>*$b$*</sub></strong>",
+            ),
+            (
+                "<p>Let<span> <math><mi>x</mi></math><span aria-hidden='true'>x</span> </span>be positive.</p>",
+                "Let <math><mi>x</mi></math> be positive.",
+            ),
+            (
+                "<p>Let<span>&nbsp;<math><mi>x</mi></math><span aria-hidden='true'>x</span>&nbsp;</span>be positive.</p>",
+                "Let\u{a0}<math><mi>x</mi></math>\u{a0}be positive.",
+            ),
+        ] {
+            assert_eq!(markdown_from_html(source), expected, "{source}");
+        }
+    }
+
+    #[test]
     fn markdown_renderer_normalizes_image_and_link_attribute_newlines() {
         for (html, expected) in [
             (

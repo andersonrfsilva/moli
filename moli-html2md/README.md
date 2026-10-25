@@ -144,6 +144,9 @@ keep adjacent formulas distinct across empty wrappers. They also separate a
 closing `$` from an immediately following digit, which some math readers require.
 Image alternatives keep literal dollars escaped for math-aware readers. TeX
 payloads that cannot fit complete Markdown math delimiters fall back to escaped
-text. Comment removal preserves text adjacency and control-word boundaries.
-MathML deduplication retains links and formatting around the selected branch;
-filtered containers keep their grouping, and `maction` keeps its first element.
+text, including unbalanced raw braces inside `\verb`. Comment removal preserves
+text adjacency and control-word boundaries. Superscript/subscript boundaries use
+HTML emphasis when nested Markdown markers would pair across those tags.
+MathML deduplication retains links, formatting and surrounding whitespace,
+including Unicode spaces; filtered containers keep their grouping, and `maction`
+keeps its first element.
