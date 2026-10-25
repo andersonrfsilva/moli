@@ -6,6 +6,12 @@ use crate::{
     native_bridge::{JsContextHost, element::StyleObservation},
 };
 use moli_layout::{LayoutInputControlKind, ListCounter};
+use style::{properties::ComputedValues, servo_arc::Arc, values::computed::Content};
+
+enum Work {
+    Node(DomHandle),
+    GeneratedItem,
+}
 
 #[derive(Default)]
 pub(super) struct ListCounters {
@@ -76,13 +82,26 @@ impl ListCounters {
             .and_then(list_data)
             .unwrap_or_default();
         let mut items = Vec::new();
-        let mut pending = flat_children(dom, root, container);
-        pending.reverse();
-        while let Some(node) = pending.pop() {
+        let Some((_, before, after)) = observation.read(container).into_element_computed_values()
+        else {
+            return;
+        };
+        let mut pending = Vec::new();
+        push_children(&mut pending, host, root, container, before, after);
+        while let Some(work) = pending.pop() {
+            let node = match work {
+                Work::Node(node) => node,
+                Work::GeneratedItem => {
+                    items.push((None, None));
+                    continue;
+                }
+            };
             let Some(element) = dom.node(node).and_then(|node| node.as_element()) else {
                 continue;
             };
-            let Some(style) = observation.read(node).computed_values() else {
+            let Some((style, before, after)) =
+                observation.read(node).into_element_computed_values()
+            else {
                 continue;
             };
             let display = style.clone_display();
@@ -99,7 +118,7 @@ impl ListCounters {
                     continue;
                 }
                 if display.is_list_item() {
-                    items.push((node, list_data(element).and_then(|data| data.value)));
+                    items.push((Some(node), list_data(element).and_then(|data| data.value)));
                     continue;
                 }
             }
@@ -123,11 +142,44 @@ impl ListCounters {
             {
                 continue;
             }
-            pending.extend(flat_children(dom, root, node).into_iter().rev());
+            push_children(&mut pending, host, root, node, before, after);
         }
         let mut counter = ListCounter::new(data, items.len());
         for (node, explicit_value) in items {
-            self.values.insert(node, counter.next_value(explicit_value));
+            let value = counter.next_value(explicit_value);
+            if let Some(node) = node {
+                self.values.insert(node, value);
+            }
         }
+    }
+}
+
+fn push_children(
+    pending: &mut Vec<Work>,
+    host: &JsContextHost,
+    root: DomHandle,
+    node: DomHandle,
+    before: Option<Arc<ComputedValues>>,
+    after: Option<Arc<ComputedValues>>,
+) {
+    let generates_item = |style: Option<Arc<ComputedValues>>| {
+        style.is_some_and(|style| {
+            style.clone_display().is_list_item()
+                && matches!(&style.get_counters().content, Content::Items(_))
+        })
+    };
+    // Match the box builder's before/children/after order. Generated items
+    // advance the counter without a DOM handle or an explicit li[value].
+    if generates_item(after) {
+        pending.push(Work::GeneratedItem);
+    }
+    pending.extend(
+        flat_children(host.dom_host(), root, node)
+            .into_iter()
+            .rev()
+            .map(Work::Node),
+    );
+    if generates_item(before) {
+        pending.push(Work::GeneratedItem);
     }
 }

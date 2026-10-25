@@ -160,3 +160,142 @@ fn automatic_fonts_default_markers_count_slotted_items_in_rendered_order() {
     assert_eq!(vm.eval("face.status").unwrap(), "loaded");
     assert_eq!(vm.layout_pass_observability_for_test().1, 0);
 }
+
+fn assert_automatic_marker_number(markup: &str, css: &str, expected: u8) {
+    let mut vm = font_usage_vm();
+    let (_, wide) = order_font_data();
+    let markup = serde_json::to_string(markup).unwrap();
+    let css =
+        serde_json::to_string(&format!(".target::marker{{font-family:MarkerFace}}{css}")).unwrap();
+    vm.eval(&format!(r#"
+        const style=document.createElement('style');style.textContent={css};document.head.append(style);
+        document.body.innerHTML={markup};
+        const source='url(data:font/ttf;base64,{wide})';
+        globalThis.markerFaces=[1,2,3,4].map(number=>{{
+            const face=new FontFace('MarkerFace',source,{{unicodeRange:'U+003'+number}});
+            document.fonts.add(face);
+            return face;
+        }});
+    "#)).unwrap();
+    vm.reconcile_document_font_resources();
+    vm.eval("document.fonts.ready.then(()=>globalThis.ready=true)")
+        .unwrap();
+    run_font_tasks(&mut vm);
+    let expected_statuses = (1..=4)
+        .map(|number| {
+            if number == expected {
+                "loaded"
+            } else {
+                "unloaded"
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        vm.eval("markerFaces.map(face=>face.status).join(',')")
+            .unwrap(),
+        expected_statuses,
+        "{markup}/{css}"
+    );
+    assert_eq!(vm.eval("globalThis.ready===true").unwrap(), "true");
+    assert_eq!(vm.layout_pass_observability_for_test().1, 0);
+}
+
+#[test]
+fn automatic_fonts_default_markers_count_generated_items_in_box_order() {
+    for (markup, css, expected) in [
+        (
+            "<ol><li class='target'>body</li></ol>",
+            "ol::before{content:'prefix';display:list-item}",
+            2,
+        ),
+        (
+            "<ol><li class='target'>body</li></ol>",
+            "ol::after{content:'suffix';display:list-item}",
+            1,
+        ),
+        (
+            "<ol><li class='target'>body</li></ol>",
+            "ol::before,ol::after{content:'x';display:list-item}",
+            2,
+        ),
+        (
+            "<ol><li class='target'>body</li></ol>",
+            "ol::before{content:'';display:list-item}",
+            2,
+        ),
+        (
+            "<ol><div></div><li class='target'>body</li></ol>",
+            "div::before,div::after{content:'x';display:list-item}",
+            3,
+        ),
+        (
+            "<ol><div style='display:contents'></div><li class='target'>body</li></ol>",
+            "div::before,div::after{content:'x';display:list-item}",
+            3,
+        ),
+        (
+            "<ol><li>first</li><li class='target'>body</li></ol>",
+            "li::before,li::after{content:'x';display:list-item}",
+            2,
+        ),
+        (
+            "<ol><li>first<ol><li>nested</li></ol></li><li class='target'>body</li></ol>",
+            "ol ol::before,ol ol::after{content:'x';display:list-item}",
+            2,
+        ),
+    ] {
+        assert_automatic_marker_number(markup, css, expected);
+    }
+}
+
+#[test]
+fn automatic_fonts_reversed_markers_count_generated_items() {
+    for (attributes, css, expected) in [
+        (
+            "reversed",
+            "ol::after{content:'suffix';display:list-item}",
+            2,
+        ),
+        (
+            "reversed",
+            "ol::before{content:'prefix';display:list-item}",
+            1,
+        ),
+        (
+            "reversed",
+            "ol::before,ol::after{content:'x';display:list-item}",
+            2,
+        ),
+        (
+            "reversed start='5'",
+            "ol::before{content:'prefix';display:list-item}",
+            4,
+        ),
+    ] {
+        assert_automatic_marker_number(
+            &format!("<ol {attributes}><li class='target'>body</li></ol>"),
+            css,
+            expected,
+        );
+    }
+}
+
+#[test]
+fn automatic_fonts_default_markers_ignore_suppressed_generated_items() {
+    for attributes in ["", "reversed"] {
+        for declarations in [
+            "content:none;display:list-item",
+            "content:normal;display:list-item",
+            "content:'x';display:none",
+            "content:'x';display:contents",
+            "content:'x';display:block",
+        ] {
+            assert_automatic_marker_number(
+                &format!("<ol {attributes}><li class='target'>body</li></ol>"),
+                &format!("ol::before,ol::after{{{declarations}}}"),
+                1,
+            );
+        }
+    }
+}
