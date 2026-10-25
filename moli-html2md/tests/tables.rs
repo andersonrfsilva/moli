@@ -1,6 +1,7 @@
 mod support;
 
 use moli_html2md::{Converter, Options, convert};
+use std::collections::HashSet;
 use support::{Tree, rendered_html};
 
 fn markdown(html: &str) -> String {
@@ -15,6 +16,16 @@ fn markdown(html: &str) -> String {
 // serializer's spelling, indentation or Markdown representation.
 fn table_signature(html: &str) -> Vec<String> {
     let tree = Tree::parse(html);
+    let headers: HashSet<_> = tree
+        .nodes
+        .iter()
+        .flat_map(|node| {
+            node.attrs
+                .iter()
+                .filter(|(name, _)| name == "headers")
+                .flat_map(|(_, value)| value.split_ascii_whitespace())
+        })
+        .collect();
     let mut result = Vec::new();
     let mut stack = vec![(tree.root, false)];
     while let Some((id, close)) = stack.pop() {
@@ -34,7 +45,9 @@ fn table_signature(html: &str) -> Vec<String> {
         if let Some(tag) = table_tag {
             result.push(tag.to_owned());
             for (key, value) in &node.attrs {
-                if matches!(key.as_str(), "rowspan" | "colspan" | "scope" | "headers") {
+                if matches!(key.as_str(), "rowspan" | "colspan" | "scope" | "headers")
+                    || (key == "id" && headers.contains(value.as_str()))
+                {
                     result.push(format!("{key}={value}"));
                 }
             }

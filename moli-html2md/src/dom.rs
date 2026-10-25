@@ -47,8 +47,8 @@ pub trait Dom {
         false
     }
 
-    /// Adapters that already inventory elements can skip the anchor prepass
-    /// when the document contains no local-fragment links.
+    /// Adapters that already inventory elements can skip fragment-link
+    /// collection when none exist. Table header references are still collected.
     fn may_have_fragment_links(&self) -> bool {
         true
     }

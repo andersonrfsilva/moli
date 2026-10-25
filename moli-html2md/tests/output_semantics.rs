@@ -218,3 +218,56 @@ fn meaningful_objects_still_suppress_redundant_accessible_names() {
         }
     }
 }
+
+#[test]
+fn explicit_header_references_keep_ids_on_actual_header_cells() {
+    struct NoFragments(Tree);
+    impl Dom for NoFragments {
+        type NodeId = usize;
+        fn node_kind(&self, node: usize) -> moli_html2md::NodeKind<'_> {
+            self.0.node_kind(node)
+        }
+        fn first_child(&self, node: usize) -> Option<usize> {
+            self.0.first_child(node)
+        }
+        fn next_sibling(&self, node: usize) -> Option<usize> {
+            self.0.next_sibling(node)
+        }
+        fn attribute(&self, node: usize, name: &str) -> Option<&str> {
+            self.0.attribute(node, name)
+        }
+        fn may_have_fragment_links(&self) -> bool {
+            false
+        }
+    }
+    for span in ["", " colspan='2'"] {
+        let source = format!(
+            "<table><tr><th id='group'{span}>Group</th><th id='detail'>Detail</th></tr>\
+             <tr><td headers='group detail'>A</td><td headers='group'>B</td></tr></table>"
+        );
+        let tree = Tree::parse(&source);
+        let hinted = NoFragments(tree.clone());
+        for markdown in [convert(&tree, tree.root), convert(&hinted, hinted.0.root)] {
+            let output = Tree::parse(&rendered_html(&markdown));
+            let tables = with_attribute(&output, "id", "group");
+            assert_eq!(tables.len(), 1, "{markdown}");
+            for cell in output
+                .nodes
+                .iter()
+                .filter(|node| node.tag.as_deref() == Some("td"))
+            {
+                let references = cell.attrs.iter().find(|(key, _)| key == "headers");
+                assert!(references.is_some(), "{markdown}");
+                for id in references.unwrap().1.split_ascii_whitespace() {
+                    let targets = with_attribute(&output, "id", id);
+                    assert_eq!(targets.len(), 1, "{markdown}");
+                    assert_eq!(
+                        output.nodes[targets[0]].tag.as_deref(),
+                        Some("th"),
+                        "{markdown}"
+                    );
+                }
+            }
+        }
+    }
+}

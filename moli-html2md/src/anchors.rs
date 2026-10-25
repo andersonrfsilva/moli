@@ -4,27 +4,27 @@ use crate::{Dom, NodeKind};
 
 pub(crate) struct Targets {
     referenced: HashSet<String>,
+    header_ids: HashSet<String>,
     ids: HashSet<String>,
 }
 
 impl Targets {
     pub(crate) fn is_empty(&self) -> bool {
-        self.referenced.is_empty()
-    }
-
-    pub(crate) fn contains(&self, value: &str) -> bool {
-        self.referenced.contains(value)
+        self.referenced.is_empty() && self.header_ids.is_empty()
     }
 
     pub(crate) fn targets<'a, D: Dom + ?Sized>(&self, dom: &'a D, node: D::NodeId) -> Vec<&'a str> {
         let mut targets = Vec::new();
-        if let Some(id) = dom.attribute(node, "id").filter(|id| self.contains(id)) {
+        if let Some(id) = dom.attribute(node, "id").filter(|id| {
+            self.referenced.contains(*id)
+                || (dom.node_kind(node) == NodeKind::Element("th") && self.header_ids.contains(*id))
+        }) {
             targets.push(id);
         }
         if dom.node_kind(node) == NodeKind::Element("a")
             && let Some(name) = dom
                 .attribute(node, "name")
-                .filter(|name| self.contains(name) && !self.ids.contains(*name))
+                .filter(|name| self.referenced.contains(*name) && !self.ids.contains(*name))
             && !targets.contains(&name)
         {
             targets.push(name);
@@ -36,26 +36,34 @@ impl Targets {
 pub(crate) fn referenced<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize) -> Targets {
     let mut available = HashSet::new();
     let mut element_ids = HashSet::new();
-    if !dom.may_have_fragment_links() {
-        return Targets {
-            referenced: available,
-            ids: element_ids,
-        };
-    }
+    let mut header_ids = HashSet::new();
     let mut fragments = Vec::new();
+    let mut headers = HashSet::new();
+    let fragment_links = dom.may_have_fragment_links();
     walk(dom, root, limit, |node| {
-        if let Some(fragment) = dom
-            .attribute(node, "href")
-            .and_then(|href| href.strip_prefix('#'))
-            .filter(|fragment| !fragment.is_empty())
+        if fragment_links
+            && let Some(fragment) = dom
+                .attribute(node, "href")
+                .and_then(|href| href.strip_prefix('#'))
+                .filter(|fragment| !fragment.is_empty())
         {
             fragments.push(fragment);
         }
+        if matches!(dom.node_kind(node), NodeKind::Element("td" | "th"))
+            && let Some(value) = dom.attribute(node, "headers")
+        {
+            headers.extend(
+                value
+                    .split(crate::writer::is_space)
+                    .filter(|id| !id.is_empty()),
+            );
+        }
         false
     });
-    if fragments.is_empty() {
+    if fragments.is_empty() && headers.is_empty() {
         return Targets {
             referenced: available,
+            header_ids,
             ids: element_ids,
         };
     }
@@ -68,6 +76,9 @@ pub(crate) fn referenced<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize
                 available.insert(value.to_owned());
                 if attribute == "id" {
                     element_ids.insert(value.to_owned());
+                    if dom.node_kind(node) == NodeKind::Element("th") && headers.contains(value) {
+                        header_ids.insert(value.to_owned());
+                    }
                 }
             }
         }
@@ -86,6 +97,7 @@ pub(crate) fn referenced<D: Dom + ?Sized>(dom: &D, root: D::NodeId, limit: usize
     }
     Targets {
         referenced,
+        header_ids,
         ids: element_ids,
     }
 }
