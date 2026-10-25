@@ -2322,6 +2322,9 @@ mod webtransport_stream_interface_exposure;
 mod idb_index_native_receivers;
 
 mod window_execution_context;
+
+mod window_immutable_prototype_chain;
+
 mod window_getter_consolidation;
 mod window_receiver_access;
 mod worklet_interfaces;
