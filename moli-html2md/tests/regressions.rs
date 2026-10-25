@@ -1419,3 +1419,26 @@ fn html_fallback_math_delegation_preserves_referenced_descendant_targets() {
     );
     assert!(alternative.contains("<math>"), "{alternative}");
 }
+
+#[test]
+fn math_alternatives_keep_links_styles_and_spaces_in_both_output_paths() {
+    for space in [" ", "\u{00a0}"] {
+        let equation = "<a href=\"/term\"><em><math><mi>x</mi></math></em></a>";
+        let content = format!(
+            "Let<span>{space}{equation}<span aria-hidden='true'>visual copy</span>{space}</span>be positive."
+        );
+        for source in [
+            format!("<p>{content}</p>"),
+            format!("<table><tr><td colspan='2'>{content}</td></tr></table>"),
+        ] {
+            let result = markdown(&source, false);
+            let html = rendered_html(&result);
+            assert!(
+                html.contains(&format!("Let{space}{equation}{space}be positive.")),
+                "{source}: {result}\n{html}"
+            );
+            assert_eq!(html.matches("<math>").count(), 1, "{html}");
+            assert!(!html.contains("visual copy"), "{html}");
+        }
+    }
+}

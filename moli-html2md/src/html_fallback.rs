@@ -135,6 +135,7 @@ pub(crate) fn has_cells<D: Dom + ?Sized>(
 enum Task<Id> {
     Node(Id, usize, bool),
     Siblings(Option<Id>, usize, bool),
+    MathSiblings(Option<Id>, usize, bool),
     Close(String),
     Fallback(String, usize),
     Literal(&'static str),
@@ -177,10 +178,16 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 output.push_str(&tag);
                 output.push('>');
             }
-            Task::Siblings(None, _, _) => {}
+            Task::Siblings(None, _, _) | Task::MathSiblings(None, _, _) => {}
             Task::Siblings(Some(node), depth, code) => {
                 tasks.push(Task::Siblings(dom.next_sibling(node), depth, code));
                 tasks.push(Task::Node(node, depth, code));
+            }
+            Task::MathSiblings(Some(node), depth, code) => {
+                tasks.push(Task::MathSiblings(dom.next_sibling(node), depth, code));
+                if !crate::mathml::is_hidden_alternative(dom, node) {
+                    tasks.push(Task::Node(node, depth, code));
+                }
             }
             Task::Node(node, depth, code) => {
                 if depth >= limit {
@@ -237,12 +244,12 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     }
                     NodeKind::Element("input") => {
                         if let Some(value) = crate::form::input_text(dom, node) {
-                            escape(&value, &mut output);
+                            escape(value, &mut output);
                         }
                     }
                     NodeKind::Element("textarea") => {
-                        if let Some(value) = crate::form::textarea_text(dom, node) {
-                            escape(&value, &mut output);
+                        if let Some(value) = dom.control_value(node) {
+                            escape(value, &mut output);
                         } else {
                             tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
                         }
@@ -263,9 +270,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push_str(&crate::anchors::markup(id));
                                 }
                                 output.push_str("<img src=\"");
-                                escape(&src, &mut output);
+                                escape(src, &mut output);
                                 output.push_str("\" alt=\"");
-                                escape(&label, &mut output);
+                                escape(label, &mut output);
                                 output.push('"');
                                 if let Some(id) = targets.first() {
                                     output.push_str(" id=\"");
@@ -282,7 +289,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 for id in targets {
                                     output.push_str(&crate::anchors::markup(id));
                                 }
-                                escape(&label, &mut output);
+                                escape(label, &mut output);
                             }
                             continue;
                         }
@@ -359,7 +366,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     None
                                 };
                                 let value = if name == "src" && tag == "img" {
-                                    image_source.as_deref()
+                                    image_source
                                 } else {
                                     dom.attribute(node, name)
                                 };
@@ -405,9 +412,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 tasks.push(Task::Close(tag.to_owned()));
                             }
                         }
-                        if let Some((math, relative_depth)) =
-                            crate::mathml::primary_alternative(dom, node, limit - depth)
-                        {
+                        if crate::mathml::primary_alternative(dom, node, limit - depth).is_some() {
                             for id in
                                 crate::anchors::within(dom, node, limit - depth, anchor_targets)
                             {
@@ -415,13 +420,11 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push_str(&crate::anchors::markup(&id));
                                 }
                             }
-                            output.push_str(&crate::mathml::render(
-                                dom,
-                                math,
-                                limit - depth - relative_depth,
-                            ));
+                            tasks.push(Task::MathSiblings(dom.first_child(node), depth + 1, code));
                         } else {
-                            if let Some(label) = crate::content::fallback_text(dom, node) {
+                            if let Some(label) =
+                                crate::content::fallback_text(dom, node, limit - depth)
+                            {
                                 tasks.push(Task::Fallback(label, output.len()));
                             }
                             tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
