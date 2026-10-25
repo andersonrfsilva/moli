@@ -1260,6 +1260,14 @@ async fn wait_for_one_selected_page_task_executor_test_turn(
     loader: &ResourceRequestClient,
 ) -> anyhow::Result<()> {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+    wait_for_one_selected_page_task_executor_test_turn_until(page, loader, deadline).await
+}
+
+async fn wait_for_one_selected_page_task_executor_test_turn_until(
+    page: &mut crate::runtime::PageVmTaskExecutorTestHarness,
+    loader: &ResourceRequestClient,
+    deadline: tokio::time::Instant,
+) -> anyhow::Result<()> {
     loop {
         if page
             .run_one_oldest_ready_page_task_executor_turn(loader)
@@ -1313,7 +1321,7 @@ async fn advance_page_task_executor_until_eval_equals(
         let last = value;
         tokio::time::timeout_at(
             deadline,
-            wait_for_one_selected_page_task_executor_test_turn(page, loader),
+            wait_for_one_selected_page_task_executor_test_turn_until(page, loader, deadline),
         )
         .await
         .unwrap_or_else(|_| {

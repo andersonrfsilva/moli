@@ -47,6 +47,45 @@ fn mutation_observer_filters_match_exact_names_namespaces_and_utf16_identity() {
 }
 
 #[test]
+fn same_value_meta_set_attribute_records_preserve_xml_case_and_namespace() {
+    let mut vm = new_storage_html_test_vm("https://meta-attribute-identity.test/");
+    let result = vm
+        .eval(
+            r#"(() => {
+        const xml = document.implementation.createDocument(
+            'http://www.w3.org/1999/xhtml', 'meta', null);
+        const cases = [
+            [xml.documentElement, 'CONTENT', null, 'CONTENT'],
+            [xml.documentElement, 'HTTP-EQUIV', null, 'HTTP-EQUIV'],
+            [document.createElement('meta'), 'CONTENT', null, 'content'],
+            [document.createElement('meta'), 'content', 'urn:test', 'content'],
+            [document.createElement('meta'), 'p:content', 'urn:test', 'content'],
+        ];
+        for (const [meta, setter, namespace, local] of cases) {
+            if (namespace === null) meta.setAttribute(setter, 'x');
+            else meta.setAttributeNS(namespace, setter, 'x');
+            const all = new MutationObserver(() => {});
+            const filtered = new MutationObserver(() => {});
+            all.observe(meta, {attributes: true, attributeOldValue: true});
+            filtered.observe(meta, {attributes: true, attributeFilter: [local]});
+            meta.setAttribute(setter, 'x');
+            const records = all.takeRecords();
+            if (records.length !== 1 || records[0].attributeName !== local ||
+                records[0].attributeNamespace !== namespace || records[0].oldValue !== 'x')
+                throw Error('wrong attribute identity: ' + setter);
+            const expected = namespace === null ? 1 : 0;
+            if (filtered.takeRecords().length !== expected)
+                throw Error('wrong filter result: ' + setter);
+            all.disconnect(); filtered.disconnect();
+        }
+        return true;
+    })()"#,
+        )
+        .unwrap();
+    assert_eq!(result, "true");
+}
+
+#[test]
 fn mutation_observer_observe_accepts_registered_native_proxy_targets_and_receivers() {
     fn register_proxy<'s>(
         scope: &mut v8::PinScope<'s, '_>,
