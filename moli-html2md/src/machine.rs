@@ -116,7 +116,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                             quote.push_str(line);
                         }
                     }
-                    self.writer().block(quote.into(), 2, 2);
+                    self.writer().append_block(quote.into(), 2, 2);
                 }
                 Task::EndHeading(level) => {
                     let content = self.take_writer().into_string();
@@ -131,7 +131,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                                 .collect::<Vec<_>>()
                                 .join(" ")
                         );
-                        self.writer().block(heading.into(), 2, 2);
+                        self.writer().append_block(heading.into(), 2, 2);
                     } else {
                         self.writer().boundary(2);
                     }
@@ -140,7 +140,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     self.lists.pop();
                     let content = self.take_writer();
                     let has_blocks = self.writer().has_blocks;
-                    self.writer().block(content, before, 2);
+                    self.writer().append_block(content, before, 2);
                     if before == 1 {
                         // A nested list at the end keeps its parent item tight;
                         // following content can still realize a blank-line boundary.
@@ -171,7 +171,8 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     let list = self.lists.last_mut().expect("list item belongs to a list");
                     let separation = if loose || list.loose { 2 } else { 1 };
                     list.loose |= loose;
-                    self.writer().block(item.into(), separation, separation);
+                    self.writer()
+                        .append_block(item.into(), separation, separation);
                 }
                 Task::RawChildren(Some(node), depth, inline) => self.raw_node(node, depth, inline),
                 Task::EndRawBlock => {
@@ -208,7 +209,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         let mut writer = self.writers.pop().expect("capture has an output");
         writer.materialize_pending();
         if let Some(parent) = self.writers.last_mut() {
-            parent.last_link = parent.last_link.max(writer.last_link);
+            parent.merge_child(&writer);
         }
         writer.finish()
     }
@@ -277,7 +278,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         {
             for id in self.anchor_targets.targets(self.dom, node) {
                 if self.emitted_anchors.insert(id.to_owned()) {
-                    self.writer().inline_html(&crate::anchors::markup(id));
+                    self.writer().anchor(id);
                 }
             }
         }
@@ -386,11 +387,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
                     );
-                    if tag == "pre" {
-                        self.writer().block(html.into(), 2, 2);
-                    } else {
-                        self.writer().inline_html(&html);
-                    }
+                    self.writer().html(html, tag == "pre");
                     return;
                 }
                 self.raw.clear();
@@ -428,7 +425,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
                     );
-                    self.writer().block(html.into(), 2, 2);
+                    self.writer().html(html, true);
                     return;
                 }
                 self.capture();
@@ -479,7 +476,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
                     );
-                    self.writer().block(html.into(), 2, 2);
+                    self.writer().html(html, true);
                     return;
                 }
                 self.emit_own_targets(node);
@@ -512,7 +509,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
                     );
-                    self.writer().block(html.into(), 2, 2);
+                    self.writer().html(html, true);
                     return;
                 }
                 self.writer().boundary(2);
@@ -550,7 +547,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
     fn emit_anchors_within(&mut self, node: D::NodeId, remaining: usize) {
         for id in crate::anchors::within(self.dom, node, remaining, &self.anchor_targets) {
             if self.emitted_anchors.insert(id.clone()) {
-                self.writer().inline_html(&crate::anchors::markup(&id));
+                self.writer().anchor(&id);
             }
         }
     }
@@ -558,7 +555,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
     fn emit_own_targets(&mut self, node: D::NodeId) {
         for id in self.anchor_targets.targets(self.dom, node) {
             if self.emitted_anchors.insert(id.to_owned()) {
-                self.writer().inline_html(&crate::anchors::markup(id));
+                self.writer().anchor(id);
             }
         }
     }
@@ -623,7 +620,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
             self.children(cell.node, cell.depth + 1);
         } else {
             let table = self.tables.pop().expect("table conversion is active");
-            self.writer().block(table.finish(), 2, 2);
+            self.writer().append_block(table.finish(), 2, 2);
         }
     }
 

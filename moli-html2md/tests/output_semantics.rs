@@ -158,3 +158,63 @@ fn authored_block_boundaries_survive_every_output_path() {
         }
     }
 }
+
+#[test]
+fn empty_targets_and_formatting_do_not_hide_accessible_names() {
+    for icon in [
+        "<span id='icon'></span>",
+        "<code><span id='icon'></span></code>",
+        "<pre><code><span id='icon'></span></code></pre>",
+        "<h2><span id='icon'></span></h2>",
+        "<blockquote><span id='icon'></span></blockquote>",
+        "<ul><li><span id='icon'></span></li></ul>",
+        "<i class='fa fa-search'></i>",
+        "<em><strong></strong></em>",
+        "<sub></sub>",
+        "<span>&nbsp;</span>",
+    ] {
+        for control in ["button", "a href='/search'"] {
+            let tag = control.split_whitespace().next().unwrap();
+            let content =
+                format!("<a href='#icon'>Jump</a><{control} aria-label='Search'>{icon}</{tag}>");
+            for source in containers(&content) {
+                let input = Tree::parse(&source);
+                let markdown = convert(&input, input.root);
+                let output = Tree::parse(&rendered_html(&markdown));
+                assert_eq!(
+                    text(&output, output.root).matches("Search").count(),
+                    1,
+                    "{source}: {markdown}"
+                );
+                if tag == "a" {
+                    let links = with_attribute(&output, "href", "/search");
+                    assert!(
+                        links
+                            .iter()
+                            .any(|&node| text(&output, node).contains("Search")),
+                        "{markdown}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn meaningful_objects_still_suppress_redundant_accessible_names() {
+    for object in [
+        "<img src='/icon.svg' alt=''>",
+        "<math><mi>x</mi></math>",
+        "<video src='/clip'></video>",
+    ] {
+        for source in containers(&format!("<button aria-label='Search'>{object}</button>")) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            assert!(
+                !text(&output, output.root).contains("Search"),
+                "{source}: {markdown}"
+            );
+        }
+    }
+}

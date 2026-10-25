@@ -33,7 +33,7 @@ struct OpenStyle<'a> {
 pub(crate) struct Writer<'a> {
     // Blocks are immutable fragments; inline edits only touch the local tail.
     prefix: Output,
-    content_revision: usize,
+    content: crate::content::Content,
     output: String,
     desired: Vec<Style<'a>>,
     emitted: Vec<OpenStyle<'a>>,
@@ -52,7 +52,7 @@ pub(crate) struct Writer<'a> {
     math_end: Option<usize>,
     line_digits: Option<usize>,
     heading: bool,
-    pub(crate) last_link: usize,
+    last_link: usize,
     // Block events in this output buffer, used when finalizing a list item.
     pub(crate) has_blocks: bool,
 }
@@ -67,6 +67,11 @@ impl<'a> Writer<'a> {
             desired: self.desired.clone(),
             ..Self::default()
         }
+    }
+
+    pub(crate) fn merge_child(&mut self, child: &Self) {
+        self.last_link = self.last_link.max(child.last_link);
+        self.content.merge(&child.content);
     }
 
     pub(crate) fn heading(&mut self) {
@@ -106,7 +111,7 @@ impl<'a> Writer<'a> {
     }
 
     pub(crate) fn text(&mut self, text: &str) {
-        self.content_revision += usize::from(text.chars().any(|c| !c.is_whitespace()));
+        self.content.text(text);
         self.pending_text.push_str(text);
     }
 
@@ -134,7 +139,28 @@ impl<'a> Writer<'a> {
     }
 
     pub(crate) fn inline_html(&mut self, markup: &str) {
-        self.content_revision += usize::from(!markup.is_empty());
+        if !markup.is_empty() {
+            self.content.object();
+        }
+        self.markup(markup);
+    }
+
+    pub(crate) fn anchor(&mut self, id: &str) {
+        self.markup(&crate::anchors::markup(id));
+    }
+
+    pub(crate) fn html(&mut self, html: crate::content::Html, block: bool) {
+        if html.has_content {
+            self.content.object();
+        }
+        if block {
+            self.append_block(html.markup.into(), 2, 2);
+        } else {
+            self.markup(&html.markup);
+        }
+    }
+
+    fn markup(&mut self, markup: &str) {
         self.flush_pending_text();
         self.flush_code();
         self.prepare_inline('<');
@@ -202,7 +228,7 @@ impl<'a> Writer<'a> {
         }
         let text = text.trim_matches(is_space);
         if !text.is_empty() {
-            self.content_revision += 1;
+            self.content.object();
             if self.code.is_none() {
                 self.prepare_inline('`');
                 self.code = Some(String::new());
@@ -232,7 +258,7 @@ impl<'a> Writer<'a> {
         }
         self.flush_code();
         if preformatted {
-            self.content_revision += 1;
+            self.content.object();
             self.prepare_inline('`');
             self.code = Some(text.replace("\r\n", " ").replace(['\n', '\r'], " "));
             return;
@@ -255,7 +281,7 @@ impl<'a> Writer<'a> {
     }
 
     pub(crate) fn image(&mut self, alt: &str, src: &str, title: Option<&str>) {
-        self.content_revision += 1;
+        self.content.object();
         self.flush_pending_text();
         self.flush_code();
         self.prepare_inline('!');
@@ -296,7 +322,7 @@ impl<'a> Writer<'a> {
     }
 
     pub(crate) fn hard_break(&mut self) {
-        self.content_revision += 1;
+        self.content.object();
         self.flush_pending_text();
         self.flush_code();
         self.close_to(0, None);
@@ -308,11 +334,18 @@ impl<'a> Writer<'a> {
     }
 
     pub(crate) fn block(&mut self, output: Output, before: usize, after: usize) {
+        if !output.is_empty() {
+            self.content.object();
+        }
+        self.append_block(output, before, after);
+    }
+
+    // Captured child writers already transferred their readable content mark.
+    pub(crate) fn append_block(&mut self, output: Output, before: usize, after: usize) {
         if output.is_empty() {
             self.boundary(before.max(after));
             return;
         }
-        self.content_revision += 1;
         // Closing styles before detaching the tail keeps all inline edit
         // offsets local to the current String, never inside a finished block.
         self.boundary(before);
@@ -338,7 +371,7 @@ impl<'a> Writer<'a> {
     }
 
     pub(crate) fn content_mark(&self) -> usize {
-        self.content_revision
+        self.content.mark()
     }
 
     pub(crate) fn materialize_pending(&mut self) {

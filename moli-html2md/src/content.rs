@@ -1,5 +1,34 @@
 use crate::{Dom, NodeKind};
 
+/// Readable content is independent of serialized tags and navigation targets.
+#[derive(Default)]
+pub(crate) struct Content {
+    revision: usize,
+}
+
+pub(crate) struct Html {
+    pub(crate) markup: String,
+    pub(crate) has_content: bool,
+}
+
+impl Content {
+    pub(crate) fn mark(&self) -> usize {
+        self.revision
+    }
+
+    pub(crate) fn text(&mut self, text: &str) {
+        self.revision += usize::from(text.chars().any(|ch| !ch.is_whitespace()));
+    }
+
+    pub(crate) fn object(&mut self) {
+        self.revision += 1;
+    }
+
+    pub(crate) fn merge(&mut self, child: &Self) {
+        self.revision += child.revision;
+    }
+}
+
 pub(crate) fn fallback_text<D: Dom + ?Sized>(
     dom: &D,
     node: D::NodeId,

@@ -152,20 +152,19 @@ pub(crate) fn render<D: Dom + ?Sized>(
     anchor_targets: &crate::anchors::Targets,
     default_language: Option<&str>,
     emitted_anchors: &mut HashSet<String>,
-) -> String {
+) -> crate::content::Html {
     let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
     let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
+    let mut content = crate::content::Content::default();
     let mut in_link = false;
     let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
         match task {
             Task::Literal(value) => output.push_str(value),
             Task::Fallback(label, before) => {
-                if output[before..]
-                    .trim_matches(crate::writer::is_space)
-                    .is_empty()
-                {
+                if content.mark() == before {
+                    content.text(&label);
                     output.push(' ');
                     escape(&label, &mut output);
                     output.push(' ');
@@ -227,18 +226,26 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     }
                 }
                 match dom.node_kind(node) {
-                    NodeKind::Text(text) => escape_text(
-                        text,
-                        &mut output,
-                        code,
-                        keep_source_lines && code,
-                        inline_root,
-                    ),
+                    NodeKind::Text(text) => {
+                        if code && !text.is_empty() {
+                            content.object();
+                        } else {
+                            content.text(text);
+                        }
+                        escape_text(
+                            text,
+                            &mut output,
+                            code,
+                            keep_source_lines && code,
+                            inline_root,
+                        );
+                    }
                     NodeKind::Element(
                         "head" | "title" | "script" | "style" | "noscript" | "template",
                     )
                     | NodeKind::Other => {}
                     NodeKind::Element("math") => {
+                        content.object();
                         for id in crate::anchors::within(dom, node, limit - depth, anchor_targets) {
                             if emitted_anchors.insert(id.clone()) {
                                 output.push_str(&crate::anchors::markup(&id));
@@ -248,11 +255,13 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     }
                     NodeKind::Element("input") => {
                         if let Some(value) = crate::form::input_text(dom, node) {
+                            content.text(value);
                             escape(value, &mut output);
                         }
                     }
                     NodeKind::Element("textarea") => {
                         if let Some(value) = dom.control_value(node) {
+                            content.text(value);
                             escape(value, &mut output);
                         } else {
                             tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
@@ -270,6 +279,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 .filter(|id| emitted_anchors.insert((*id).to_owned()))
                                 .collect();
                             if let Some(src) = crate::media::source(dom, node) {
+                                content.object();
                                 for id in targets.iter().skip(1) {
                                     output.push_str(&crate::anchors::markup(id));
                                 }
@@ -290,6 +300,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 }
                                 output.push('>');
                             } else {
+                                content.text(label);
                                 for id in targets {
                                     output.push_str(&crate::anchors::markup(id));
                                 }
@@ -301,6 +312,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             let urls = crate::media::sources(dom, node, tag, depth, limit);
                             let poster = crate::media::poster(dom, node, tag);
                             if !urls.is_empty() || poster.is_some() {
+                                content.object();
                                 let block = tag == "audio";
                                 output.push_str(if block { "<div>" } else { " " });
                                 if let Some(poster) = poster {
@@ -344,6 +356,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             None
                         };
                         if let Some(tag) = retained {
+                            if matches!(tag, "br" | "hr") {
+                                content.object();
+                            }
                             in_link |= tag == "a";
                             if matches!(
                                 tag,
@@ -438,7 +453,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             if let Some(label) =
                                 crate::content::fallback_text(dom, node, limit - depth)
                             {
-                                tasks.push(Task::Fallback(label, output.len()));
+                                tasks.push(Task::Fallback(label, content.mark()));
                             }
                             tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
                         }
@@ -450,7 +465,10 @@ pub(crate) fn render<D: Dom + ?Sized>(
             }
         }
     }
-    output
+    crate::content::Html {
+        markup: output,
+        has_content: content.mark() != 0,
+    }
 }
 
 fn allowed(tag: &str) -> bool {
