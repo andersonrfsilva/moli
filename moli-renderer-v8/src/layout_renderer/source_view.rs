@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use moli_layout::{
     LayoutElementCategory, LayoutElementMetadata, LayoutElementSemantics, LayoutFormControlKind,
-    LayoutImageResource, LayoutInputControlKind, LayoutListData, LayoutListRole, LayoutNamespace,
+    LayoutImageResource, LayoutInputControlKind, LayoutListRole, LayoutNamespace,
     LayoutReplacedKind, LayoutSource, LayoutSourceKind, LayoutTableData, LayoutTableRole,
     LayoutTextSelection, ReplacedMetrics,
 };
@@ -10,7 +10,10 @@ use moli_layout::{
 use crate::{
     document_runtime::DomHandle,
     dom::native::{DomHost, Node},
-    dom_presentation::{form_control_data, optional_positive_u16_attribute, select_control_data},
+    dom_presentation::{
+        flat_children, flat_parent, form_control_data, list_data, optional_positive_u16_attribute,
+        select_control_data,
+    },
     native_bridge::JsContextHost,
 };
 
@@ -97,7 +100,7 @@ impl LayoutSource for NativeLayoutSourceView<'_> {
     }
 
     fn flat_parent(&self, node: Self::NodeId) -> Option<Self::NodeId> {
-        native_flat_parent(self.host(), self.root, node)
+        flat_parent(self.host(), self.root, node)
     }
 
     fn hyperlink(&self, node: DomHandle) -> Option<moli_layout::LayoutHyperlink<DomHandle>> {
@@ -137,7 +140,7 @@ impl LayoutSource for NativeLayoutSourceView<'_> {
     }
 
     fn flat_children(&self, node: Self::NodeId) -> Self::ChildIter<'_> {
-        native_flat_children(self.host(), self.root, node).into_iter()
+        flat_children(self.host(), self.root, node).into_iter()
     }
 
     fn node_kind(&self, node: Self::NodeId) -> LayoutSourceKind {
@@ -337,7 +340,7 @@ fn document_text_selections(
             text_nodes.push(node);
             continue;
         }
-        let children = native_flat_children(host, root, node);
+        let children = flat_children(host, root, node);
         stack.extend(children.into_iter().rev());
     }
 
@@ -433,54 +436,6 @@ fn collapsed_text_selection(
     Some((node, LayoutTextSelection::new(length, length)))
 }
 
-fn native_flat_children(host: &DomHost, root: DomHandle, node: DomHandle) -> Vec<DomHandle> {
-    let candidates = if let Some(shadow_root) = host.shadow_root_handle(node) {
-        host.child_handles(shadow_root).collect::<Vec<_>>()
-    } else if host.is_html_element_named(node, "slot") {
-        let assigned = host.assigned_nodes_for_slot_with_options(node, false);
-        if assigned.is_empty() {
-            host.child_handles(node).collect::<Vec<_>>()
-        } else {
-            assigned
-        }
-    } else {
-        host.child_handles(node).collect::<Vec<_>>()
-    };
-    candidates
-        .into_iter()
-        .filter(|child| native_flat_parent(host, root, *child) == Some(node))
-        .collect()
-}
-
-fn native_flat_parent(host: &DomHost, root: DomHandle, node: DomHandle) -> Option<DomHandle> {
-    if node == root {
-        return None;
-    }
-    if let Some(slot) = host.assigned_slot_for_node(node) {
-        return Some(slot);
-    }
-    let parent = host.node(node).and_then(Node::parent_node)?;
-    if host.is_shadow_root(parent) {
-        return host.shadow_root_host(parent);
-    }
-    if host.is_html_element_named(parent, "slot")
-        && !host
-            .assigned_nodes_for_slot_with_options(parent, false)
-            .is_empty()
-    {
-        return None;
-    }
-    if host.shadow_root_handle(parent).is_some() && native_node_is_slotable(host, node) {
-        return None;
-    }
-    Some(parent)
-}
-
-fn native_node_is_slotable(host: &DomHost, node: DomHandle) -> bool {
-    host.node(node)
-        .is_some_and(|node| node.is_element() || node.is_text())
-}
-
 fn layout_element_semantics(element: &crate::dom::native::Element) -> LayoutElementSemantics {
     let namespace = LayoutNamespace::from_uri(element.namespace());
     let local_name = element.local_name();
@@ -544,18 +499,8 @@ fn layout_element_metadata(
             }
             metadata.table = Some(table);
         }
-        LayoutElementCategory::List(role) => {
-            metadata.list = Some(LayoutListData {
-                ordered: role == LayoutListRole::Container && element.local_name() == "ol",
-                start: (role == LayoutListRole::Container)
-                    .then(|| signed_i32_attribute(element, "start"))
-                    .flatten(),
-                reversed: role == LayoutListRole::Container
-                    && element.attribute("reversed").is_some(),
-                value: (role == LayoutListRole::Item)
-                    .then(|| signed_i32_attribute(element, "value"))
-                    .flatten(),
-            });
+        LayoutElementCategory::List(_) => {
+            metadata.list = list_data(element);
         }
         LayoutElementCategory::FormControl(_) => {
             metadata.form_control = Some(form_control_data(element));
@@ -585,10 +530,6 @@ fn non_negative_u16_attribute(
         .and_then(|value| value.trim().parse::<u32>().ok())
         .map(|value| value.min(u32::from(maximum)) as u16)
         .unwrap_or(default)
-}
-
-fn signed_i32_attribute(element: &crate::dom::native::Element, name: &str) -> Option<i32> {
-    element.attribute(name)?.trim().parse::<i32>().ok()
 }
 
 fn html_element_semantics(local_name: &str) -> (LayoutElementCategory, Option<LayoutReplacedKind>) {
@@ -654,8 +595,8 @@ fn numeric_dimension_attribute(host: &DomHost, node: DomHandle, name: &str) -> O
 #[cfg(test)]
 mod tests {
     use super::{
-        html_element_semantics, html_input_control_kind, layout_element_semantics,
-        layout_element_semantics_for_source, native_flat_children, native_flat_parent,
+        flat_children, flat_parent, html_element_semantics, html_input_control_kind,
+        layout_element_semantics, layout_element_semantics_for_source,
     };
     use crate::dom::native::{DomHost, NativeDom};
     use moli_layout::{
@@ -954,27 +895,15 @@ mod tests {
         assert!(host.append_child(root, unassigned));
 
         assert_eq!(
-            native_flat_children(&host, root, root),
+            flat_children(&host, root, root),
             vec![assigned_slot, fallback_slot]
         );
-        assert_eq!(
-            native_flat_children(&host, root, assigned_slot),
-            vec![assigned]
-        );
-        assert_eq!(
-            native_flat_children(&host, root, fallback_slot),
-            vec![fallback]
-        );
-        assert_eq!(native_flat_parent(&host, root, assigned_slot), Some(root));
-        assert_eq!(
-            native_flat_parent(&host, root, assigned),
-            Some(assigned_slot)
-        );
-        assert_eq!(
-            native_flat_parent(&host, root, fallback),
-            Some(fallback_slot)
-        );
-        assert_eq!(native_flat_parent(&host, root, unassigned), None);
-        assert_eq!(native_flat_parent(&host, root, root), None);
+        assert_eq!(flat_children(&host, root, assigned_slot), vec![assigned]);
+        assert_eq!(flat_children(&host, root, fallback_slot), vec![fallback]);
+        assert_eq!(flat_parent(&host, root, assigned_slot), Some(root));
+        assert_eq!(flat_parent(&host, root, assigned), Some(assigned_slot));
+        assert_eq!(flat_parent(&host, root, fallback), Some(fallback_slot));
+        assert_eq!(flat_parent(&host, root, unassigned), None);
+        assert_eq!(flat_parent(&host, root, root), None);
     }
 }

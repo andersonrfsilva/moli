@@ -4,9 +4,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use moli_layout::{
-    LayoutFormControlKind, LayoutInputControlKind, TextCharacter, TextTransform,
-    TextTransformState, TextWhiteSpaceCollapse, classify_text_character, form_control_text,
-    select_control_texts,
+    LayoutFormControlKind, LayoutInputControlKind, LayoutListMarkerType, TextCharacter,
+    TextTransform, TextTransformState, TextWhiteSpaceCollapse, classify_text_character,
+    form_control_text, list_marker_text, select_control_texts,
 };
 use style::{
     computed_values::{list_style_position::T as MarkerPosition, position::T as Position},
@@ -20,7 +20,7 @@ use style::{
 
 use crate::{
     document_runtime::DomHandle,
-    dom_presentation::select_control_data,
+    dom_presentation::{flat_children, select_control_data},
     native_bridge::{
         JsContextHost,
         element::{StyleObservation, text_control_value},
@@ -29,10 +29,13 @@ use crate::{
 
 use super::demand::{FontUse, FontUses};
 
+mod lists;
+use lists::ListCounters;
+
 enum Work {
     Node(DomHandle, Option<Arc<ComputedValues>>),
     Text(Arc<ComputedValues>, String),
-    Generated(Arc<ComputedValues>, bool),
+    Generated(Arc<ComputedValues>, bool, Option<String>),
     Restore(TextContext),
 }
 
@@ -49,6 +52,8 @@ pub(crate) fn collect_font_uses(
         return FontUses::new();
     };
     let mut observation = StyleObservation::new(host);
+    let mut counters = ListCounters::default();
+    let scripting = host.document_scripting_enabled(document);
     let mut collector = TextCollector {
         families,
         queries: HashMap::new(),
@@ -67,14 +72,18 @@ pub(crate) fn collect_font_uses(
                 collector.text(&style, &text);
                 continue;
             }
-            Work::Generated(style, separate) => {
+            Work::Generated(style, separate, default_text) => {
                 if style.clone_display().is_none()
-                    || !matches!(&style.get_counters().content, Content::Items(_))
+                    || (!matches!(&style.get_counters().content, Content::Items(_))
+                        && default_text.is_none())
                 {
                     continue;
                 }
                 let saved = collector.enter(&style, false, separate);
                 collector.generated_text(&style);
+                if let Some(text) = default_text {
+                    collector.text(&style, &text);
+                }
                 if let Some(context) = saved {
                     collector.context = context;
                 }
@@ -103,8 +112,7 @@ pub(crate) fn collect_font_uses(
         };
         if style.clone_display().is_none()
             || style.clone_content_visibility() == ContentVisibility::Hidden
-            || (host.document_scripting_enabled(document)
-                && host.dom_host().is_html_element_named(node, "noscript"))
+            || (scripting && host.dom_host().is_html_element_named(node, "noscript"))
         {
             continue;
         }
@@ -170,25 +178,27 @@ pub(crate) fn collect_font_uses(
             .then(|| read.pseudo_computed_values("marker"))
             .flatten();
         let marker_separate = style.clone_list_style_position() == MarkerPosition::Outside;
+        // Outside markers have their own text context, so an unrelated font
+        // cannot affect either this discovery or the item's inline state.
+        let marker = marker.filter(|marker| !marker_separate || collector.query(marker).is_some());
+        let marker_text = marker.as_ref().and_then(|marker| {
+            (matches!(&marker.get_counters().content, Content::Normal)
+                && !marker.clone_display().is_none()
+                && !marker.clone_display().is_contents())
+            .then(|| {
+                list_marker_text(
+                    &LayoutListMarkerType::from(&*style),
+                    counters.value(host, &mut observation, root, node, scripting),
+                )
+            })
+            .flatten()
+        });
         let (_, before, after) = read.into_element_computed_values().expect("observed style");
         if let Some(after) = after {
-            pending.push(Work::Generated(after, false));
+            pending.push(Work::Generated(after, false, None));
         }
         // Follow DOM slot assignment rather than an intermediate layout tree.
-        let children = if let Some(shadow) = host.dom_host().shadow_root_handle(node) {
-            host.dom_host().child_handles(shadow).collect::<Vec<_>>()
-        } else if host.dom_host().is_html_element_named(node, "slot") {
-            let assigned = host
-                .dom_host()
-                .assigned_nodes_for_slot_with_options(node, false);
-            if assigned.is_empty() {
-                host.dom_host().child_handles(node).collect()
-            } else {
-                assigned
-            }
-        } else {
-            host.dom_host().child_handles(node).collect()
-        };
+        let children = flat_children(host.dom_host(), root, node);
         pending.extend(
             children
                 .into_iter()
@@ -196,10 +206,10 @@ pub(crate) fn collect_font_uses(
                 .map(|child| Work::Node(child, Some(style.clone()))),
         );
         if let Some(before) = before {
-            pending.push(Work::Generated(before, false));
+            pending.push(Work::Generated(before, false, None));
         }
         if let Some(marker) = marker {
-            pending.push(Work::Generated(marker, marker_separate));
+            pending.push(Work::Generated(marker, marker_separate, marker_text));
         }
     }
     collector

@@ -755,7 +755,7 @@ impl ResolvedLayoutStyle {
                 | WillChangeBits::VIEW_TRANSITION_NAME,
         );
         let order = computed.clone_order();
-        let list_marker_type = stylo_list_marker_type(&computed);
+        let list_marker_type = LayoutListMarkerType::from(&*computed);
         let list_marker_position = match computed.clone_list_style_position() {
             style::computed_values::list_style_position::T::Inside => {
                 LayoutListMarkerPosition::Inside
@@ -2459,33 +2459,35 @@ fn stylo_generated_content(computed: &ComputedValues) -> GeneratedContent {
     }
 }
 
-fn stylo_list_marker_type(computed: &ComputedValues) -> LayoutListMarkerType {
-    use style::counter_style::{CounterStyle, Symbol};
+impl From<&ComputedValues> for LayoutListMarkerType {
+    fn from(computed: &ComputedValues) -> Self {
+        use style::counter_style::{CounterStyle, Symbol};
 
-    match computed.clone_list_style_type().0 {
-        CounterStyle::None => LayoutListMarkerType::None,
-        CounterStyle::Name(name) => match &*name.0 {
-            "decimal" => LayoutListMarkerType::Decimal,
-            "lower-alpha" | "lower-latin" => LayoutListMarkerType::LowerAlpha,
-            "upper-alpha" | "upper-latin" => LayoutListMarkerType::UpperAlpha,
-            "disc" => LayoutListMarkerType::Disc,
-            "circle" => LayoutListMarkerType::Circle,
-            "square" => LayoutListMarkerType::Square,
-            "disclosure-open" => LayoutListMarkerType::DisclosureOpen,
-            "disclosure-closed" => LayoutListMarkerType::DisclosureClosed,
-            _ => LayoutListMarkerType::Fallback,
-        },
-        CounterStyle::String(value) => LayoutListMarkerType::String(Arc::from(value.as_ref())),
-        CounterStyle::Symbols { symbols, .. } => LayoutListMarkerType::Symbols(
-            symbols
-                .0
-                .iter()
-                .map(|symbol| match symbol {
-                    Symbol::String(value) => Arc::from(value.as_ref()),
-                    Symbol::Ident(value) => Arc::from(value.0.as_ref()),
-                })
-                .collect(),
-        ),
+        match computed.clone_list_style_type().0 {
+            CounterStyle::None => LayoutListMarkerType::None,
+            CounterStyle::Name(name) => match &*name.0 {
+                "decimal" => LayoutListMarkerType::Decimal,
+                "lower-alpha" | "lower-latin" => LayoutListMarkerType::LowerAlpha,
+                "upper-alpha" | "upper-latin" => LayoutListMarkerType::UpperAlpha,
+                "disc" => LayoutListMarkerType::Disc,
+                "circle" => LayoutListMarkerType::Circle,
+                "square" => LayoutListMarkerType::Square,
+                "disclosure-open" => LayoutListMarkerType::DisclosureOpen,
+                "disclosure-closed" => LayoutListMarkerType::DisclosureClosed,
+                _ => LayoutListMarkerType::Fallback,
+            },
+            CounterStyle::String(value) => LayoutListMarkerType::String(Arc::from(value.as_ref())),
+            CounterStyle::Symbols { symbols, .. } => LayoutListMarkerType::Symbols(
+                symbols
+                    .0
+                    .iter()
+                    .map(|symbol| match symbol {
+                        Symbol::String(value) => Arc::from(value.as_ref()),
+                        Symbol::Ident(value) => Arc::from(value.0.as_ref()),
+                    })
+                    .collect(),
+            ),
+        }
     }
 }
 
