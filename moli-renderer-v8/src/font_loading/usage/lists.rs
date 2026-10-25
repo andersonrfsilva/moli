@@ -126,9 +126,14 @@ impl ListCounters {
                     continue;
                 }
             }
+            // Column groups retain only column boxes, which are leaves, so no
+            // descendant list-item boxes survive their child filtering.
             // Leaf principal boxes omit pseudo children as well as DOM children.
             // Keep the element's own list-item box counted above, if present.
-            if !element_generates_child_boxes(element, LayoutDisplay::from(&*style)) {
+            let layout_display = LayoutDisplay::from(&*style);
+            if layout_display == LayoutDisplay::TableColumnGroup
+                || !element_generates_child_boxes(element, layout_display)
+            {
                 continue;
             }
             push_children(&mut pending, host, root, node, before, after);

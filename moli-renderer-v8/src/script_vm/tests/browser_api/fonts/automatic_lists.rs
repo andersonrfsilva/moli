@@ -202,6 +202,43 @@ fn assert_automatic_marker_number(markup: &str, css: &str, expected: u8) {
 }
 
 #[test]
+fn automatic_fonts_marker_counters_skip_filtered_column_group_items() {
+    let css = ".host::before,.host::after{content:'x';display:list-item}";
+    for (host, expected) in [
+        (
+            "<li class='host' style='display:table-column-group'></li>",
+            1,
+        ),
+        (
+            "<div class='host' style='display:table-column-group'><li>ignored</li></div>",
+            1,
+        ),
+        (
+            "<div class='host' style='display:table-column-group'><div style='display:contents'><li>ignored</li></div></div>",
+            1,
+        ),
+        (
+            "<div class='host' style='display:table-column-group'><div style='display:table-column'></div></div>",
+            1,
+        ),
+        ("<li class='host' style='display:contents'></li>", 3),
+        ("<li class='host' style='display:block'></li>", 3),
+        ("<li class='host' style='display:list-item'></li>", 2),
+    ] {
+        assert_automatic_marker_number(
+            &format!("<ol>{host}<li class='target'>body</li></ol>"),
+            css,
+            expected,
+        );
+        assert_automatic_marker_number(
+            &format!("<ol reversed><li class='target'>body</li>{host}</ol>"),
+            css,
+            expected,
+        );
+    }
+}
+
+#[test]
 fn automatic_fonts_default_markers_count_generated_items_in_box_order() {
     for (markup, css, expected) in [
         (
