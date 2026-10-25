@@ -126,8 +126,8 @@ fn form_control_texts(semantics: &Option<LayoutElementSemantics>) -> Option<(Vec
         .as_ref()
         .cloned()
         .unwrap_or_default();
-    if semantics.is_select_listbox() {
-        return Some((data.option_labels, false));
+    if kind == LayoutFormControlKind::Select {
+        return Some((select_control_texts(&data), false));
     }
     let (text, placeholder) = form_control_text(kind, &data.value, &data.placeholder);
     Some((
@@ -138,6 +138,24 @@ fn form_control_texts(semantics: &Option<LayoutElementSemantics>) -> Option<(Vec
         },
         placeholder,
     ))
+}
+
+/// Text rows actually displayed by a select, independently of option DOM text.
+pub fn select_control_texts(data: &crate::LayoutFormControlData) -> Vec<Arc<str>> {
+    if data.select_rows() > 1 {
+        data.option_labels.clone()
+    } else {
+        let (text, _) = form_control_text(
+            LayoutFormControlKind::Select,
+            &data.value,
+            &data.placeholder,
+        );
+        if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![text.into()]
+        }
+    }
 }
 
 /// Visible text and placeholder selection shared by resource discovery and

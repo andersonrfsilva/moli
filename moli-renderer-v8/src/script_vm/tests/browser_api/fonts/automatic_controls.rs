@@ -13,6 +13,99 @@ pub(super) fn font_usage_vm() -> StandaloneScriptVmHarness {
 }
 
 #[test]
+fn automatic_fonts_select_labels_match_the_rendered_control_rows() {
+    let (_, wide) = order_font_data();
+    for (attributes, options, setup, expected) in [
+        ("", "<option selected label='AAAA'></option>", "", "loaded"),
+        (
+            "size='3'",
+            "<option selected label='BBBB'></option><option label='AAAA'></option>",
+            "",
+            "loaded",
+        ),
+        ("multiple", "<option label='AAAA'></option>", "", "loaded"),
+        (
+            "",
+            "<option selected label='BBBB'></option><option label='AAAA'></option>",
+            "",
+            "unloaded",
+        ),
+        (
+            "",
+            "<option selected label='BBBB'>AAAA</option>",
+            "",
+            "unloaded",
+        ),
+        (
+            "size='3'",
+            "<option label='BBBB'>AAAA</option>",
+            "",
+            "unloaded",
+        ),
+        (
+            "",
+            "<option selected label='AAAA' style='font-family:serif'></option>",
+            "",
+            "loaded",
+        ),
+        (
+            "",
+            "<option selected label='BBBB'></option><option label='AAAA'></option>",
+            "control.selectedIndex=1",
+            "loaded",
+        ),
+        (
+            "",
+            "<option selected label='BBBB'></option>",
+            "control.options[0].label='AAAA'",
+            "loaded",
+        ),
+        (
+            "size='1' multiple",
+            "<option label='AAAA'></option>",
+            "",
+            "unloaded",
+        ),
+        (
+            "size='0' multiple",
+            "<option label='AAAA'></option>",
+            "",
+            "loaded",
+        ),
+        ("", "<option selected> A  A </option>", "", "loaded"),
+        (
+            "",
+            "<optgroup label='AAAA'><option selected label='BBBB'></option></optgroup>",
+            "",
+            "unloaded",
+        ),
+    ] {
+        let mut vm = font_usage_vm();
+        let markup = serde_json::to_string(&format!(
+            "<select id='control' style='font-family:SelectFace' {attributes}>{options}</select>"
+        ))
+        .unwrap();
+        vm.eval(&format!(r#"
+            document.body.innerHTML={markup};
+            {setup};
+            globalThis.face=new FontFace('SelectFace','url(data:font/ttf;base64,{wide})',{{unicodeRange:'U+0041'}});
+            document.fonts.add(face);
+        "#)).unwrap();
+        vm.reconcile_document_font_resources();
+        vm.eval("document.fonts.ready.then(()=>globalThis.ready=true)")
+            .unwrap();
+        run_font_tasks(&mut vm);
+        assert_eq!(
+            vm.eval("face.status").unwrap(),
+            expected,
+            "{attributes}/{options}/{setup}"
+        );
+        assert_eq!(vm.eval("globalThis.ready===true").unwrap(), "true");
+        assert_eq!(vm.layout_pass_observability_for_test().1, 0);
+    }
+}
+
+#[test]
 fn automatic_fonts_use_the_visible_placeholder_pseudo_style() {
     let (_, wide) = order_font_data();
     for tag in ["input", "textarea"] {

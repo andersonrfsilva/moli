@@ -1,15 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use moli_layout::{
-    LayoutElementCategory, LayoutElementMetadata, LayoutElementSemantics, LayoutFormControlData,
-    LayoutFormControlKind, LayoutImageResource, LayoutInputControlKind, LayoutListData,
-    LayoutListRole, LayoutNamespace, LayoutReplacedKind, LayoutSource, LayoutSourceKind,
-    LayoutTableData, LayoutTableRole, LayoutTextSelection, ReplacedMetrics,
+    LayoutElementCategory, LayoutElementMetadata, LayoutElementSemantics, LayoutFormControlKind,
+    LayoutImageResource, LayoutInputControlKind, LayoutListData, LayoutListRole, LayoutNamespace,
+    LayoutReplacedKind, LayoutSource, LayoutSourceKind, LayoutTableData, LayoutTableRole,
+    LayoutTextSelection, ReplacedMetrics,
 };
 
 use crate::{
     document_runtime::DomHandle,
     dom::native::{DomHost, Node},
+    dom_presentation::{form_control_data, optional_positive_u16_attribute, select_control_data},
     native_bridge::JsContextHost,
 };
 
@@ -502,7 +503,7 @@ fn layout_element_semantics(element: &crate::dom::native::Element) -> LayoutElem
     } else {
         (LayoutElementCategory::Generic, None)
     };
-    let metadata = layout_element_metadata(element, category, None, 0);
+    let metadata = layout_element_metadata(element, category);
     LayoutElementSemantics::new(namespace, local_name, category, replaced).with_metadata(metadata)
 }
 
@@ -512,42 +513,8 @@ fn layout_element_semantics_for_source(
     element: &crate::dom::native::Element,
 ) -> LayoutElementSemantics {
     let mut semantics = layout_element_semantics(element);
-    let mut option_labels = Vec::new();
-    let (selected_text, maximum_option_characters) = if element.is_html_select() {
-        let options = host.select_option_elements(node);
-        let option_text = |option| {
-            host.node(option)
-                .and_then(Node::as_element)
-                .map(|element| element.option_label(host.dom(), option))
-                .unwrap_or_default()
-        };
-        option_labels = options
-            .iter()
-            .map(|option| option_text(*option).into())
-            .collect::<Vec<std::sync::Arc<str>>>();
-        let maximum = option_labels
-            .iter()
-            .map(|label| label.chars().count())
-            .max()
-            .unwrap_or_default();
-        let selected = host
-            .select_selected_option_elements(node)
-            .first()
-            .copied()
-            .map(option_text)
-            .unwrap_or_default();
-        (Some(selected), u16::try_from(maximum).unwrap_or(u16::MAX))
-    } else {
-        (None, 0)
-    };
-    semantics.metadata = layout_element_metadata(
-        element,
-        semantics.category,
-        selected_text,
-        maximum_option_characters,
-    );
-    if let Some(data) = semantics.metadata.form_control.as_mut() {
-        data.option_labels = option_labels;
+    if element.is_html_select() {
+        semantics.metadata.form_control = Some(select_control_data(host, node, element));
     }
     semantics
 }
@@ -555,8 +522,6 @@ fn layout_element_semantics_for_source(
 fn layout_element_metadata(
     element: &crate::dom::native::Element,
     category: LayoutElementCategory,
-    selected_text: Option<String>,
-    maximum_option_characters: u16,
 ) -> LayoutElementMetadata {
     let mut metadata = LayoutElementMetadata::default();
     match category {
@@ -593,25 +558,7 @@ fn layout_element_metadata(
             });
         }
         LayoutElementCategory::FormControl(_) => {
-            let value = if element.is_html_select() {
-                selected_text.unwrap_or_default()
-            } else if element.is_html_input() || element.is_html_textarea() {
-                element.input_value()
-            } else {
-                element.attribute("value").unwrap_or("").to_owned()
-            };
-            metadata.form_control = Some(LayoutFormControlData {
-                value: value.into(),
-                placeholder: element.attribute("placeholder").unwrap_or("").into(),
-                option_labels: Vec::new(),
-                size: optional_positive_u16_attribute(element, "size", 1, 65_535),
-                columns: positive_u16_attribute(element, "cols", 20, 65_535),
-                rows: positive_u16_attribute(element, "rows", 2, 65_535),
-                maximum_option_characters,
-                checked: element.checked(),
-                disabled: element.attribute("disabled").is_some(),
-                multiple: element.attribute("multiple").is_some(),
-            });
+            metadata.form_control = Some(form_control_data(element));
         }
         LayoutElementCategory::Generic | LayoutElementCategory::LineBreak => {}
     }
@@ -638,21 +585,6 @@ fn non_negative_u16_attribute(
         .and_then(|value| value.trim().parse::<u32>().ok())
         .map(|value| value.min(u32::from(maximum)) as u16)
         .unwrap_or(default)
-}
-
-fn optional_positive_u16_attribute(
-    element: &crate::dom::native::Element,
-    name: &str,
-    minimum: u16,
-    maximum: u16,
-) -> Option<u16> {
-    element
-        .attribute(name)?
-        .trim()
-        .parse::<u32>()
-        .ok()
-        .filter(|value| *value > 0)
-        .map(|value| value.clamp(u32::from(minimum), u32::from(maximum)) as u16)
 }
 
 fn signed_i32_attribute(element: &crate::dom::native::Element, name: &str) -> Option<i32> {

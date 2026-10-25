@@ -6,6 +6,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use moli_layout::{
     LayoutFormControlKind, LayoutInputControlKind, TextCharacter, TextTransform,
     TextTransformState, TextWhiteSpaceCollapse, classify_text_character, form_control_text,
+    select_control_texts,
 };
 use style::{
     computed_values::{list_style_position::T as MarkerPosition, position::T as Position},
@@ -19,6 +20,7 @@ use style::{
 
 use crate::{
     document_runtime::DomHandle,
+    dom_presentation::select_control_data,
     native_bridge::{
         JsContextHost,
         element::{StyleObservation, text_control_value},
@@ -136,6 +138,16 @@ pub(crate) fn collect_font_uses(
             );
         if let Some(context) = collector.enter(&style, replaced, false) {
             pending.push(Work::Restore(context));
+        }
+        if element.is_html_select() {
+            let data = select_control_data(host.dom_host(), node, element);
+            for text in select_control_texts(&data) {
+                // Each rendered listbox row has its own inline text context.
+                collector.context = TextContext::default();
+                collector.text(&style, &text);
+            }
+            // Option children supply labels, not independent rendered text.
+            continue;
         }
         if let Some(kind) = control {
             let (text, is_placeholder) = form_control_text(
