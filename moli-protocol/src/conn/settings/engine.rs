@@ -29,23 +29,6 @@ impl CdpConnection {
             .as_ref()
             .and_then(|bc| bc.page_targets.active())
             .is_some_and(|host| host.effective_policy().bypass_service_worker());
-        if self
-            .browser_context
-            .as_ref()
-            .is_none_or(|context| context.active_target_id().is_none())
-            && !self.standalone_navigation_engine.is_materialized()
-        {
-            // Empty contexts still carry settings, but have no runtime to update.
-            let config = self
-                .standalone_navigation_engine
-                .runtime_config
-                .fetch_config_mut();
-            config.set_browser_identity(browser_identity);
-            config.set_http_proxy(http_proxy);
-            config.set_http_no_proxy(http_no_proxy);
-            config.set_tls_verify_host(tls_verify_host);
-            return;
-        }
         let engine = self.active_navigation_engine_mut();
         engine.set_browser_identity_override(browser_identity);
         engine.set_http_proxy_override(http_proxy);

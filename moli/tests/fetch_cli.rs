@@ -4308,9 +4308,17 @@ fn cli_meta_refresh_shutdown_exits_without_renderer_abort() -> Result<()> {
         Some(0),
         "meta refresh shutdown must not abort the CLI: stdout={stdout}\nstderr={stderr}"
     );
+    // Live serialization runs in a separate owner command after load. The
+    // zero-delay refresh can publish about:blank before that command, exposing
+    // either its initial empty DOM or its parsed HTML shell.
     assert!(
-        stdout.contains("http-equiv=\"refresh\""),
-        "the source document should still be emitted: stdout={stdout}"
+        matches!(
+            stdout.as_str(),
+            "<html><head><meta http-equiv=\"refresh\" content=\"0;url=about:blank\"></head><body></body></html>"
+                | ""
+                | "<html><head></head><body></body></html>"
+        ),
+        "the live dump should contain the source or its about:blank replacement: stdout={stdout}\nstderr={stderr}"
     );
     assert!(
         !stderr.contains("PageVm must retain a live ScriptVm until drop"),

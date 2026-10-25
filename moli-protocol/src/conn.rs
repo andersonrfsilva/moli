@@ -1084,6 +1084,7 @@ impl StandaloneNavigationEngineSlot {
         }
     }
 
+    #[cfg(test)]
     fn is_materialized(&self) -> bool {
         self.engine.get().is_some()
     }
@@ -1119,7 +1120,6 @@ impl StandaloneNavigationEngineSlot {
         self.renderer_publication_sender = Some(sender);
     }
 
-    #[cfg(test)]
     fn replace(&mut self, engine: NavigationEngine) -> Option<NavigationEngine> {
         self.runtime_config = engine.runtime_config();
         if let Some(sender) = self.renderer_publication_sender.as_ref() {
@@ -1130,14 +1130,6 @@ impl StandaloneNavigationEngineSlot {
             .set(engine)
             .expect("standalone navigation engine slot must be empty after take");
         previous
-    }
-
-    fn release_if_materialized(&mut self) -> bool {
-        let Some(engine) = self.engine.take() else {
-            return false;
-        };
-        self.runtime_config = engine.runtime_config();
-        true
     }
 
     fn take(&mut self) -> Option<NavigationEngine> {
@@ -1318,17 +1310,6 @@ impl CdpConnection {
                 .expect("active PageTargetHost navigation engine disappeared");
         }
         self.standalone_navigation_engine.ensure_mut()
-    }
-
-    fn active_navigation_engine_if_materialized_mut(&mut self) -> Option<&mut NavigationEngine> {
-        match self
-            .browser_context
-            .as_mut()
-            .and_then(|context| context.page_targets.active_mut())
-        {
-            Some(host) => host.navigation_engine_mut(),
-            None => self.standalone_navigation_engine.engine.get_mut(),
-        }
     }
 
     pub(crate) fn ensure_page_navigation_engine_for_target(
@@ -2560,7 +2541,6 @@ impl CdpConnection {
             .await
     }
 
-    #[cfg(test)]
     pub(crate) fn replace_standalone_navigation_engine(&mut self, engine: NavigationEngine) {
         let engine = engine;
         self.apply_scheduler_senders_to_navigation_engine(&engine);
@@ -3126,14 +3106,13 @@ impl CdpConnection {
             };
         }
 
-        let reset = self.standalone_navigation_engine.release_if_materialized();
+        let replacement = NavigationEngine::new_with_runtime_config(
+            self.standalone_navigation_engine.runtime_config(),
+        );
+        self.replace_standalone_navigation_engine(replacement);
         IdleNavigationEngineReleaseResult {
-            reset,
-            reason: if reset {
-                "idle-engine-released"
-            } else {
-                "idle-engine-already-deferred"
-            },
+            reset: true,
+            reason: "idle-engine-replaced",
             loaded_browser_context_count,
             live_target_browser_context_count,
         }
