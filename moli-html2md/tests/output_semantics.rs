@@ -62,3 +62,32 @@ fn descendant_targets_preserve_author_link_ownership() {
         }
     }
 }
+
+#[test]
+fn media_sources_keep_the_author_link_around_its_text() {
+    for tag in ["video", "audio", "iframe"] {
+        let content = format!("<a href='/watch'><{tag} src='/resource'></{tag}>Watch</a>");
+        for source in containers(&content) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let links = with_attribute(&output, "href", "/watch");
+            assert!(
+                links
+                    .iter()
+                    .any(|&node| text(&output, node).contains("Watch")),
+                "{source}: {markdown}"
+            );
+            assert!(
+                links
+                    .iter()
+                    .any(|&node| text(&output, node).contains("/resource")),
+                "{source}: {markdown}"
+            );
+            assert!(
+                with_attribute(&output, "href", "/resource").is_empty(),
+                "{markdown}"
+            );
+        }
+    }
+}

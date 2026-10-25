@@ -156,6 +156,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
     let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
     let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
+    let mut in_link = false;
     let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
         match task {
@@ -171,6 +172,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 }
             }
             Task::Close(tag) => {
+                if tag == "a" {
+                    in_link = false;
+                }
                 if matches!(tag.as_str(), "table" | "thead" | "tbody" | "tfoot" | "tr") {
                     begin_html_line(&mut output);
                 }
@@ -308,11 +312,18 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 }
                                 let has_source = !urls.is_empty();
                                 for url in urls {
-                                    output.push_str("<a href=\"");
-                                    escape(url, &mut output);
-                                    output.push_str("\">");
-                                    escape(crate::media::label(dom, node, tag), &mut output);
-                                    output.push_str("</a> ");
+                                    if in_link {
+                                        escape(crate::media::label(dom, node, tag), &mut output);
+                                        output.push_str(" (");
+                                        escape(url, &mut output);
+                                        output.push_str(") ");
+                                    } else {
+                                        output.push_str("<a href=\"");
+                                        escape(url, &mut output);
+                                        output.push_str("\">");
+                                        escape(crate::media::label(dom, node, tag), &mut output);
+                                        output.push_str("</a> ");
+                                    }
                                 }
                                 if block {
                                     output.push_str("</div>");
@@ -323,6 +334,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             }
                         }
                         let retained = if allowed(tag)
+                            && (tag != "a" || !in_link)
                             && (tag != "span"
                                 || !anchor_targets.targets(dom, node).is_empty()
                                 || dom.attribute(node, "title").is_some())
@@ -332,6 +344,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             None
                         };
                         if let Some(tag) = retained {
+                            in_link |= tag == "a";
                             if matches!(
                                 tag,
                                 "table"
