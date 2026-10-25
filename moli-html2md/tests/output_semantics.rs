@@ -271,3 +271,29 @@ fn explicit_header_references_keep_ids_on_actual_header_cells() {
         }
     }
 }
+
+#[test]
+fn wide_math_targets_keep_order_and_are_emitted_once() {
+    use std::fmt::Write as _;
+
+    let count = 2048;
+    let mut source = String::new();
+    for index in 0..count {
+        write!(source, "<a href='#m{index}'>Term</a>").unwrap();
+    }
+    source.push_str("<math>");
+    for index in 0..count {
+        write!(source, "<mrow id='m{index}'><mi>x</mi></mrow>").unwrap();
+    }
+    source.push_str("<mrow id='m0'><mi>y</mi></mrow></math>");
+    let input = Tree::parse(&source);
+    let markdown = convert(&input, input.root);
+    let output = Tree::parse(&rendered_html(&markdown));
+    let targets: Vec<_> = descendants(&output, output.root)
+        .into_iter()
+        .filter_map(|node| output.attribute(node, "id"))
+        .filter(|id| *id != "turndown-root")
+        .collect();
+    let expected: Vec<_> = (0..count).map(|index| format!("m{index}")).collect();
+    assert_eq!(targets, expected);
+}

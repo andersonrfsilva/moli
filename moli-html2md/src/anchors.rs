@@ -120,9 +120,8 @@ pub(crate) fn within<D: Dom + ?Sized>(
     let mut found = Vec::new();
     walk(dom, root, limit, |node| {
         for id in ids.targets(dom, node) {
-            if !found.iter().any(|existing| existing == id) {
-                found.push(id.to_owned());
-            }
+            // Every caller deduplicates with its shared emitted-target set.
+            found.push(id.to_owned());
         }
         false
     });
