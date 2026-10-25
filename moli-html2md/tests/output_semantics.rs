@@ -337,3 +337,32 @@ fn nested_presentational_tables_expand_without_affecting_inner_data_tables() {
         }
     }
 }
+
+#[test]
+fn gfm_section_targets_land_in_their_first_cell() {
+    let source = "<a href='#first'>First</a><a href='#second'>Second</a><a href='#empty'>Empty</a>\
+        <table><tbody id='first'><tr><td>A</td><td>B</td></tr></tbody>\
+        <tbody id='second'><tr><td>C</td><td>D</td></tr></tbody><tbody id='empty'></tbody></table>";
+    let input = Tree::parse(source);
+    let markdown = convert(&input, input.root);
+    assert!(markdown.contains("| --- |"), "{markdown}");
+    let output = Tree::parse(&rendered_html(&markdown));
+    for (id, expected_cell) in [("first", "A"), ("second", "C")] {
+        let targets = with_attribute(&output, "id", id);
+        assert_eq!(targets.len(), 1, "{markdown}");
+        let cells: Vec<_> = descendants(&output, output.root)
+            .into_iter()
+            .filter(|&node| {
+                output.nodes[node].tag.as_deref() == Some("td")
+                    && descendants(&output, node).contains(&targets[0])
+            })
+            .collect();
+        assert_eq!(cells.len(), 1, "{markdown}");
+        assert_eq!(text(&output, cells[0]).trim(), expected_cell, "{markdown}");
+    }
+    assert_eq!(
+        with_attribute(&output, "id", "empty").len(),
+        1,
+        "{markdown}"
+    );
+}

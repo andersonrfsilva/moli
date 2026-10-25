@@ -602,8 +602,15 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
 
     fn table_cell(&mut self) {
         let table = self.tables.last_mut().expect("table conversion is active");
+        let mut targets = Vec::new();
+        while let Some(node) = table.next_target() {
+            targets.push(node);
+        }
         if let Some(cell) = table.next_cell() {
             self.capture();
+            for node in targets {
+                self.emit_own_targets(node);
+            }
             if let Some(row) = cell.row {
                 self.emit_own_targets(row);
             }
@@ -614,6 +621,9 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         } else {
             let table = self.tables.pop().expect("table conversion is active");
             self.writer().append_block(table.finish(), 2, 2);
+            for node in targets {
+                self.emit_own_targets(node);
+            }
         }
     }
 

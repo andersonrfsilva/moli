@@ -1,4 +1,5 @@
 use crate::{Dom, NodeKind, output::Output, writer::is_space};
+use std::collections::VecDeque;
 
 pub(crate) struct Cell<Id> {
     pub(crate) node: Id,
@@ -14,6 +15,8 @@ pub(crate) struct Table<Id> {
     rows: Vec<usize>,
     separators: Vec<&'static str>,
     has_header: bool,
+    // GFM omits section/column elements; retain their targets at the next cell.
+    targets: VecDeque<(usize, Id)>,
 }
 
 pub(crate) fn is_presentational<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> bool {
@@ -44,6 +47,7 @@ impl<Id: Copy> Table<Id> {
             rows: Vec::new(),
             separators: Vec::new(),
             has_header: false,
+            targets: VecDeque::new(),
         };
         let mut cells = Vec::new();
         let mut child = dom.first_child(node);
@@ -61,6 +65,7 @@ impl<Id: Copy> Table<Id> {
                     table.add_row(dom, node, depth + 1, max_depth, "table", &mut cells)?;
                 }
                 NodeKind::Element(tag @ ("thead" | "tbody" | "tfoot")) => {
+                    table.defer_target(dom, node, cells.len());
                     let mut row = dom.first_child(node);
                     while let Some(node) = row.filter(|_| depth + 2 < max_depth) {
                         row = dom.next_sibling(node);
@@ -73,7 +78,16 @@ impl<Id: Copy> Table<Id> {
                         }
                     }
                 }
-                NodeKind::Element("colgroup" | "col") => {}
+                NodeKind::Element(tag @ ("colgroup" | "col")) => {
+                    table.defer_target(dom, node, cells.len());
+                    if tag == "colgroup" {
+                        let mut column = dom.first_child(node);
+                        while let Some(node) = column.filter(|_| depth + 2 < max_depth) {
+                            column = dom.next_sibling(node);
+                            table.defer_target(dom, node, cells.len());
+                        }
+                    }
+                }
                 kind if ignorable(kind) => {}
                 _ => return None,
             }
@@ -137,6 +151,7 @@ impl<Id: Copy> Table<Id> {
         }
         let count = cells.len() - start;
         if count == 0 {
+            self.defer_target(dom, row_node, cells.len());
             return Some(());
         }
         if self.rows.is_empty() {
@@ -154,6 +169,24 @@ impl<Id: Copy> Table<Id> {
 
     pub(crate) fn take_captions(&mut self) -> Vec<Cell<Id>> {
         std::mem::take(&mut self.captions)
+    }
+
+    fn defer_target<D: Dom<NodeId = Id> + ?Sized>(&mut self, dom: &D, node: Id, cell: usize) {
+        if dom.attribute(node, "id").is_some() {
+            self.targets.push_back((cell, node));
+        }
+    }
+
+    pub(crate) fn next_target(&mut self) -> Option<Id> {
+        if self
+            .targets
+            .front()
+            .is_some_and(|(cell, _)| *cell <= self.content.len())
+        {
+            self.targets.pop_front().map(|(_, node)| node)
+        } else {
+            None
+        }
     }
 
     pub(crate) fn next_cell(&mut self) -> Option<Cell<Id>> {
