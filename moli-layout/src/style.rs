@@ -585,7 +585,7 @@ impl ResolvedLayoutStyle {
     /// Converts one retained Stylo style while preserving its allocation for
     /// the full lifetime of the pass-local Taffy projection.
     pub fn from_stylo(computed: ServoArc<ComputedValues>) -> Self {
-        let display = classify_display(&computed);
+        let display = LayoutDisplay::from(&*computed);
         let background_color = stylo_background_color(&computed);
         let border_colors = stylo_border_colors(&computed);
         let generated_content = stylo_generated_content(&computed);
@@ -2204,6 +2204,12 @@ fn taffy_display(display: LayoutDisplay) -> TaffyDisplay {
         | LayoutDisplay::TableColumn
         | LayoutDisplay::TableRow
         | LayoutDisplay::TableCell => TaffyDisplay::Block,
+    }
+}
+
+impl From<&ComputedValues> for LayoutDisplay {
+    fn from(computed: &ComputedValues) -> Self {
+        classify_display(computed)
     }
 }
 

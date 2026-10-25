@@ -1,12 +1,106 @@
 //! DOM text and attribute projections shared by resource discovery and rendering.
 //! These helpers do not build layout boxes or query geometry.
 
-use moli_layout::{LayoutFormControlData, LayoutListData};
+use moli_layout::{
+    LayoutDisplay, LayoutElementCategory, LayoutFormControlData, LayoutFormControlKind,
+    LayoutInputControlKind, LayoutListData, LayoutListRole, LayoutNamespace, LayoutReplacedKind,
+    LayoutTableRole, html_display_contents_is_none,
+};
 
 use crate::{
     document_runtime::DomHandle,
     dom::native::{DomHost, Element, Node},
 };
+
+pub(crate) fn layout_element_classification(
+    element: &Element,
+) -> (LayoutElementCategory, Option<LayoutReplacedKind>) {
+    let local_name = element.local_name();
+    match element.namespace() {
+        LayoutNamespace::HTML_URI if local_name == "input" => (
+            LayoutElementCategory::FormControl(LayoutFormControlKind::Input(
+                html_input_control_kind(element.attribute("type")),
+            )),
+            Some(LayoutReplacedKind::FormControl),
+        ),
+        LayoutNamespace::HTML_URI => html_element_semantics(local_name),
+        LayoutNamespace::SVG_URI if local_name == "svg" => (
+            LayoutElementCategory::Generic,
+            Some(LayoutReplacedKind::Svg),
+        ),
+        _ => (LayoutElementCategory::Generic, None),
+    }
+}
+
+/// Mirrors source-box child construction without allocating layout metadata.
+pub(crate) fn element_generates_child_boxes(element: &Element, display: LayoutDisplay) -> bool {
+    match display {
+        LayoutDisplay::None => false,
+        LayoutDisplay::Contents => {
+            element.namespace() != LayoutNamespace::HTML_URI
+                || !html_display_contents_is_none(element.local_name())
+        }
+        _ => {
+            let (category, replaced) = layout_element_classification(element);
+            !category.is_leaf(replaced.is_some(), display)
+        }
+    }
+}
+
+pub(crate) fn html_element_semantics(
+    local_name: &str,
+) -> (LayoutElementCategory, Option<LayoutReplacedKind>) {
+    use LayoutElementCategory::{FormControl, Generic, LineBreak, List, Table};
+    use LayoutFormControlKind::{
+        Button, FieldSet, Input, Legend, Meter, Option as FormOption, OptionGroup, Output,
+        Progress, Select, TextArea,
+    };
+    use LayoutListRole::{Container, Item};
+    use LayoutTableRole::{
+        BodyGroup, Caption, Cell, Column, ColumnGroup, FooterGroup, HeaderGroup, Row,
+        Table as TableRoot,
+    };
+
+    match local_name {
+        "br" => (LineBreak, None),
+        "table" => (Table(TableRoot), None),
+        "caption" => (Table(Caption), None),
+        "colgroup" => (Table(ColumnGroup), None),
+        "col" => (Table(Column), None),
+        "thead" => (Table(HeaderGroup), None),
+        "tbody" => (Table(BodyGroup), None),
+        "tfoot" => (Table(FooterGroup), None),
+        "tr" => (Table(Row), None),
+        "td" | "th" => (Table(Cell), None),
+        "ol" | "ul" | "menu" => (List(Container), None),
+        "li" => (List(Item), None),
+        "button" => (FormControl(Button), None),
+        "input" => (
+            FormControl(Input(LayoutInputControlKind::Text)),
+            Some(LayoutReplacedKind::FormControl),
+        ),
+        "textarea" => (FormControl(TextArea), Some(LayoutReplacedKind::FormControl)),
+        "select" => (FormControl(Select), Some(LayoutReplacedKind::FormControl)),
+        "option" => (FormControl(FormOption), None),
+        "optgroup" => (FormControl(OptionGroup), None),
+        "fieldset" => (FormControl(FieldSet), None),
+        "legend" => (FormControl(Legend), None),
+        "output" => (FormControl(Output), None),
+        "progress" => (FormControl(Progress), Some(LayoutReplacedKind::FormControl)),
+        "meter" => (FormControl(Meter), Some(LayoutReplacedKind::FormControl)),
+        "img" => (Generic, Some(LayoutReplacedKind::Image)),
+        "canvas" => (Generic, Some(LayoutReplacedKind::Canvas)),
+        // `<object>` keeps fallback DOM children when its resource is unavailable.
+        "embed" => (Generic, Some(LayoutReplacedKind::Embedded)),
+        "frame" | "iframe" => (Generic, Some(LayoutReplacedKind::Frame)),
+        "audio" | "video" => (Generic, Some(LayoutReplacedKind::Media)),
+        _ => (Generic, None),
+    }
+}
+
+pub(crate) fn html_input_control_kind(value: Option<&str>) -> LayoutInputControlKind {
+    LayoutInputControlKind::from_type_attribute(value)
+}
 
 pub(crate) fn form_control_data(element: &Element) -> LayoutFormControlData {
     let value = if element.is_html_input() || element.is_html_textarea() {

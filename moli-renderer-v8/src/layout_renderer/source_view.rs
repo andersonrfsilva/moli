@@ -1,18 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
 use moli_layout::{
-    LayoutElementCategory, LayoutElementMetadata, LayoutElementSemantics, LayoutFormControlKind,
-    LayoutImageResource, LayoutInputControlKind, LayoutListRole, LayoutNamespace,
-    LayoutReplacedKind, LayoutSource, LayoutSourceKind, LayoutTableData, LayoutTableRole,
-    LayoutTextSelection, ReplacedMetrics,
+    LayoutElementCategory, LayoutElementMetadata, LayoutElementSemantics, LayoutImageResource,
+    LayoutNamespace, LayoutReplacedKind, LayoutSource, LayoutSourceKind, LayoutTableData,
+    LayoutTableRole, LayoutTextSelection, ReplacedMetrics,
 };
 
 use crate::{
     document_runtime::DomHandle,
     dom::native::{DomHost, Node},
     dom_presentation::{
-        flat_children, flat_parent, form_control_data, list_data, optional_positive_u16_attribute,
-        select_control_data,
+        flat_children, flat_parent, form_control_data, layout_element_classification, list_data,
+        optional_positive_u16_attribute, select_control_data,
     },
     native_bridge::JsContextHost,
 };
@@ -439,25 +438,7 @@ fn collapsed_text_selection(
 fn layout_element_semantics(element: &crate::dom::native::Element) -> LayoutElementSemantics {
     let namespace = LayoutNamespace::from_uri(element.namespace());
     let local_name = element.local_name();
-    let (category, replaced) = if namespace == LayoutNamespace::Html {
-        if local_name == "input" {
-            (
-                LayoutElementCategory::FormControl(LayoutFormControlKind::Input(
-                    html_input_control_kind(element.attribute("type")),
-                )),
-                Some(LayoutReplacedKind::FormControl),
-            )
-        } else {
-            html_element_semantics(local_name)
-        }
-    } else if namespace == LayoutNamespace::Svg && local_name == "svg" {
-        (
-            LayoutElementCategory::Generic,
-            Some(LayoutReplacedKind::Svg),
-        )
-    } else {
-        (LayoutElementCategory::Generic, None)
-    };
+    let (category, replaced) = layout_element_classification(element);
     let metadata = layout_element_metadata(element, category);
     LayoutElementSemantics::new(namespace, local_name, category, replaced).with_metadata(metadata)
 }
@@ -532,60 +513,6 @@ fn non_negative_u16_attribute(
         .unwrap_or(default)
 }
 
-fn html_element_semantics(local_name: &str) -> (LayoutElementCategory, Option<LayoutReplacedKind>) {
-    use LayoutElementCategory::{FormControl, Generic, LineBreak, List, Table};
-    use LayoutFormControlKind::{
-        Button, FieldSet, Input, Legend, Meter, Option as FormOption, OptionGroup, Output,
-        Progress, Select, TextArea,
-    };
-    use LayoutListRole::{Container, Item};
-    use LayoutTableRole::{
-        BodyGroup, Caption, Cell, Column, ColumnGroup, FooterGroup, HeaderGroup, Row,
-        Table as TableRoot,
-    };
-
-    match local_name {
-        "br" => (LineBreak, None),
-        "table" => (Table(TableRoot), None),
-        "caption" => (Table(Caption), None),
-        "colgroup" => (Table(ColumnGroup), None),
-        "col" => (Table(Column), None),
-        "thead" => (Table(HeaderGroup), None),
-        "tbody" => (Table(BodyGroup), None),
-        "tfoot" => (Table(FooterGroup), None),
-        "tr" => (Table(Row), None),
-        "td" | "th" => (Table(Cell), None),
-        "ol" | "ul" | "menu" => (List(Container), None),
-        "li" => (List(Item), None),
-        "button" => (FormControl(Button), None),
-        "input" => (
-            FormControl(Input(LayoutInputControlKind::Text)),
-            Some(LayoutReplacedKind::FormControl),
-        ),
-        "textarea" => (FormControl(TextArea), Some(LayoutReplacedKind::FormControl)),
-        "select" => (FormControl(Select), Some(LayoutReplacedKind::FormControl)),
-        "option" => (FormControl(FormOption), None),
-        "optgroup" => (FormControl(OptionGroup), None),
-        "fieldset" => (FormControl(FieldSet), None),
-        "legend" => (FormControl(Legend), None),
-        "output" => (FormControl(Output), None),
-        "progress" => (FormControl(Progress), Some(LayoutReplacedKind::FormControl)),
-        "meter" => (FormControl(Meter), Some(LayoutReplacedKind::FormControl)),
-        "img" => (Generic, Some(LayoutReplacedKind::Image)),
-        "canvas" => (Generic, Some(LayoutReplacedKind::Canvas)),
-        // `<object>` is intentionally not unconditional replaced content: when its resource is
-        // unavailable the fallback DOM children must still construct boxes.
-        "embed" => (Generic, Some(LayoutReplacedKind::Embedded)),
-        "frame" | "iframe" => (Generic, Some(LayoutReplacedKind::Frame)),
-        "audio" | "video" => (Generic, Some(LayoutReplacedKind::Media)),
-        _ => (Generic, None),
-    }
-}
-
-fn html_input_control_kind(value: Option<&str>) -> LayoutInputControlKind {
-    LayoutInputControlKind::from_type_attribute(value)
-}
-
 fn numeric_dimension_attribute(host: &DomHost, node: DomHandle, name: &str) -> Option<f32> {
     let value = host.get_attribute(node, name)?;
     let value = value.trim().parse::<f32>().ok()?;
@@ -595,10 +522,12 @@ fn numeric_dimension_attribute(host: &DomHost, node: DomHandle, name: &str) -> O
 #[cfg(test)]
 mod tests {
     use super::{
-        flat_children, flat_parent, html_element_semantics, html_input_control_kind,
-        layout_element_semantics, layout_element_semantics_for_source,
+        flat_children, flat_parent, layout_element_semantics, layout_element_semantics_for_source,
     };
-    use crate::dom::native::{DomHost, NativeDom};
+    use crate::{
+        dom::native::{DomHost, NativeDom},
+        dom_presentation::{html_element_semantics, html_input_control_kind},
+    };
     use moli_layout::{
         LayoutElementCategory, LayoutFormControlKind, LayoutInputControlKind, LayoutListRole,
         LayoutNamespace, LayoutReplacedKind, LayoutTableRole,

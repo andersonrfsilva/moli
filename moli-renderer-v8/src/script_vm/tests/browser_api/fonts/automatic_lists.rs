@@ -299,3 +299,66 @@ fn automatic_fonts_default_markers_ignore_suppressed_generated_items() {
         }
     }
 }
+
+#[test]
+fn automatic_fonts_marker_counters_ignore_leaf_host_generated_items() {
+    assert_automatic_marker_number(
+        "<ol><br><li class='target'>body</li></ol>",
+        "br::before{content:'x';display:list-item}",
+        1,
+    );
+    for leaf in [
+        "<br class='leaf'>",
+        "<div class='leaf' style='display:table-column'></div>",
+        "<div class='leaf' style='display:table-column'><li>ignored child</li></div>",
+        "<img class='leaf'>",
+        "<input class='leaf'>",
+        "<textarea class='leaf'></textarea>",
+        "<select class='leaf'><option>label</option></select>",
+        "<progress class='leaf'></progress>",
+        "<meter class='leaf'></meter>",
+        "<canvas class='leaf'></canvas>",
+        "<iframe class='leaf'></iframe>",
+        "<embed class='leaf'>",
+        "<audio class='leaf'></audio>",
+        "<video class='leaf'></video>",
+        "<svg class='leaf'></svg>",
+    ] {
+        for reversed in [false, true] {
+            let markup = if reversed {
+                format!("<ol reversed><li class='target'>body</li>{leaf}</ol>")
+            } else {
+                format!("<ol>{leaf}<li class='target'>body</li></ol>")
+            };
+            assert_automatic_marker_number(
+                &markup,
+                ".leaf::before,.leaf::after{content:'x';display:list-item}",
+                1,
+            );
+        }
+    }
+}
+
+#[test]
+fn automatic_fonts_marker_counters_follow_host_display_and_fallback_rules() {
+    for (markup, expected) in [
+        ("<br class='host' style='display:list-item'>", 2),
+        ("<br class='host' style='display:contents'>", 1),
+        ("<wbr class='host'>", 3),
+        ("<wbr class='host' style='display:contents'>", 1),
+        ("<button class='host'>label</button>", 3),
+        ("<object class='host'>fallback</object>", 3),
+        (
+            "<object class='host' style='display:contents'>fallback</object>",
+            1,
+        ),
+        ("<div class='host' style='display:contents'></div>", 3),
+        ("<div class='host' style='display:none'></div>", 1),
+    ] {
+        assert_automatic_marker_number(
+            &format!("<ol>{markup}<li class='target'>body</li></ol>"),
+            ".host::before,.host::after{content:'x';display:list-item}",
+            expected,
+        );
+    }
+}

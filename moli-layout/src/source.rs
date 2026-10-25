@@ -1,6 +1,6 @@
 use std::{fmt::Debug, hash::Hash, sync::Arc};
 
-use crate::{LayoutError, ResolvedLayoutStyle};
+use crate::{LayoutDisplay, LayoutError, ResolvedLayoutStyle};
 
 /// Source-node category needed by CSS box construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,6 +57,12 @@ pub enum LayoutElementCategory {
 }
 
 impl LayoutElementCategory {
+    /// Whether a principal box omits both source and generated children.
+    /// `display: contents` suppression is handled before principal construction.
+    pub const fn is_leaf(self, replaced: bool, display: LayoutDisplay) -> bool {
+        replaced || matches!(self, Self::LineBreak) || matches!(display, LayoutDisplay::TableColumn)
+    }
+
     pub const fn debug_name(self) -> &'static str {
         match self {
             Self::Generic => "generic",
@@ -420,25 +426,30 @@ impl LayoutElementSemantics {
     /// must apply it for Moli's Servo backend.
     pub(crate) fn display_contents_is_none(&self) -> bool {
         self.namespace == LayoutNamespace::Html
-            && matches!(
-                self.local_name.as_ref(),
-                "br" | "wbr"
-                    | "meter"
-                    | "progress"
-                    | "canvas"
-                    | "embed"
-                    | "object"
-                    | "audio"
-                    | "iframe"
-                    | "img"
-                    | "video"
-                    | "frame"
-                    | "frameset"
-                    | "input"
-                    | "textarea"
-                    | "select"
-            )
+            && html_display_contents_is_none(self.local_name.as_ref())
     }
+}
+
+/// HTML elements whose `display: contents` used value suppresses their subtree.
+pub fn html_display_contents_is_none(local_name: &str) -> bool {
+    matches!(
+        local_name,
+        "br" | "wbr"
+            | "meter"
+            | "progress"
+            | "canvas"
+            | "embed"
+            | "object"
+            | "audio"
+            | "iframe"
+            | "img"
+            | "video"
+            | "frame"
+            | "frameset"
+            | "input"
+            | "textarea"
+            | "select"
+    )
 }
 
 /// Pseudo-elements that can participate in box construction.

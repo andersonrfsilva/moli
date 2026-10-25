@@ -2,10 +2,12 @@ use std::collections::HashMap;
 
 use crate::{
     document_runtime::DomHandle,
-    dom_presentation::{flat_children, flat_parent, is_list_container, list_data},
+    dom_presentation::{
+        element_generates_child_boxes, flat_children, flat_parent, is_list_container, list_data,
+    },
     native_bridge::{JsContextHost, element::StyleObservation},
 };
-use moli_layout::{LayoutInputControlKind, ListCounter};
+use moli_layout::{LayoutDisplay, LayoutInputControlKind, ListCounter};
 use style::{properties::ComputedValues, servo_arc::Arc, values::computed::Content};
 
 enum Work {
@@ -106,6 +108,8 @@ impl ListCounters {
             };
             let display = style.clone_display();
             if display.is_none()
+                || (display.is_contents()
+                    && !element_generates_child_boxes(element, LayoutDisplay::Contents))
                 || (scripting && element.is_html_element("noscript"))
                 || (element.is_html_input()
                     && LayoutInputControlKind::from_type_attribute(element.attribute("type"))
@@ -122,24 +126,9 @@ impl ListCounters {
                     continue;
                 }
             }
-            // Replaced controls and media have no ordinary rendered children.
-            if element.is_html_input()
-                || element.is_html_textarea()
-                || element.is_html_select()
-                || matches!(
-                    element.local_name(),
-                    "img"
-                        | "iframe"
-                        | "frame"
-                        | "canvas"
-                        | "embed"
-                        | "audio"
-                        | "video"
-                        | "svg"
-                        | "progress"
-                        | "meter"
-                )
-            {
+            // Leaf principal boxes omit pseudo children as well as DOM children.
+            // Keep the element's own list-item box counted above, if present.
+            if !element_generates_child_boxes(element, LayoutDisplay::from(&*style)) {
                 continue;
             }
             push_children(&mut pending, host, root, node, before, after);
