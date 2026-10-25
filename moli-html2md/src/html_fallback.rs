@@ -137,6 +137,7 @@ enum Task<Id> {
     Siblings(Option<Id>, usize, bool),
     MathSiblings(Option<Id>, usize, bool),
     Close(String),
+    EndTable,
     Fallback(String, usize),
     Literal(&'static str),
 }
@@ -158,10 +159,14 @@ pub(crate) fn render<D: Dom + ?Sized>(
     let mut output = String::new();
     let mut content = crate::content::Content::default();
     let mut in_link = false;
+    let mut table_modes = Vec::new();
     let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
         match task {
             Task::Literal(value) => output.push_str(value),
+            Task::EndTable => {
+                table_modes.pop();
+            }
             Task::Fallback(label, before) => {
                 if content.mark() == before {
                     content.text(&label);
@@ -271,6 +276,10 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         if crate::visibility::nonrendered_serialized_state(dom, node) {
                             continue;
                         }
+                        if tag == "table" {
+                            table_modes.push(crate::table::is_presentational(dom, node));
+                            tasks.push(Task::EndTable);
+                        }
                         if tag == "img" {
                             let label = crate::content::image_label(dom, node);
                             let targets: Vec<_> = anchor_targets
@@ -345,7 +354,21 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 }
                             }
                         }
-                        let retained = if allowed(tag)
+                        let expanded = table_modes.last() == Some(&true)
+                            && matches!(
+                                tag,
+                                "table"
+                                    | "thead"
+                                    | "tbody"
+                                    | "tfoot"
+                                    | "tr"
+                                    | "td"
+                                    | "th"
+                                    | "caption"
+                            );
+                        let retained = if expanded {
+                            Some("div")
+                        } else if allowed(tag)
                             && (tag != "a" || !in_link)
                             && (tag != "span"
                                 || !anchor_targets.targets(dom, node).is_empty()
@@ -388,6 +411,11 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 "title", "start", "reversed", "value", "label", "selected",
                                 "multiple", "disabled",
                             ] {
+                                if expanded
+                                    && matches!(name, "rowspan" | "colspan" | "scope" | "headers")
+                                {
+                                    continue;
+                                }
                                 let image_source = if name == "src" && tag == "img" {
                                     crate::media::source(dom, node)
                                 } else {

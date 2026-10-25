@@ -297,3 +297,43 @@ fn wide_math_targets_keep_order_and_are_emitted_once() {
     let expected: Vec<_> = (0..count).map(|index| format!("m{index}")).collect();
     assert_eq!(targets, expected);
 }
+
+#[test]
+fn nested_presentational_tables_expand_without_affecting_inner_data_tables() {
+    for role in ["presentation", "none", " PRESENTATION "] {
+        for inner_table in [
+            "",
+            "<table><tr><th>Key</th><th>Value</th></tr><tr><td>C</td><td>D</td></tr></table>",
+        ] {
+            let content =
+                format!("<table role='{role}'><tr><td>A</td><td>B{inner_table}</td></tr></table>");
+            for (source, outer) in [
+                (content.clone(), 0),
+                (
+                    format!("<table><tr><td colspan='2'>{content}</td></tr></table>"),
+                    1,
+                ),
+            ] {
+                let input = Tree::parse(&source);
+                let markdown = convert(&input, input.root);
+                let output = Tree::parse(&rendered_html(&markdown));
+                let tables = output
+                    .nodes
+                    .iter()
+                    .filter(|node| node.tag.as_deref() == Some("table"))
+                    .count();
+                assert_eq!(
+                    tables,
+                    outer + usize::from(!inner_table.is_empty()),
+                    "{source}: {markdown}"
+                );
+                let text = block_text(&output, output.root);
+                let words: Vec<_> = text.split_whitespace().collect();
+                assert!(
+                    words.windows(2).any(|words| words == ["A", "B"]),
+                    "{markdown}"
+                );
+            }
+        }
+    }
+}

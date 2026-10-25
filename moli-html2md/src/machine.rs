@@ -440,14 +440,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
             "ul" | "ol" => self.start_list(node, tag == "ol"),
             "li" => self.start_item(),
             "table" => {
-                let presentation = self.dom.attribute(node, "role").is_some_and(|role| {
-                    matches!(
-                        role.trim_matches(crate::writer::is_space)
-                            .to_ascii_lowercase()
-                            .as_str(),
-                        "presentation" | "none"
-                    )
-                });
+                let presentation = crate::table::is_presentational(self.dom, node);
                 let structural_table = !presentation
                     && crate::html_fallback::requires_table_structure(
                         self.dom,

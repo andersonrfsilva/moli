@@ -16,6 +16,13 @@ pub(crate) struct Table<Id> {
     has_header: bool,
 }
 
+pub(crate) fn is_presentational<D: Dom + ?Sized>(dom: &D, node: D::NodeId) -> bool {
+    dom.attribute(node, "role").is_some_and(|role| {
+        let role = role.trim_matches(is_space);
+        role.eq_ignore_ascii_case("presentation") || role.eq_ignore_ascii_case("none")
+    })
+}
+
 impl<Id: Copy> Table<Id> {
     /// Inspect only the table's sections, rows and cells. Cell descendants are
     /// converted by the main task stack, so nested tables never recurse or
@@ -26,10 +33,7 @@ impl<Id: Copy> Table<Id> {
         depth: usize,
         max_depth: usize,
     ) -> Option<Self> {
-        if dom.attribute(node, "role").is_some_and(|role| {
-            let role = role.trim_matches(is_space);
-            role.eq_ignore_ascii_case("presentation") || role.eq_ignore_ascii_case("none")
-        }) {
+        if is_presentational(dom, node) {
             return None;
         }
         let mut table = Self {
