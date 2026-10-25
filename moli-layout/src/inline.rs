@@ -2932,6 +2932,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn carriage_returns_separate_space_styles_at_atomic_and_float_objects() {
+        let root = LayoutBoxId::from_index(0);
+        let prefix = LayoutBoxId::from_index(1);
+        let object = LayoutBoxId::from_index(2);
+        let tail = LayoutBoxId::from_index(3);
+        for (role, expected, tail_spaces) in [
+            (InlineObjectRole::Atomic, "a  b", 1),
+            (InlineObjectRole::Float, "a  b", 1),
+            (InlineObjectRole::OutOfFlow, "a b", 0),
+            (InlineObjectRole::StartEdge, "a b", 0),
+            (InlineObjectRole::EndEdge, "a b", 0),
+        ] {
+            let mut normalizer = InlineNormalizer::new(root);
+            normalizer.push_text(
+                prefix,
+                "a\r",
+                InlineWhiteSpaceCollapse::Collapse,
+                InlineTextTransform::None,
+                &[root],
+            );
+            let kind = match role {
+                InlineObjectRole::Float => InlineBoxKind::CustomOutOfFlow,
+                InlineObjectRole::OutOfFlow => InlineBoxKind::OutOfFlow,
+                _ => InlineBoxKind::InFlow,
+            };
+            normalizer.push_object(object, role, kind, &[root], InlineVerticalAlign::default());
+            normalizer.push_text(
+                tail,
+                "\nb",
+                InlineWhiteSpaceCollapse::Collapse,
+                InlineTextTransform::None,
+                &[root],
+            );
+            let input = normalizer.finish();
+            assert_eq!(input.text, expected, "{role:?}");
+            assert_eq!(
+                input
+                    .units
+                    .iter()
+                    .filter(|unit| unit.style_box == tail
+                        && &input.text[unit.output_range.clone()] == " ")
+                    .count(),
+                tail_spaces,
+                "{role:?}"
+            );
+        }
+    }
+
+    #[test]
     fn capitalize_keeps_boundaries_across_segment_breaks_and_text_runs() {
         for (runs, expected) in [
             (vec!["a\nb"], "A B"),

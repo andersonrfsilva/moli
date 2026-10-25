@@ -258,6 +258,9 @@ impl TextCollector<'_> {
         {
             return None;
         }
+        // The CR has already contributed a normalized newline. An object
+        // ends CRLF pairing before saving the surrounding text context.
+        self.context.carriage_return = false;
         if !out_of_flow {
             if floated || display.outside() == DisplayOutside::Inline {
                 self.flush_space();
