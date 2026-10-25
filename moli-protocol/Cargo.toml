@@ -12,6 +12,7 @@ test-support = []
 anyhow = "1.0.100"
 base64 = "0.22"
 bytes = "1"
+html-escape = "0.2.13"
 indexmap = "2.14.2"
 moli-bounded-buffer = { path = "../moli-bounded-buffer" }
 moli-core = { path = "../moli-core" }

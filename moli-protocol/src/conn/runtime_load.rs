@@ -70,12 +70,7 @@ const EXTERNAL_RAW_BODY_CHANNEL_CAPACITY: usize = 8;
 const ABOUT_BLANK_DOCUMENT_HTML: &str = "<!doctype html><html><head></head><body></body></html>";
 
 fn escape_error_page_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    html_escape::encode_quoted_attribute(value).into_owned()
 }
 
 fn network_error_page_html(unreachable_url: &Url, error_text: &str) -> String {

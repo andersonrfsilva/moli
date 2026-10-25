@@ -3212,6 +3212,7 @@ dependencies = [
  "chromiumoxide_cdp",
  "data-url",
  "futures-util",
+ "html-escape",
  "http",
  "indexmap",
  "lopdf",
