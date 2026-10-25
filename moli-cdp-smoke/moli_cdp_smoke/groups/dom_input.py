@@ -55,11 +55,12 @@ async def run_dom_input_group(state: SmokeState) -> None:
     uploaded = await page.evaluate(
         """() => {
           const file = document.querySelector('#upload')?.files?.[0];
-          return file ? { name: file.name, size: file.size } : null;
+          return file ? { name: file.name, size: file.size, type: file.type } : null;
         }"""
     )
     assert_equal(uploaded.get("name"), "upload.txt", "uploaded file name")
     assert_equal(uploaded.get("size"), len("upload contents"), "uploaded file size")
+    assert_equal(uploaded.get("type"), "text/plain", "uploaded file MIME type")
     upload_text = await page.evaluate(
         """async () => {
           const file = document.querySelector('#upload')?.files?.[0];
@@ -97,6 +98,33 @@ async def run_dom_input_group(state: SmokeState) -> None:
     )
     state.record("set_input_files")
 
+    # Remote Playwright uploads supply an explicit MIME type. Use native
+    # disk-file selection to verify the browser's own extension lookup.
+    document = await state.cdp.send("DOM.getDocument", {})
+    upload_node = await state.cdp.send(
+        "DOM.querySelector",
+        {"nodeId": document["root"]["nodeId"], "selector": "#upload"},
+    )
+    for name, contents, expected_type in [
+        ("upload.TXT", b"\x89PNG\r\n\x1a\n", "text/plain"),
+        ("upload.json", b"{}", "application/json"),
+        ("upload.pdf", b"%PDF-1.7\n", "application/pdf"),
+        ("upload.moli_unknown", b"\x89PNG\r\n\x1a\n", ""),
+        ("upload_without_extension", b"%PDF-1.7\n", ""),
+    ]:
+        selected_file = temp_dir / name
+        selected_file.write_bytes(contents)
+        await state.cdp.send(
+            "DOM.setFileInputFiles",
+            {"nodeId": upload_node["nodeId"], "files": [str(selected_file)]},
+        )
+        assert_equal(
+            await page.locator("#upload").evaluate("input => input.files[0].type"),
+            expected_type,
+            f"native file MIME type: {name}",
+        )
+    state.record("cdp_file_input_mime_types")
+
     await page.set_content('<input id="chooser" type="file" multiple>')
     await capture_layout(page)
     surface = await page.locator("#chooser").evaluate(
@@ -114,11 +142,12 @@ async def run_dom_input_group(state: SmokeState) -> None:
     chooser = await chooser_info.value
     await chooser.set_files(str(upload_file))
     chooser_files = await page.evaluate(
-        """() => Array.from(document.querySelector('#chooser')?.files || []).map(file => ({ name: file.name, size: file.size }))"""
+        """() => Array.from(document.querySelector('#chooser')?.files || []).map(file => ({ name: file.name, size: file.size, type: file.type }))"""
     )
     assert_equal(len(chooser_files), 1, "file chooser selected file count")
     assert_equal(chooser_files[0].get("name"), "upload.txt", "file chooser selected file name")
     assert_equal(chooser_files[0].get("size"), len("upload contents"), "file chooser selected file size")
+    assert_equal(chooser_files[0].get("type"), "text/plain", "file chooser selected file MIME type")
     chooser_text = await page.evaluate(
         """async () => {
           const file = document.querySelector('#chooser')?.files?.[0];
@@ -145,11 +174,12 @@ async def run_dom_input_group(state: SmokeState) -> None:
     scripted_chooser = await scripted_chooser_info.value
     await scripted_chooser.set_files(str(upload_file))
     scripted_files = await page.evaluate(
-        """() => Array.from(document.querySelector('#picker-script')?.files || []).map(file => ({ name: file.name, size: file.size }))"""
+        """() => Array.from(document.querySelector('#picker-script')?.files || []).map(file => ({ name: file.name, size: file.size, type: file.type }))"""
     )
     assert_equal(len(scripted_files), 1, "scripted file chooser selected file count")
     assert_equal(scripted_files[0].get("name"), "upload.txt", "scripted file chooser selected file name")
     assert_equal(scripted_files[0].get("size"), len("upload contents"), "scripted file chooser selected file size")
+    assert_equal(scripted_files[0].get("type"), "text/plain", "scripted file chooser selected file MIME type")
     state.record("file_chooser_show_picker")
 
     await page.set_content(f'<a id="go" href="{fixture}/plain">go</a>')

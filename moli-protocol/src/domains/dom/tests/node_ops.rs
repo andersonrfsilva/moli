@@ -2067,14 +2067,17 @@ async fn set_file_input_files_updates_file_input_for_frontend_node_id() {
         "id": 5,
         "method": "Runtime.evaluate",
         "params": {
-            "expression": "(() => { const files = document.querySelector('#upload').files; return `${files.length}:${files[0].name}:${files[0].size}`; })()",
+            "expression": "(() => { const files = document.querySelector('#upload').files; const data = new FormData(); data.append('upload', files[0]); return `${files.length}:${files[0].name}:${files[0].size}:${files[0].type}:${data.get('upload').type}`; })()",
             "returnByValue": true
         }
     }))
     .await;
     assert_eq!(
         take_response_by_id(&mut ctx, 5)["result"]["result"]["value"],
-        json!(format!("1:{file_name}:{}", upload_bytes.len()))
+        json!(format!(
+            "1:{file_name}:{}:text/plain:text/plain",
+            upload_bytes.len()
+        ))
     );
 }
 
