@@ -33,8 +33,50 @@ fn rejects_chromium_wpt_invalid_emulation_set_locale_override_params() {
         json!({"contexts": ["TARGET-1"], "locale": "en--US"}),
         json!({"contexts": ["TARGET-1"], "locale": "en-US-!"}),
         json!({"contexts": ["TARGET-1"], "locale": "x-private"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-x-"}),
+        json!({"contexts": ["TARGET-1"], "locale": "de-1901-1901"}),
+        json!({"contexts": ["TARGET-1"], "locale": "de-1901-1901-x-extra"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-a-abc-A-def"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-u-nu-latn"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-00"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-a0"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-t-en-1901-1901"}),
+        json!({"contexts": ["TARGET-1"], "locale": "abcd"}),
+        json!({"contexts": ["TARGET-1"], "locale": "abcdefghi"}),
+        json!({"contexts": ["TARGET-1"], "locale": "abcde-1901-1901"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-t-abcd"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-t-abcde-1901-1901"}),
+        json!({"contexts": ["TARGET-1"], "locale": "sl-rozaj-ROZAJ"}),
+        json!({"contexts": ["TARGET-1"], "locale": "de-1901-1902-1903-1904-1905-1906-1907-1908-1901"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-a"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-00"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca-00-hc-00"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca-00-u-nu-latn"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca-00-0a-00"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca-!"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca-abcdefghi"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca--00"}),
+        json!({"contexts": ["TARGET-1"], "locale": "en-u-ca-gregory-ca-"}),
     ] {
         assert_bidi_adapter_invalid("emulation.setLocaleOverride", params);
+    }
+}
+
+#[test]
+fn locale_override_uses_icu_parser_support_without_chromium_compatibility_rewrites() {
+    for locale in [
+        "abcde",
+        "abcdefgh-Latn-US-1901",
+        "en-t-abcde",
+        "abcde-t-abcdefgh-Latn-US",
+        "en-u-ca-gregory-ca-00",
+    ] {
+        assert_bidi_adapter_invalid(
+            "emulation.setLocaleOverride",
+            json!({"contexts": ["TARGET-1"], "locale": locale}),
+        );
     }
 }
 

@@ -1616,6 +1616,57 @@ fn maps_emulation_set_locale_override_contexts_to_shared_command() {
 }
 
 #[test]
+fn locale_override_accepts_icu_locales_without_normalizing_input() {
+    // Validate with ICU while forwarding the caller's original spelling.
+    for locale in [
+        "en-US",
+        "zh-Hant-TW",
+        "sl-rozaj-biske-1994",
+        "pL-latn-pl-U-HC-H12",
+        "und",
+        "en-x-private",
+        "en-x-t-abcdefgh",
+        "en-u-0a",
+        "en-u-abc-abc",
+        "en-u-ca-gregory-ca-buddhist",
+        "en-t-en-us-m0-ungegn",
+        "en-t-m0-ungegn-m0-prprname",
+        "en-9-abc",
+        "de-1901-1902-1903-1904-1905-1906-1907-1908-1909",
+    ] {
+        let command = super::super::parse_bidi_command(json!({
+            "id": 10,
+            "method": "emulation.setLocaleOverride",
+            "params": {"contexts": ["TARGET-1"], "locale": locale}
+        }))
+        .expect("BiDi command");
+        let context = super::super::BidiDevToolsCommandContext::new("bidi-session-1");
+        let shared = super::super::automation_command_from_bidi_command(&command, &context)
+            .unwrap_or_else(|error| panic!("valid locale {locale}: {error:?}"));
+        let moli_protocol::automation::AutomationCommand::SetLocaleOverride(command) = shared
+        else {
+            panic!("expected SetLocaleOverride command");
+        };
+        assert_eq!(command.locale.as_deref(), Some(locale));
+    }
+}
+
+#[test]
+fn locale_override_rejects_many_repeated_transformed_language_extensions() {
+    let locale = format!("abcde{}", "-t-abcdefgh".repeat(10_000));
+    let command = super::super::parse_bidi_command(json!({
+        "id": 10,
+        "method": "emulation.setLocaleOverride",
+        "params": {"contexts": ["TARGET-1"], "locale": locale}
+    }))
+    .expect("BiDi command");
+    let context = super::super::BidiDevToolsCommandContext::new("bidi-session-1");
+    let error = super::super::automation_command_from_bidi_command(&command, &context)
+        .expect_err("duplicate transformed extensions must be rejected");
+    assert_eq!(error.code, crate::BidiErrorCode::InvalidArgument);
+}
+
+#[test]
 fn maps_emulation_set_locale_override_user_contexts_to_shared_command() {
     let command = super::super::parse_bidi_command(json!({
         "id": 10,

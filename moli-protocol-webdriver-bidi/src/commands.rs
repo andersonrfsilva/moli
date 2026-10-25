@@ -2816,95 +2816,14 @@ fn required_nullable_string(params: &Value, field: &str) -> Result<Option<String
 }
 
 fn validate_bidi_locale(locale: &str) -> Result<(), BidiError> {
-    if locale.is_empty() || !locale.is_ascii() {
-        return Err(BidiError::new(
-            BidiErrorCode::InvalidArgument,
-            format!("invalid locale {locale}"),
-        ));
-    }
-    let subtags = locale.split('-').collect::<Vec<_>>();
-    if subtags.iter().any(|subtag| subtag.is_empty()) {
-        return Err(BidiError::new(
-            BidiErrorCode::InvalidArgument,
-            format!("invalid locale {locale}"),
-        ));
-    }
-    let Some(language) = subtags.first() else {
-        return Err(BidiError::new(
-            BidiErrorCode::InvalidArgument,
-            format!("invalid locale {locale}"),
-        ));
-    };
-    if !(2..=3).contains(&language.len())
-        || !language.chars().all(|value| value.is_ascii_alphabetic())
-    {
-        return Err(BidiError::new(
-            BidiErrorCode::InvalidArgument,
-            format!("invalid locale {locale}"),
-        ));
-    }
-    let mut index = 1;
-    if subtags.get(index).is_some_and(|subtag| {
-        subtag.len() == 4 && subtag.chars().all(|value| value.is_ascii_alphabetic())
-    }) {
-        index += 1;
-    }
-    if subtags.get(index).is_some_and(|subtag| {
-        (subtag.len() == 2 && subtag.chars().all(|value| value.is_ascii_alphabetic()))
-            || (subtag.len() == 3 && subtag.chars().all(|value| value.is_ascii_digit()))
-    }) {
-        index += 1;
-    }
-    while let Some(subtag) = subtags.get(index) {
-        if subtag.len() == 1 {
-            let singleton = subtag.as_bytes()[0].to_ascii_lowercase();
-            if singleton == b'x' || !subtag.chars().all(|value| value.is_ascii_alphanumeric()) {
-                return Err(BidiError::new(
-                    BidiErrorCode::InvalidArgument,
-                    format!("invalid locale {locale}"),
-                ));
-            }
-            index += 1;
-            let extension_start = index;
-            while let Some(extension) = subtags.get(index) {
-                if extension.len() == 1 {
-                    break;
-                }
-                if !(2..=8).contains(&extension.len())
-                    || !extension.chars().all(|value| value.is_ascii_alphanumeric())
-                {
-                    return Err(BidiError::new(
-                        BidiErrorCode::InvalidArgument,
-                        format!("invalid locale {locale}"),
-                    ));
-                }
-                index += 1;
-            }
-            if index == extension_start {
-                return Err(BidiError::new(
-                    BidiErrorCode::InvalidArgument,
-                    format!("invalid locale {locale}"),
-                ));
-            }
-            continue;
-        }
-        let is_variant = (5..=8).contains(&subtag.len())
-            && subtag.chars().all(|value| value.is_ascii_alphanumeric())
-            || (subtag.len() == 4
-                && subtag
-                    .chars()
-                    .next()
-                    .is_some_and(|value| value.is_ascii_digit())
-                && subtag.chars().all(|value| value.is_ascii_alphanumeric()));
-        if !is_variant {
-            return Err(BidiError::new(
+    icu_locale_core::Locale::try_from_str(locale)
+        .map(|_| ())
+        .map_err(|_| {
+            BidiError::new(
                 BidiErrorCode::InvalidArgument,
                 format!("invalid locale {locale}"),
-            ));
-        }
-        index += 1;
-    }
-    Ok(())
+            )
+        })
 }
 
 fn normalized_bidi_timezone(timezone: String) -> Result<String, BidiError> {
