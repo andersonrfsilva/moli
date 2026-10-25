@@ -458,7 +458,6 @@ fn initialize_dom_exception<'s>(
     dom_exception_declaration(scope, message, name)
         .initialize(scope, exception)
         .expect("DOMException declaration should initialize");
-    capture_dom_exception_stack(scope, exception);
 }
 
 pub(super) fn capture_dom_exception_stack(
@@ -505,7 +504,6 @@ fn initialize_quota_exceeded_error<'s>(
     QuotaExceededErrorOptions { quota, requested }
         .initialize_snapshot(scope, exception)
         .expect("QuotaExceededError options");
-    capture_dom_exception_stack(scope, exception);
 }
 
 fn websocket_error_declaration<'s>(
@@ -543,6 +541,7 @@ pub(crate) fn new_dom_exception_value<'s>(
         let exception = v8::Object::new(scope);
         initialize_dom_exception(scope, exception, message, name);
         let _ = exception.set_prototype(scope, prototype.into());
+        capture_dom_exception_stack(scope, exception);
         return exception.into();
     }
     let exception = dom_exception_declaration(scope, message, name)
@@ -603,7 +602,6 @@ pub(crate) fn dom_exception_constructor_callback<'s>(
     DomExceptionObjectDeclaration::new(Some(message), Some(name), f64::from(code))
         .initialize(scope, args.this())
         .expect("DOMException declaration should initialize");
-    capture_dom_exception_stack(scope, args.this());
     rv.set(args.this().into());
 }
 
@@ -707,7 +705,6 @@ pub(crate) fn initialize_websocket_error<'s>(
     websocket_error_declaration(scope, message, close_code, reason)
         .initialize(scope, exception)
         .expect("WebSocketError declaration should initialize");
-    capture_dom_exception_stack(scope, exception);
 }
 
 pub(crate) fn new_websocket_error_value<'s>(

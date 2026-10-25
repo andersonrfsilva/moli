@@ -103,7 +103,6 @@ pub(crate) fn rtc_error_constructor_callback<'s>(
         .is_some()
         && declaration.initialize(scope, args.this()).is_ok()
     {
-        capture_dom_exception_stack(scope, args.this());
         apply_webidl_constructor_prototype_fallback(
             scope,
             args.this(),
