@@ -89,3 +89,25 @@ async fn indexed_db_queries_snapshot_arguments_and_delete_key_ranges() -> Result
     server.shutdown().await;
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn indexed_db_transaction_arguments_convert_names_before_mode_and_scope_checks() -> Result<()>
+{
+    let server = FixtureServer::spawn().await?;
+    let browser = Browser::new(AppConfig::default())?;
+    let fixture = include_str!("fixtures/indexeddb-transaction-conversion.js");
+    for target in ["window", "child", "worker"] {
+        let source = format!(
+            "{fixture}\ntransactionConversionProbe('transaction-conversion-{target}').then(finish, error => finish({{state:'error',error:String(error)}}));"
+        );
+        let result = run_probe(&browser, &server, target, &source).await?;
+        assert_eq!(result["state"], "pass", "{target}: {result}");
+        assert_eq!(
+            result["checks"].as_array().unwrap().len(),
+            9,
+            "{target}: {result}"
+        );
+    }
+    server.shutdown().await;
+    Ok(())
+}
