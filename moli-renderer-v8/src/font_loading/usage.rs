@@ -4,9 +4,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use moli_layout::{
-    LayoutFormControlKind, LayoutInputControlKind, LayoutListMarkerType, TextCharacter,
-    TextTransform, TextTransformState, TextWhiteSpaceCollapse, classify_text_character,
-    form_control_text, list_marker_text, select_control_texts,
+    LayoutDisplay, LayoutFormControlKind, LayoutInputControlKind, LayoutListMarkerType,
+    TextCharacter, TextTransform, TextTransformState, TextWhiteSpaceCollapse,
+    classify_text_character, form_control_text, list_marker_text, select_control_texts,
 };
 use style::{
     computed_values::{list_style_position::T as MarkerPosition, position::T as Position},
@@ -20,7 +20,7 @@ use style::{
 
 use crate::{
     document_runtime::DomHandle,
-    dom_presentation::{flat_children, select_control_data},
+    dom_presentation::{element_generates_child_boxes, flat_children, select_control_data},
     native_bridge::{
         JsContextHost,
         element::{StyleObservation, text_control_value},
@@ -111,6 +111,8 @@ pub(crate) fn collect_font_uses(
             continue;
         };
         if style.clone_display().is_none()
+            || (style.clone_display().is_contents()
+                && !element_generates_child_boxes(element, LayoutDisplay::Contents))
             || style.clone_content_visibility() == ContentVisibility::Hidden
             || (scripting && host.dom_host().is_html_element_named(node, "noscript"))
         {

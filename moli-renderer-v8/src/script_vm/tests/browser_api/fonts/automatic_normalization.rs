@@ -133,3 +133,137 @@ fn automatic_fonts_follow_inline_and_generated_text_order_and_block_boundaries()
         assert_eq!(vm.layout_pass_observability_for_test().1, 0);
     }
 }
+
+fn assert_contents_subset(markup: &str, range: &str, expected: &str) {
+    let mut vm = font_usage_vm();
+    let (_, wide) = order_font_data();
+    let markup = serde_json::to_string(markup).unwrap();
+    vm.eval(&format!(r#"
+        globalThis.face=new FontFace('ContentsFace','url(data:font/ttf;base64,{wide})',{{unicodeRange:'{range}'}});
+        document.fonts.add(face);
+        const style=document.createElement('style');
+        style.textContent='[data-generated]::before {{content:"A"}} input,textarea,select,button {{font-family:ContentsFace}}';
+        document.head.append(style);
+        const container=document.createElement('span');
+        container.style.cssText='font-family:ContentsFace;text-transform:capitalize';
+        container.innerHTML={markup};document.body.append(container);
+    "#)).unwrap();
+    vm.reconcile_document_font_resources();
+    vm.eval("document.fonts.ready.then(()=>globalThis.ready=true)")
+        .unwrap();
+    run_font_tasks(&mut vm);
+    assert_eq!(
+        vm.eval("face.status").unwrap(),
+        expected,
+        "{markup}/{range}"
+    );
+    assert_eq!(vm.eval("globalThis.ready===true").unwrap(), "true");
+    assert_eq!(vm.layout_pass_observability_for_test().1, 0);
+}
+
+#[test]
+fn automatic_fonts_contents_suppression_preserves_text_context() {
+    for (markup, range, expected) in [
+        (
+            "<object style='display:contents'>x</object>a",
+            "U+0041",
+            "loaded",
+        ),
+        ("<object>x</object>a", "U+0041", "unloaded"),
+        (
+            "<span style='display:contents'>x</span>a",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "a<object style='display:contents'> </object>b",
+            "U+0042",
+            "unloaded",
+        ),
+        (
+            "a<object style='display:contents'>\n</object>b",
+            "U+0042",
+            "unloaded",
+        ),
+        ("a<br style='display:contents'>b", "U+0042", "unloaded"),
+        (
+            "<object style='display:contents'><input value='x'></object>a",
+            "U+0041",
+            "loaded",
+        ),
+        (
+            "x<object style='display:contents'><br></object>b",
+            "U+0042",
+            "unloaded",
+        ),
+    ] {
+        assert_contents_subset(markup, range, expected);
+    }
+}
+
+#[test]
+fn automatic_fonts_contents_suppression_precedes_control_and_pseudo_text() {
+    for (markup, range, expected) in [
+        (
+            "<object style='display:contents'>AAAA</object>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<input style='display:contents' value='AAAA'>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<input style='display:contents' placeholder='AAAA'>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<textarea style='display:contents'>AAAA</textarea>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<select style='display:contents'><option label='AAAA'></option></select>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<object data-generated style='display:contents'></object>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<wbr data-generated style='display:contents'>",
+            "U+0041",
+            "unloaded",
+        ),
+        (
+            "<input type='submit' style='display:contents'>",
+            "U+0053",
+            "unloaded",
+        ),
+        ("<input value='AAAA'>", "U+0041", "loaded"),
+        ("<textarea>AAAA</textarea>", "U+0041", "loaded"),
+        (
+            "<select><option label='AAAA'></option></select>",
+            "U+0041",
+            "loaded",
+        ),
+        ("<input type='submit'>", "U+0053", "loaded"),
+        ("<object>AAAA</object>", "U+0041", "loaded"),
+        (
+            "<span style='display:contents'>AAAA</span>",
+            "U+0041",
+            "loaded",
+        ),
+        (
+            "<button style='display:contents'>AAAA</button>",
+            "U+0041",
+            "loaded",
+        ),
+    ] {
+        assert_contents_subset(markup, range, expected);
+    }
+}
