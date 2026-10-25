@@ -846,15 +846,15 @@ fn referenced_targets_belong_to_their_captured_blocks() {
     );
     let html = rendered_html(&result);
     assert!(
-        html.contains("<li><a id=\"second\"></a>Beta</li>"),
+        html.contains("<li><span id=\"second\"></span>Beta</li>"),
         "{html}"
     );
     assert!(
-        html.contains("<h2><a id=\"title\"></a>Heading</h2>"),
+        html.contains("<h2><span id=\"title\"></span>Heading</h2>"),
         "{html}"
     );
     assert!(
-        html.contains("<blockquote>\n<p><a id=\"quote\"></a>Quoted text</p>"),
+        html.contains("<blockquote>\n<p><span id=\"quote\"></span>Quoted text</p>"),
         "{html}"
     );
 }

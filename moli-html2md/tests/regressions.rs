@@ -960,7 +960,7 @@ fn math_streams_across_transparent_wrappers_in_every_inline_container() {
         r"<a href='#equation'>Equation</a><p id='equation'>$x<span> + </span>y$</p><p>$z<span> + </span>1$</p>",
         false,
     );
-    assert!(result.contains("<a id=\"equation\"></a>"), "{result}");
+    assert!(result.contains("<span id=\"equation\"></span>"), "{result}");
     assert!(result.contains("$x + y$\n\n$z + 1$"), "{result}");
 }
 
@@ -1107,7 +1107,7 @@ fn fragment_links_keep_explicit_targets_without_copying_unreferenced_ids() {
     assert!(result.contains("id=\"chapter-7\""), "{result}");
     assert!(result.contains("id=\"注释\""), "{result}");
     assert!(
-        result.contains("<h2><a id=\"chapter-7\"></a>Translated chapter</h2>"),
+        result.contains("<h2><span id=\"chapter-7\"></span>Translated chapter</h2>"),
         "{result}"
     );
     assert!(!result.contains("id=\"unreferenced\""), "{result}");
@@ -1121,7 +1121,7 @@ fn percent_encoded_named_anchor_matches_its_fragment_link() {
     );
     assert!(result.contains("[Run](#Run%20the%20program)"), "{result}");
     assert!(
-        result.contains("## <a id=\"Run the program\"></a>Run the program"),
+        result.contains("## <span id=\"Run the program\"></span>Run the program"),
         "{result}"
     );
 }
@@ -1130,7 +1130,7 @@ fn percent_encoded_named_anchor_matches_its_fragment_link() {
 fn fragment_decoding_does_not_rewrite_dom_ids() {
     let result = markdown("<a href='#x%2520y'>Go</a><p id='x%20y'>Target</p>", false);
     assert!(result.contains("[Go](#x%2520y)"), "{result}");
-    assert!(result.contains("<a id=\"x%20y\"></a>"), "{result}");
+    assert!(result.contains("<span id=\"x%20y\"></span>"), "{result}");
     assert!(result.contains("Target"), "{result}");
 }
 
@@ -1140,8 +1140,8 @@ fn literal_fragment_target_wins_before_percent_decoding() {
         "<a href='#x%41'>Go</a><p id='x%41'>Original target</p><p id='xA'>Different target</p>",
         false,
     );
-    assert!(result.contains("<a id=\"x%41\"></a>"), "{result}");
-    assert!(!result.contains("<a id=\"xA\"></a>"), "{result}");
+    assert!(result.contains("<span id=\"x%41\"></span>"), "{result}");
+    assert!(!result.contains("<span id=\"xA\"></span>"), "{result}");
 }
 
 #[test]
@@ -1152,7 +1152,10 @@ fn fragment_targets_prefer_ids_and_only_accept_legacy_anchor_names() {
     ));
     assert_eq!(result.matches("id=\"target\"").count(), 1, "{result}");
     assert!(result.find("ID target").unwrap() > result.find("id=\"target\"").unwrap());
-    assert!(!result.contains("<a id=\"target\"></a>Legacy"), "{result}");
+    assert!(
+        !result.contains("<span id=\"target\"></span>Legacy"),
+        "{result}"
+    );
 
     let result = rendered_html(&markdown(
         "<a href='#target'>Go</a><table><tr><td colspan='2'><mark name='target'>Wrong</mark><a name='target'>Right</a></td></tr></table>",
@@ -1178,13 +1181,16 @@ fn html_fallback_preserves_referenced_targets_for_special_nodes() {
         "<a href='#L1'>Line 1</a><pre><code><mark id='L1'>let x = 1;</mark></code></pre>",
         false,
     );
-    assert!(code.contains("<a id=\"L1\"></a>"), "{code}");
+    assert!(code.contains("<span id=\"L1\"></span>"), "{code}");
     let table = markdown(
         "<a href='#email'>Email</a><a href='#eq1'>Equation</a><a href='#video1'>Video</a><table><tr><td><input id='email' value='a@example.test'></td><td><math id='eq1'><mi>x</mi></math></td><td><video id='video1' src='/clip.mp4'></video></td></tr></table>",
         false,
     );
     for id in ["email", "eq1", "video1"] {
-        assert!(table.contains(&format!("<a id=\"{id}\"></a>")), "{table}");
+        assert!(
+            table.contains(&format!("<span id=\"{id}\"></span>")),
+            "{table}"
+        );
     }
 }
 
@@ -1285,7 +1291,10 @@ fn fragment_targets_keep_all_aliases_and_delegated_math_descendants() {
         false,
     );
     for id in ["modern", "legacy", "eq"] {
-        assert!(result.contains(&format!("<a id=\"{id}\"></a>")), "{result}");
+        assert!(
+            result.contains(&format!("<span id=\"{id}\"></span>")),
+            "{result}"
+        );
     }
 }
 
@@ -1405,7 +1414,7 @@ fn html_fallback_math_delegation_preserves_referenced_descendant_targets() {
         "<a href='#L1'>Term</a><table><tr><td colspan='2'><math><mrow id='L1'><mi>x</mi></mrow></math></td></tr></table>",
         false,
     );
-    assert!(result.contains("<a id=\"L1\"></a>"), "{result}");
+    assert!(result.contains("<span id=\"L1\"></span>"), "{result}");
     assert!(result.contains("<math>"), "{result}");
 
     let alternative = markdown(

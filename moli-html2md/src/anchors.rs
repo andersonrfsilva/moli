@@ -169,7 +169,7 @@ pub(crate) fn decode_fragment(fragment: &str) -> String {
 }
 
 pub(crate) fn markup(id: &str) -> String {
-    let mut result = String::from("<a id=\"");
+    let mut result = String::from("<span id=\"");
     for character in id.chars() {
         match character {
             '&' => result.push_str("&amp;"),
@@ -181,6 +181,6 @@ pub(crate) fn markup(id: &str) -> String {
             character => result.push(character),
         }
     }
-    result.push_str("\"></a>");
+    result.push_str("\"></span>");
     result
 }
