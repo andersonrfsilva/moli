@@ -3437,7 +3437,7 @@ pub(super) fn svg_transform_set_translate_callback<'s>(
     set_svg_transform_state(
         scope,
         args.this(),
-        SvgTransform::translate(parsed.tx, parsed.ty),
+        SvgTransform::translate(f64::from(parsed.tx), f64::from(parsed.ty)),
     );
     reflect_svg_transform_item_to_owner_list(scope, args.this());
     rv.set_undefined();
@@ -3454,7 +3454,7 @@ pub(super) fn svg_transform_set_scale_callback<'s>(
     set_svg_transform_state(
         scope,
         args.this(),
-        SvgTransform::scale(parsed.sx, parsed.sy),
+        SvgTransform::scale(f64::from(parsed.sx), f64::from(parsed.sy)),
     );
     reflect_svg_transform_item_to_owner_list(scope, args.this());
     rv.set_undefined();
@@ -3471,7 +3471,11 @@ pub(super) fn svg_transform_set_rotate_callback<'s>(
     set_svg_transform_state(
         scope,
         args.this(),
-        SvgTransform::rotate(parsed.angle, parsed.cx, parsed.cy),
+        SvgTransform::rotate(
+            f64::from(parsed.angle),
+            f64::from(parsed.cx),
+            f64::from(parsed.cy),
+        ),
     );
     reflect_svg_transform_item_to_owner_list(scope, args.this());
     rv.set_undefined();
@@ -3482,10 +3486,14 @@ pub(super) fn svg_transform_set_skew_x_callback<'s>(
     args: v8::FunctionCallbackArguments<'s>,
     mut rv: v8::ReturnValue<'_, v8::Value>,
 ) {
-    let Some(parsed) = webidl::parse_args::<SvgAngleArg>(scope, &args) else {
+    let Some(parsed) = webidl::parse_args::<SvgTransformSkewArgs>(scope, &args) else {
         return;
     };
-    set_svg_transform_state(scope, args.this(), SvgTransform::skew_x(parsed.angle));
+    set_svg_transform_state(
+        scope,
+        args.this(),
+        SvgTransform::skew_x(f64::from(parsed.angle)),
+    );
     reflect_svg_transform_item_to_owner_list(scope, args.this());
     rv.set_undefined();
 }
@@ -3495,10 +3503,14 @@ pub(super) fn svg_transform_set_skew_y_callback<'s>(
     args: v8::FunctionCallbackArguments<'s>,
     mut rv: v8::ReturnValue<'_, v8::Value>,
 ) {
-    let Some(parsed) = webidl::parse_args::<SvgAngleArg>(scope, &args) else {
+    let Some(parsed) = webidl::parse_args::<SvgTransformSkewArgs>(scope, &args) else {
         return;
     };
-    set_svg_transform_state(scope, args.this(), SvgTransform::skew_y(parsed.angle));
+    set_svg_transform_state(
+        scope,
+        args.this(),
+        SvgTransform::skew_y(f64::from(parsed.angle)),
+    );
     reflect_svg_transform_item_to_owner_list(scope, args.this());
     rv.set_undefined();
 }

@@ -2229,6 +2229,8 @@ mod svg_transform_native_receivers;
 mod svg_detached_lengths;
 mod svg_transform_sync_consolidation;
 
+mod svg_transform_float_arguments;
+
 mod audio_event_interfaces;
 mod audio_value_owner_interface_exposure_interfaces;
 mod cross_origin_named_children;

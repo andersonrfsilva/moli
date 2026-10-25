@@ -263,30 +263,37 @@ struct SvgMatrixArg<'s> {
 #[derive(webidl::WebIdlArgs)]
 #[webidl(prefix = "SVG transform translate")]
 struct SvgTransformTranslateArgs {
-    #[webidl(required, converter = "double")]
-    tx: f64,
-    #[webidl(required, converter = "double")]
-    ty: f64,
+    #[webidl(required, converter = "float")]
+    tx: f32,
+    #[webidl(required, converter = "float")]
+    ty: f32,
 }
 
 #[derive(webidl::WebIdlArgs)]
 #[webidl(prefix = "SVG transform scale")]
 struct SvgTransformScaleArgs {
-    #[webidl(required, converter = "double")]
-    sx: f64,
-    #[webidl(required, converter = "double")]
-    sy: f64,
+    #[webidl(required, converter = "float")]
+    sx: f32,
+    #[webidl(required, converter = "float")]
+    sy: f32,
 }
 
 #[derive(webidl::WebIdlArgs)]
 #[webidl(prefix = "SVG transform rotate")]
 struct SvgTransformRotateArgs {
-    #[webidl(required, converter = "double")]
-    angle: f64,
-    #[webidl(required, converter = "double")]
-    cx: f64,
-    #[webidl(required, converter = "double")]
-    cy: f64,
+    #[webidl(required, converter = "float")]
+    angle: f32,
+    #[webidl(required, converter = "float")]
+    cx: f32,
+    #[webidl(required, converter = "float")]
+    cy: f32,
+}
+
+#[derive(webidl::WebIdlArgs)]
+#[webidl(prefix = "SVG transform skew")]
+struct SvgTransformSkewArgs {
+    #[webidl(required, converter = "float")]
+    angle: f32,
 }
 
 #[derive(webidl::WebIdlArgs)]
