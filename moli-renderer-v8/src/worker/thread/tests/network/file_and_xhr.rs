@@ -1931,19 +1931,11 @@ async fn worker_xmlhttprequest_cross_origin_redirect_final_url_obeys_connect_src
             const xhr = new XMLHttpRequest();
             const events = [];
             const violations = [];
-            addEventListener("securitypolicyviolation", event => {{
-                violations.push({{
-                    blockedURI: event.blockedURI,
-                    effectiveDirective: event.effectiveDirective,
-                    disposition: event.disposition,
-                }});
-            }});
-            xhr.addEventListener('readystatechange', () => events.push('readystatechange:' + xhr.readyState));
-            xhr.addEventListener('loadstart', () => events.push('loadstart'));
-            xhr.addEventListener('error', () => events.push('error'));
-            xhr.addEventListener('load', () => events.push('load'));
-            xhr.addEventListener('loadend', () => {{
-                events.push('loadend');
+            let loadEnded = false;
+            // Chromium may dispatch the violation after loadend. Keep the
+            // worker alive until both tasks have delivered their results.
+            function reportAfterLoadAndViolation() {{
+                if (!loadEnded || violations.length === 0) return;
                 postMessage({{
                     readyState: xhr.readyState,
                     status: xhr.status,
@@ -1956,6 +1948,23 @@ async fn worker_xmlhttprequest_cross_origin_redirect_final_url_obeys_connect_src
                     violations,
                 }});
                 close();
+            }}
+            addEventListener("securitypolicyviolation", event => {{
+                violations.push({{
+                    blockedURI: event.blockedURI,
+                    effectiveDirective: event.effectiveDirective,
+                    disposition: event.disposition,
+                }});
+                reportAfterLoadAndViolation();
+            }});
+            xhr.addEventListener('readystatechange', () => events.push('readystatechange:' + xhr.readyState));
+            xhr.addEventListener('loadstart', () => events.push('loadstart'));
+            xhr.addEventListener('error', () => events.push('error'));
+            xhr.addEventListener('load', () => events.push('load'));
+            xhr.addEventListener('loadend', () => {{
+                events.push('loadend');
+                loadEnded = true;
+                reportAfterLoadAndViolation();
             }});
             xhr.open('GET', {url_literal});
             xhr.send();
