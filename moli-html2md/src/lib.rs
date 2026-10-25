@@ -10,6 +10,7 @@ mod mathml;
 mod media;
 mod options;
 mod output;
+mod structure;
 mod table;
 mod visibility;
 mod writer;

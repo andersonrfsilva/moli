@@ -6,7 +6,7 @@
 <tbody>
 <tr>
 <td>1.</td>
-<td><a href="vote?id=1&amp;how=up"><div></div></a></td>
+<td><center><a href="vote?id=1&amp;how=up"><div></div></a></center></td>
 <td><a href="https://example.test/first">First story</a> (<a href="from?site=example.test">example.test</a>)</td>
 </tr>
 <tr>
@@ -17,7 +17,7 @@
 </tr>
 <tr>
 <td>2.</td>
-<td><a href="vote?id=2&amp;how=up"><div></div></a></td>
+<td><center><a href="vote?id=2&amp;how=up"><div></div></a></center></td>
 <td><a href="https://example.test/second">Second story</a></td>
 </tr>
 <tr>

@@ -203,14 +203,14 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 if let NodeKind::Element(tag) = dom.node_kind(node) {
                     if !code
                         && dom.has_block_layout(node)
-                        && !has_block_tag(tag)
-                        && !crate::machine::owns_boundaries(tag)
+                        && !crate::structure::is_block(tag)
+                        && !crate::structure::owns_boundaries(tag)
                     {
                         output.push_str("<div>");
                         tasks.push(Task::Close("div".to_owned()));
                     } else if !code
                         && dom.has_text_boundary(node)
-                        && !crate::machine::owns_boundaries(tag)
+                        && !crate::structure::owns_boundaries(tag)
                     {
                         output.push(' ');
                         tasks.push(Task::Literal(" "));
@@ -454,53 +454,28 @@ pub(crate) fn render<D: Dom + ?Sized>(
 }
 
 fn allowed(tag: &str) -> bool {
-    matches!(
-        tag,
-        "table"
-            | "thead"
-            | "tbody"
-            | "tfoot"
-            | "tr"
-            | "td"
-            | "th"
-            | "caption"
-            | "select"
-            | "optgroup"
-            | "option"
-            | "button"
-            | "p"
-            | "div"
-            | "span"
-            | "a"
-            | "img"
-            | "br"
-            | "hr"
-            | "strong"
-            | "b"
-            | "em"
-            | "i"
-            | "s"
-            | "del"
-            | "sup"
-            | "sub"
-            | "code"
-            | "pre"
-            | "blockquote"
-            | "ul"
-            | "ol"
-            | "li"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "dl"
-            | "dt"
-            | "dd"
-            | "details"
-            | "summary"
-    )
+    crate::structure::is_structural_block(tag)
+        || matches!(
+            tag,
+            "select"
+                | "optgroup"
+                | "option"
+                | "button"
+                | "span"
+                | "a"
+                | "img"
+                | "br"
+                | "hr"
+                | "strong"
+                | "b"
+                | "em"
+                | "i"
+                | "s"
+                | "del"
+                | "sup"
+                | "sub"
+                | "code"
+        )
 }
 
 fn escape(text: &str, output: &mut String) {
@@ -517,39 +492,6 @@ fn escape(text: &str, output: &mut String) {
             _ => output.push(ch),
         }
     }
-}
-
-fn has_block_tag(tag: &str) -> bool {
-    matches!(
-        tag,
-        "table"
-            | "thead"
-            | "tbody"
-            | "tfoot"
-            | "tr"
-            | "td"
-            | "th"
-            | "caption"
-            | "p"
-            | "div"
-            | "pre"
-            | "blockquote"
-            | "ul"
-            | "ol"
-            | "li"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "dl"
-            | "dt"
-            | "dd"
-            | "details"
-            | "summary"
-            | "hr"
-    )
 }
 
 fn escape_text(

@@ -91,3 +91,70 @@ fn media_sources_keep_the_author_link_around_its_text() {
         }
     }
 }
+
+fn block_text(tree: &Tree, root: usize) -> String {
+    let mut result = String::new();
+    for node in descendants(tree, root) {
+        if tree.nodes[node].tag.as_deref().is_some_and(|tag| {
+            matches!(
+                tag,
+                "p" | "div"
+                    | "table"
+                    | "tr"
+                    | "td"
+                    | "th"
+                    | "br"
+                    | "section"
+                    | "article"
+                    | "aside"
+                    | "main"
+                    | "nav"
+                    | "header"
+                    | "footer"
+                    | "figure"
+                    | "figcaption"
+                    | "form"
+                    | "fieldset"
+                    | "legend"
+                    | "address"
+            )
+        }) {
+            result.push('\n');
+        }
+        if let Some(text) = &tree.nodes[node].text {
+            result.push_str(text);
+        }
+    }
+    result
+}
+
+#[test]
+fn authored_block_boundaries_survive_every_output_path() {
+    for tag in [
+        "section",
+        "article",
+        "aside",
+        "main",
+        "nav",
+        "header",
+        "footer",
+        "figure",
+        "figcaption",
+        "form",
+        "fieldset",
+        "legend",
+        "address",
+    ] {
+        for source in containers(&format!("<{tag}>A</{tag}><{tag}>B</{tag}>")) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let text = block_text(&output, output.root);
+            let words: Vec<_> = text.split_whitespace().collect();
+            assert!(
+                words.windows(2).any(|words| words == ["A", "B"]),
+                "{source}: {markdown}\n{text}"
+            );
+        }
+    }
+}
