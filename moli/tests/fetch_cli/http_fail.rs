@@ -212,7 +212,8 @@ async fn cookie_jar_is_saved_when_http_status_causes_fetch_failure() -> Result<(
     let server = HttpFailureFixture::spawn().await?;
     for kind in ["html", "raw"] {
         for fail_flag in ["--fail", "--fail-with-body"] {
-            for output_flag in ["--cookie-jar", "-c"] {
+            {
+                let output_flag = "--cookie-jar";
                 let jar = super::unique_temp_file_path("http-failure-cookie-jar", "cookies.txt")?;
                 let path = format!("/cookie-error/{kind}");
                 let output =

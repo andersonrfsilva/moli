@@ -1683,7 +1683,8 @@ fn cli_cookie_jar_writes_set_cookie_for_later_import() -> Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     let server = runtime.block_on(FixtureServer::spawn())?;
     let url = server.url("/cookie");
-    for output_flag in ["--cookie-jar", "-c"] {
+    {
+        let output_flag = "--cookie-jar";
         let cookie_jar = unique_temp_file_path("cookie-jar-writeback", "cookies.txt")?;
         let cookie_jar_arg = cookie_jar.to_string_lossy().into_owned();
 
@@ -1707,7 +1708,7 @@ fn cli_cookie_jar_writes_set_cookie_for_later_import() -> Result<()> {
             "cookie jar={jar_contents}"
         );
 
-        for input_flag in ["--cookie", "-b", "--cookie-file"] {
+        for input_flag in ["--cookie", "--cookie-file"] {
             let second = run_fetch_cli_with_dump_and_args(
                 &url,
                 "html",

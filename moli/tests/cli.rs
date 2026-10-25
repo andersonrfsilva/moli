@@ -351,7 +351,7 @@ fn web_bot_auth_flags_require_key_and_domain_together() {
 
 #[test]
 fn app_config_accepts_cookie_file_for_cdp_serve() {
-    for flag in ["--cookie", "-b", "--cookie-file"] {
+    for flag in ["--cookie", "--cookie-file"] {
         let cli = Cli::try_parse_from(normalize_args_for_compat([
             "moli",
             "serve",
