@@ -261,7 +261,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     NodeKind::Element("input") => {
                         if let Some(value) = crate::form::input_text(dom, node) {
                             content.text(value);
+                            output.push(' ');
                             escape(value, &mut output);
+                            output.push(' ');
                         }
                     }
                     NodeKind::Element("textarea") => {

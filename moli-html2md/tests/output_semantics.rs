@@ -366,3 +366,30 @@ fn gfm_section_targets_land_in_their_first_cell() {
         "{markdown}"
     );
 }
+
+#[test]
+fn input_values_keep_their_word_boundaries_in_every_output_path() {
+    for (content, expected) in [
+        ("<input value='10'><input value='20'>", vec!["10", "20"]),
+        (
+            "<label>Min<input value='10'></label><label>Max<input value='20'></label>",
+            vec!["Min", "10", "Max", "20"],
+        ),
+    ] {
+        for source in containers(content) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let cell = descendants(&output, output.root)
+                .into_iter()
+                .find(|&node| output.nodes[node].tag.as_deref() == Some("td"))
+                .unwrap_or(output.root);
+            let content = text(&output, cell);
+            assert_eq!(
+                content.split_whitespace().collect::<Vec<_>>(),
+                expected,
+                "{source}: {markdown}"
+            );
+        }
+    }
+}
