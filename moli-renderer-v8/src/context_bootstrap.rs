@@ -260,8 +260,9 @@ pub(crate) use self::canvas::{
 };
 use self::constructors::illegal_constructor_callback;
 pub(crate) use self::constructors::{
-    dom_exception_clone_fields, ensure_dom_implementation_singleton, new_dom_error_value,
-    new_dom_exception_value, new_most_derived_dom_exception_value, new_quota_exceeded_error_value,
+    build_dom_exception_object, build_quota_exceeded_error_object, dom_exception_clone_fields,
+    ensure_dom_implementation_singleton, new_dom_error_value, new_dom_exception_value,
+    new_most_derived_dom_exception_value, new_quota_exceeded_error_value,
     quota_exceeded_error_clone_fields, throw_dom_exception_value,
 };
 pub(crate) use self::css_stylesheet_runtime::{

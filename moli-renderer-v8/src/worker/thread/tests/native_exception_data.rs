@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn worker_exception_constructors_do_not_invent_failure_stacks() {
+async fn worker_exception_data_has_no_invented_failure_stack() {
     ensure_v8();
     let source = format!(
         "{}; postMessage(domExceptionStackBoundariesProbe(globalThis)); close();",
@@ -11,5 +11,5 @@ async fn worker_exception_constructors_do_not_invent_failure_stacks() {
     let message = timeout(TIMEOUT, worker.recv()).await.unwrap().unwrap();
     let result: serde_json::Value = serde_json::from_str(&expect_post_json(message)).unwrap();
     assert_eq!(result["failures"], serde_json::json!([]), "{result}");
-    assert_eq!(result["rows"].as_array().unwrap().len(), 15, "{result}");
+    assert_eq!(result["rows"].as_array().unwrap().len(), 24, "{result}");
 }

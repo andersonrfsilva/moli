@@ -517,11 +517,11 @@ fn websocket_error_declaration<'s>(
     WebSocketErrorObjectDeclaration::new(v8_string(scope, message), close_code, reason)
 }
 
-pub(crate) fn new_dom_exception_value<'s>(
+pub(crate) fn build_dom_exception_object<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     message: &str,
     name: &str,
-) -> v8::Local<'s, v8::Value> {
+) -> v8::Local<'s, v8::Object> {
     if let Some(prototype) =
         crate::context_bootstrap::exposed_interfaces::materialized_intrinsic_interface_prototype(
             scope,
@@ -541,12 +541,19 @@ pub(crate) fn new_dom_exception_value<'s>(
         let exception = v8::Object::new(scope);
         initialize_dom_exception(scope, exception, message, name);
         let _ = exception.set_prototype(scope, prototype.into());
-        capture_dom_exception_stack(scope, exception);
-        return exception.into();
+        return exception;
     }
-    let exception = dom_exception_declaration(scope, message, name)
+    dom_exception_declaration(scope, message, name)
         .bind(scope)
-        .expect("DOMException declaration should bind");
+        .expect("DOMException declaration should bind")
+}
+
+pub(crate) fn new_dom_exception_value<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    message: &str,
+    name: &str,
+) -> v8::Local<'s, v8::Value> {
+    let exception = build_dom_exception_object(scope, message, name);
     capture_dom_exception_stack(scope, exception);
     exception.into()
 }
@@ -679,18 +686,28 @@ pub(crate) fn quota_exceeded_error_constructor_callback<'s>(
     rv.set(exception.into());
 }
 
-pub(crate) fn new_quota_exceeded_error_value<'s>(
+pub(crate) fn build_quota_exceeded_error_object<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     message: &str,
     quota: Option<f64>,
     requested: Option<f64>,
-) -> v8::Local<'s, v8::Value> {
+) -> v8::Local<'s, v8::Object> {
     let exception = QuotaExceededErrorObjectDeclaration::new(v8_string(scope, message))
         .bind(scope)
         .expect("QuotaExceededError declaration should bind");
     QuotaExceededErrorOptions { quota, requested }
         .initialize_snapshot(scope, exception)
         .expect("QuotaExceededError options");
+    exception
+}
+
+pub(crate) fn new_quota_exceeded_error_value<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    message: &str,
+    quota: Option<f64>,
+    requested: Option<f64>,
+) -> v8::Local<'s, v8::Value> {
+    let exception = build_quota_exceeded_error_object(scope, message, quota, requested);
     capture_dom_exception_stack(scope, exception);
     exception.into()
 }
