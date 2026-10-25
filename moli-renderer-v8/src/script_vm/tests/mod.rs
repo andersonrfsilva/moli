@@ -2234,6 +2234,8 @@ mod audio_value_owner_interface_exposure_interfaces;
 mod cross_origin_named_children;
 mod declarative_receivers;
 
+mod html_constructor_proxy_handler_isolation;
+
 mod data_transfer_native_receivers;
 mod frame_owner_origin_access;
 mod hyperlink_null_url_protocol;

@@ -5,6 +5,8 @@ use moli_webapi_declare::WebApiObject;
 #[derive(WebApiObject)]
 #[webapi(plain)]
 struct HtmlElementConstructorTrapHandlerDeclaration<'scope> {
+    #[webapi(prototype, value = v8::null(scope))]
+    prototype: (),
     #[webapi(data_property)]
     construct: v8::Local<'scope, v8::Function>,
 }
@@ -313,7 +315,7 @@ pub(crate) fn html_element_constructor_with_early_sanity_trap<'s>(
         .data(constructor_name.into())
         .length(3)
         .build(scope)?;
-    let handler = HtmlElementConstructorTrapHandlerDeclaration { construct }
+    let handler = HtmlElementConstructorTrapHandlerDeclaration::new(construct)
         .bind(scope)
         .ok()?;
     v8::Proxy::new(scope, constructor.into(), handler)
