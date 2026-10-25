@@ -181,6 +181,7 @@ content-security-policy/media-src/media-src-blocked-blob-url.html
 content-security-policy/media-src/media-src-blocked-data-url.html
 content-security-policy/meta/meta-img-src.html
 content-security-policy/meta/meta-modified.html
+content-security-policy/meta/sandbox-iframe.html
 content-security-policy/navigation/to-javascript-parent-initiated-check-csp-order.html
 content-security-policy/navigation/to-javascript-parent-initiated-child-csp.html
 content-security-policy/navigation/to-javascript-url-frame-src.html
@@ -330,7 +331,6 @@ contenteditable/select-text-change-crash.html
 cookies/cookie-enabled-noncookie-frame.html
 cookies/meta-blocked.html
 cookies/navigated-away.html
-cors/response-headers.htm
 credential-management/require_securecontext.html
 css/compositing/inheritance.html
 css/compositing/parsing/background-blend-mode-computed-multiple.html
@@ -406,6 +406,7 @@ css/css-cascade/inherit-initial.html
 css/css-cascade/inline-style-background.html
 css/css-cascade/layer-basic.html
 css/css-cascade/layer-cssom-order-reverse-at-property.html
+css/css-cascade/layer-cssom-order-reverse.html
 css/css-cascade/layer-import.html
 css/css-cascade/layer-important.html
 css/css-cascade/layer-namespace-sandwich-crash.html
@@ -617,6 +618,7 @@ css/css-flexbox/abspos/position-absolute-014.html
 css/css-flexbox/abspos/position-absolute-015.html
 css/css-flexbox/abspos/position-absolute-containing-block-001.html
 css/css-flexbox/abspos/position-absolute-containing-block-002.html
+css/css-flexbox/align-baseline.html
 css/css-flexbox/align-content-001.htm
 css/css-flexbox/align-content-002.htm
 css/css-flexbox/align-content-003.htm
@@ -1530,6 +1532,7 @@ css/css-flexbox/percentage-descendant-of-anonymous-flex-item.html
 css/css-flexbox/percentage-heights-000.html
 css/css-flexbox/percentage-heights-001.html
 css/css-flexbox/percentage-heights-002.html
+css/css-flexbox/percentage-heights-003.html
 css/css-flexbox/percentage-heights-005.html
 css/css-flexbox/percentage-heights-006.html
 css/css-flexbox/percentage-heights-007.html
@@ -1642,6 +1645,7 @@ css/css-font-loading/fontfaceset-load-css-connected.html
 css/css-font-loading/fontfaceset-loading-worker-crash.html
 css/css-font-loading/fontfaceset-update-after-stylesheet-change.html
 css/css-font-loading/fontfaceset-worker-fontface-crash.html
+css/css-font-loading/fontfacesetloadevent-constructor.html
 css/css-font-loading/historical.html
 css/css-font-loading/nonexistent-file-url.html
 css/css-forced-color-adjust/parsing/forced-color-adjust-computed.html
@@ -3304,6 +3308,7 @@ css/cssom-view/pt-to-px-width.html
 css/cssom-view/range-bounding-client-rect-with-display-contents.html
 css/cssom-view/resize-event-on-initial-layout-001.html
 css/cssom-view/resize-event-on-initial-layout-002.html
+css/cssom-view/screen-detached-frame.html
 css/cssom-view/screenLeftTop.html
 css/cssom-view/scroll-back-to-initial-position.html
 css/cssom-view/scroll-behavior-smooth-positions.html
@@ -3743,7 +3748,6 @@ custom-elements/ElementInternals-accessibility.html
 custom-elements/HTMLElement-attachInternals.html
 custom-elements/HTMLElement-constructor-customized-builtins.html
 custom-elements/HTMLElement-constructor.html
-custom-elements/adopted-callback.html
 custom-elements/attribute-changed-callback.html
 custom-elements/builtin-coverage.html
 custom-elements/connected-callbacks-html-fragment-parsing.html
@@ -5910,7 +5914,6 @@ html/browsers/history/the-history-interface/history_replacestate_err.html
 html/browsers/history/the-history-interface/history_replacestate_nooptionalparam.html
 html/browsers/history/the-history-interface/history_state.html
 html/browsers/history/the-history-interface/iframe_history_go_0.html
-html/browsers/history/the-history-interface/joint_session_history/001.html
 html/browsers/history/the-history-interface/pushstate-replacestate-empty-string/pushstate-base.html
 html/browsers/history/the-history-interface/pushstate-replacestate-empty-string/pushstate-whitespace.html
 html/browsers/history/the-history-interface/pushstate-replacestate-empty-string/pushstate.html
@@ -6266,8 +6269,11 @@ html/semantics/document-metadata/the-meta-element/color-scheme/meta-color-scheme
 html/semantics/document-metadata/the-meta-element/color-scheme/meta-color-scheme-single-value-in-shadow-tree.html
 html/semantics/document-metadata/the-meta-element/http-equiv-and-name-1.html
 html/semantics/document-metadata/the-meta-element/http-equiv-and-name-2.html
+html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh/allow-scripts-flag-changing-1.html
+html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh/allow-scripts-flag-changing-2.html
 html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh/dynamic-append.html
 html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh/not-in-shadow-tree.html
+html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh/remove-from-document.html
 html/semantics/document-metadata/the-meta-element/pragma-directives/http-equiv-enumerated-ascii-case-insensitive.html
 html/semantics/document-metadata/the-meta-element/the-lang-attribute-012.html
 html/semantics/document-metadata/the-style-element/historical.html
@@ -6942,7 +6948,6 @@ html/semantics/scripting-1/the-script-element/execution-timing/079.html
 html/semantics/scripting-1/the-script-element/execution-timing/081.html
 html/semantics/scripting-1/the-script-element/execution-timing/082.html
 html/semantics/scripting-1/the-script-element/execution-timing/084.html
-html/semantics/scripting-1/the-script-element/execution-timing/085.html
 html/semantics/scripting-1/the-script-element/execution-timing/086.html
 html/semantics/scripting-1/the-script-element/execution-timing/087.html
 html/semantics/scripting-1/the-script-element/execution-timing/088.html
@@ -7052,7 +7057,6 @@ html/semantics/scripting-1/the-script-element/module/dynamic-import/propagate-no
 html/semantics/scripting-1/the-script-element/module/dynamic-import/propagate-nonce-inline-classic.html
 html/semantics/scripting-1/the-script-element/module/dynamic-import/propagate-nonce-inline-module.html
 html/semantics/scripting-1/the-script-element/module/dynamic-import/string-compilation-base-url-external-classic.html
-html/semantics/scripting-1/the-script-element/module/dynamic-import/string-compilation-base-url-external-module.html
 html/semantics/scripting-1/the-script-element/module/dynamic-import/string-compilation-base-url-inline-classic.html
 html/semantics/scripting-1/the-script-element/module/dynamic-import/string-compilation-base-url-inline-module.html
 html/semantics/scripting-1/the-script-element/module/dynamic-import/string-compilation-classic.html
@@ -8228,6 +8232,7 @@ preload/supported-as-values.html?as=style&expected=1
 preload/supported-as-values.html?as=track&expected=1
 preload/supported-as-values.html?as=video&expected=0
 preload/supported-as-values.html?as=worklet&expected=0
+print/crashtests/reload-crash.html
 proximity/ProximitySensor_insecure_context.html
 quirks/blocks-ignore-line-height.html
 quirks/body-fill-html-quirk-intrinsic-crash.html
@@ -8287,6 +8292,9 @@ resource-timing/initiator-type/img.html
 resource-timing/initiator-type/script.html
 resource-timing/internal-resources-not-counted.html
 resource-timing/link-sequence-of-events.html
+resource-timing/nested-context-navigations-embed.html
+resource-timing/nested-context-navigations-iframe.html
+resource-timing/nested-context-navigations-object.html
 resource-timing/queue-entry-regardless-buffer-size.html
 resource-timing/resource-ignore-data-url.html
 resource-timing/resource-timing-failed-fetch.html
@@ -8405,7 +8413,6 @@ service-workers/service-worker/activate-event-after-install-state-change.https.h
 service-workers/service-worker/activation-after-registration.https.html
 service-workers/service-worker/claim-fetch.https.html
 service-workers/service-worker/claim-not-using-registration.https.html
-service-workers/service-worker/claim-shared-worker-fetch.https.html
 service-workers/service-worker/client-id.https.html
 service-workers/service-worker/client-url-of-blob-url-worker.https.html
 service-workers/service-worker/controller-on-disconnect.https.html
@@ -8433,7 +8440,6 @@ service-workers/service-worker/fetch-request-no-freshness-headers.https.html
 service-workers/service-worker/getregistration.https.html
 service-workers/service-worker/immutable-prototype-serviceworker.https.html
 service-workers/service-worker/import-scripts-data-url.https.html
-service-workers/service-worker/import-scripts-mime-types.https.html
 service-workers/service-worker/indexeddb.https.html
 service-workers/service-worker/install-event-type.https.html
 service-workers/service-worker/installing.https.html
@@ -8795,7 +8801,6 @@ streams/writable-streams/start.any.js?moli-wpt-any=dedicatedworker
 streams/writable-streams/start.any.js?moli-wpt-any=window
 streams/writable-streams/write.any.js?moli-wpt-any=dedicatedworker
 streams/writable-streams/write.any.js?moli-wpt-any=window
-subresource-integrity/integrity-policy/parsing.html?type=report
 svg/coordinate-systems/svgtransformlist-replaceitem.html
 svg/coordinate-systems/transform-translate-single-parameter.html
 svg/crashtests/chrome-bug-1172059.html
@@ -9022,8 +9027,8 @@ trusted-types/should-sink-type-mismatch-violation-be-blocked-by-csp-003.html
 trusted-types/trusted-types-duplicate-names-list-report-only.html
 trusted-types/trusted-types-eval-reporting-no-unsafe-eval.html
 trusted-types/trusted-types-eval-reporting-report-only.html
+trusted-types/trusted-types-navigation.html?06-10
 trusted-types/trusted-types-navigation.html?16-20
-trusted-types/trusted-types-navigation.html?36-last
 trusted-types/trusted-types-reporting-for-DOMParser-parseFromString.html
 trusted-types/trusted-types-reporting-for-DedicatedWorker-DedicatedWorker-constructor.html
 trusted-types/trusted-types-reporting-for-DedicatedWorker-eval.html
@@ -9694,6 +9699,7 @@ workers/shared-worker-parse-error-failure.html
 workers/shared-worker-runtime-error-is-not-parse-error.html
 workers/worker-request-animation-frame.html
 workers/worker-url-encoding.html
+xhr/abort-event-order.htm
 xhr/access-control-basic-non-cors-safelisted-content-type.htm
 xhr/access-control-expose-headers-on-redirect.html
 xhr/access-control-response-with-exposed-headers.htm
@@ -9720,7 +9726,11 @@ xhr/getresponseheader-special-characters.htm
 xhr/getresponseheader-unsent-opened-state.htm
 xhr/historical.html
 xhr/loadstart-and-state.html
+xhr/open-after-abort.htm
 xhr/open-after-setrequestheader.htm
+xhr/open-during-abort-event.htm
+xhr/open-during-abort-processing.htm
+xhr/open-during-abort.htm
 xhr/open-method-case-insensitive.htm
 xhr/open-method-case-sensitive.htm
 xhr/open-method-responsetype-set-sync.htm
@@ -9728,6 +9738,7 @@ xhr/open-open-send.htm
 xhr/open-open-sync-send.htm
 xhr/open-parameters-toString.htm
 xhr/open-referer.htm
+xhr/open-send-during-abort.htm
 xhr/open-send-open.htm
 xhr/open-sync-open-send.htm
 xhr/open-url-about-blank-window.htm
@@ -9770,6 +9781,7 @@ xhr/send-accept-language.htm
 xhr/send-after-setting-document-domain.htm
 xhr/send-blob-with-no-mime-type.html
 xhr/send-data-blob.htm
+xhr/send-data-unexpected-tostring.htm
 xhr/send-entity-body-basic.htm
 xhr/send-entity-body-empty.htm
 xhr/send-entity-body-get-head-async.htm
@@ -9800,7 +9812,6 @@ xhr/setrequestheader-bogus-name.htm
 xhr/setrequestheader-bogus-value.htm
 xhr/setrequestheader-case-insensitive.htm
 xhr/setrequestheader-header-allowed.htm
-xhr/setrequestheader-header-forbidden.htm
 xhr/setrequestheader-open-setrequestheader.htm
 xhr/status-async.htm
 xhr/status-basic.htm
@@ -9845,7 +9856,6 @@ xhr/xmlhttprequest-timeout-worker-overrides.html?timeout disabled after initiall
 xhr/xmlhttprequest-timeout-worker-overrides.html?timeout enabled after initially disabled
 xhr/xmlhttprequest-timeout-worker-overrides.html?timeout overrides load after a delay
 xhr/xmlhttprequest-timeout-worker-overridesexpires.html?timeout set to expired value before load fires
-xhr/xmlhttprequest-timeout-worker-overridesexpires.html?timeout set to expiring value after load fires
 xhr/xmlhttprequest-timeout-worker-overridesexpires.html?timeout set to non-expiring value after timeout fires
 xhr/xmlhttprequest-timeout-worker-simple.html?load fires normally
 xhr/xmlhttprequest-timeout-worker-simple.html?no time out scheduled, load fires normally
