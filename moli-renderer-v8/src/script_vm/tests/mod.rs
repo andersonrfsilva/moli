@@ -2347,6 +2347,9 @@ mod report_body_interface_exposure;
 mod media_device_interfaces;
 
 mod dom_rect_factory_descriptors;
+
+mod document_range_factory_realm;
+
 mod dom_rect_structured_clone;
 mod domrect_receiver_consolidation;
 
