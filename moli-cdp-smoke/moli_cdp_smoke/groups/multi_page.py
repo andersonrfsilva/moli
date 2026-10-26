@@ -234,9 +234,15 @@ async def _same_context_storage_and_history(
             page_a.goto(f"{fixture}/history-b?owner=a", wait_until="load"),
             page_a_peer.goto(f"{fixture}/history-a?owner=a-peer", wait_until="load"),
         )
+        # The content assertions require the loaded history destination.
         await asyncio.gather(
-            page_a.go_back(wait_until="commit", timeout=10_000),
-            page_a_peer.go_back(wait_until="commit", timeout=10_000),
+            page_a.go_back(wait_until="load", timeout=10_000),
+            page_a_peer.go_back(wait_until="load", timeout=10_000),
+        )
+        assert_equal(
+            [page_a.url, page_a_peer.url],
+            [f"{fixture}/history-a?owner=a", f"{fixture}/history-b?owner=a-peer"],
+            "independent same-context history destinations",
         )
         assert_equal(
             await asyncio.gather(
