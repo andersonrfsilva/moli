@@ -11,13 +11,7 @@ pub(super) fn xhr_abort_callback(
     }
 
     super::super::delivery::clear_xhr_request_timers(scope, xhr);
-    let internal_id =
-        xhr_state_number_property(scope, xhr, XHR_ACTIVE_INTERNAL_ID_SLOT).unwrap_or(0.0) as u64;
-    if internal_id != 0
-        && let Some(host_ptr) = context_host_ptr_from_global_bridge(scope)
-    {
-        let _ = unsafe { &mut *host_ptr }.abort_subresource_fetch(internal_id);
-    }
+    terminate_window_xhr_fetch(scope, xhr);
 
     super::super::delivery::finish_xhr_abort(scope, xhr);
 }
