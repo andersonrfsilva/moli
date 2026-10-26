@@ -627,7 +627,7 @@ fn expanded_pdf_only_embeds_glyphs_visible_on_the_selected_page() {
     );
     run.glyphs[2].y = 400.0;
     run.glyphs[3].x = 400.0;
-    snapshot.push_fragment(PaintFragment::GlyphRun(run));
+    snapshot.push_fragment(PaintFragment::GlyphRun(run.clone()));
     for page_index in [0, 1] {
         let doc = document(
             &snapshot,
@@ -645,7 +645,232 @@ fn expanded_pdf_only_embeds_glyphs_visible_on_the_selected_page() {
             2,
             "only the visible glyph's fill and stroke should be embedded"
         );
+        for invisible in [false, true] {
+            let mut fonts = text::FontCache::default();
+            let mut pdf = Document::new();
+            let mut page = pdf.start_page_with(PageSettings::from_wh(300.0, 300.0).unwrap());
+            let mut surface = page.surface();
+            draw_cached_text(
+                &mut surface,
+                &snapshot,
+                &run,
+                &mut fonts,
+                page_index,
+                invisible,
+            );
+            let expected = if invisible {
+                Vec::new()
+            } else {
+                vec![run.glyphs[if page_index == 0 { 0 } else { 2 }].id]
+            };
+            assert_eq!(
+                fonts.expanded_glyphs, expected,
+                "only visible unique glyphs should be expanded; page={page_index}, invisible={invisible}"
+            );
+            surface.finish();
+            page.finish();
+            pdf.finish().unwrap();
+        }
     }
+}
+
+fn draw_cached_text(
+    surface: &mut krilla::surface::Surface<'_>,
+    snapshot: &PaintSnapshot,
+    run: &PaintGlyphRun,
+    fonts: &mut text::FontCache,
+    page_index: usize,
+    invisible: bool,
+) {
+    let top = page_index as f64 * 300.0;
+    surface.push_transform(&krilla::geom::Transform::from_translate(0.0, -top as f32));
+    text::draw(
+        surface,
+        snapshot,
+        run,
+        fonts,
+        Rect::new(0.0, 0.0, 300.0, 600.0),
+        Rect::new(0.0, top, 300.0, top + 300.0),
+        &[],
+        300.0,
+        page_index,
+        invisible,
+    )
+    .unwrap();
+    surface.pop();
+}
+
+#[test]
+fn expanded_pdf_contours_are_cached_across_runs_and_pages() {
+    let mut snapshot = snapshot();
+    let run = synthetic_stroke_run(
+        &mut snapshot,
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+        "RRBB",
+        20.0,
+    );
+    let mut fonts = text::FontCache::default();
+    let mut pdf = Document::new();
+    for page_index in 0..2 {
+        let mut page = pdf.start_page_with(PageSettings::from_wh(300.0, 300.0).unwrap());
+        let mut surface = page.surface();
+        for y in [60.0, 160.0] {
+            let mut run = run.clone();
+            for glyph in &mut run.glyphs {
+                glyph.y = page_index as f32 * 300.0 + y;
+            }
+            draw_cached_text(&mut surface, &snapshot, &run, &mut fonts, page_index, false);
+            assert_eq!(
+                fonts.expanded_glyphs,
+                [run.glyphs[0].id, run.glyphs[2].id],
+                "each distinct contour should be expanded once in the document"
+            );
+        }
+        surface.finish();
+        page.finish();
+    }
+    let doc = lopdf::Document::load_mem(&pdf.finish().unwrap()).unwrap();
+    for page in [1, 2] {
+        assert_eq!(extracted(&doc, &[page]).replace(' ', ""), "RRBBRRBB");
+    }
+    assert_eq!(form_contents(&doc).len(), 4, "two fills and two strokes");
+}
+
+#[test]
+fn expanded_pdf_cache_separates_geometry_and_paint() {
+    let mut snapshot = snapshot();
+    let base = synthetic_stroke_run(
+        &mut snapshot,
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+        "R",
+        20.0,
+    );
+    let mut repainted = base.clone();
+    repainted.color = PaintColor::new(0.0, 0.0, 1.0, 0.5);
+    repainted.stroke.as_mut().unwrap().width = 4.0;
+    repainted.stroke.as_mut().unwrap().color = PaintColor::new(0.0, 1.0, 0.0, 1.0);
+    repainted.stroke.as_mut().unwrap().paint_first = true;
+    let mut resized = base.clone();
+    resized.font_size = 24.0;
+    let mut expanded_x = base.clone();
+    expanded_x.glyph_embolden.x = 0.15;
+    let mut expanded_y = base.clone();
+    expanded_y.glyph_embolden.y = 0.12;
+    let other_font = synthetic_stroke_run(
+        &mut snapshot,
+        include_bytes!("../../tests/fixtures/moli-text-stroke-250.ttf"),
+        "R",
+        20.0,
+    );
+    let mut variable = synthetic_stroke_run(
+        &mut snapshot,
+        include_bytes!("../../tests/fixtures/moli-pdf.ttf"),
+        "A",
+        20.0,
+    );
+    variable.normalized_coords = vec![4096];
+    let mut other_variation = variable.clone();
+    other_variation.normalized_coords = vec![12288];
+    let mut fonts = text::FontCache::default();
+    let mut pdf = Document::new();
+    let mut page = pdf.start_page_with(PageSettings::from_wh(300.0, 300.0).unwrap());
+    let mut surface = page.surface();
+    for (i, (mut run, preparations)) in [
+        (base.clone(), 1),
+        (repainted, 1),
+        (resized, 2),
+        (expanded_x, 3),
+        (expanded_y, 4),
+        (other_font, 5),
+        (variable, 6),
+        (other_variation, 7),
+        (base, 7),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        run.glyphs[0].y = 30.0 + i as f32 * 28.0;
+        draw_cached_text(&mut surface, &snapshot, &run, &mut fonts, 0, false);
+        assert_eq!(fonts.expanded_glyphs.len(), preparations);
+    }
+    surface.finish();
+    page.finish();
+    let doc = lopdf::Document::load_mem(&pdf.finish().unwrap()).unwrap();
+    assert_eq!(extracted(&doc, &[1]).replace(' ', ""), "RRRRRRAAR");
+    let forms = form_contents(&doc);
+    assert!(
+        forms
+            .iter()
+            .any(|(_, content)| content.operations.iter().any(|op| {
+                op.operator == "rg"
+                    && op
+                        .operands
+                        .iter()
+                        .map(|v| v.as_float().unwrap())
+                        .collect::<Vec<_>>()
+                        == [0.0, 0.0, 1.0]
+            })),
+        "the repainted fill must retain its blue color"
+    );
+    assert!(
+        forms
+            .iter()
+            .any(|(_, content)| content.operations.iter().any(|op| {
+                op.operator == "RG"
+                    && op
+                        .operands
+                        .iter()
+                        .map(|v| v.as_float().unwrap())
+                        .collect::<Vec<_>>()
+                        == [0.0, 1.0, 0.0]
+            })),
+        "the repainted stroke must retain its green color"
+    );
+    assert!(
+        forms.iter().any(|(_, content)| content
+            .operations
+            .iter()
+            .any(|op| { op.operator == "w" && op.operands[0].as_float().unwrap() == 4.0 })),
+        "the repainted stroke must retain its width"
+    );
+}
+
+#[test]
+fn expanded_pdf_cache_does_not_repaint_invisible_text() {
+    let mut snapshot = snapshot();
+    let mut run = synthetic_stroke_run(
+        &mut snapshot,
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+        "R",
+        20.0,
+    );
+    let mut fonts = text::FontCache::default();
+    let mut pdf = Document::new();
+    for page_index in 0..2 {
+        let mut page = pdf.start_page_with(PageSettings::from_wh(300.0, 300.0).unwrap());
+        let mut surface = page.surface();
+        run.glyphs[0].y = page_index as f32 * 300.0 + 60.0;
+        draw_cached_text(
+            &mut surface,
+            &snapshot,
+            &run,
+            &mut fonts,
+            page_index,
+            page_index == 1,
+        );
+        assert_eq!(fonts.expanded_glyphs.len(), 1);
+        surface.finish();
+        page.finish();
+    }
+    let doc = lopdf::Document::load_mem(&pdf.finish().unwrap()).unwrap();
+    assert_eq!(extracted(&doc, &[1]), "R");
+    assert_eq!(extracted(&doc, &[2]), "R");
+    let content =
+        lopdf::content::Content::decode(&doc.get_page_content(doc.get_pages()[&2])).unwrap();
+    assert!(
+        content.operations.iter().all(|op| op.operator != "Do"),
+        "the invisible pass must not draw cached visible graphics"
+    );
 }
 
 #[test]
