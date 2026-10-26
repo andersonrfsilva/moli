@@ -878,3 +878,85 @@ fn linked_html_code_quotes_generated_labels_and_visible_resource_urls() {
         }
     }
 }
+
+#[test]
+fn html_code_normalizes_line_endings_only_in_preformatted_inline_mode() {
+    for (payload, preformatted_code) in [
+        ("  a\n  b\n  c  ", false),
+        ("  a\n  b\n  c  ", true),
+        ("a&#13;&#10;b&#13;c&#10;d", true),
+        ("a<span>&#13;</span><span>&#10;</span>b", true),
+        ("a\n<span>  b\n</span>c", true),
+        ("a\n<a href='/term'>  b\n</a>c", true),
+    ] {
+        for pre in [false, true] {
+            let content = format!("<code id='snippet'>{payload}</code>");
+            let content = if pre {
+                format!("<pre>{content}</pre>")
+            } else {
+                content
+            };
+            for source in containers(&format!("{content}<a href='#snippet'>Jump</a>")) {
+                let input = Tree::parse(&source);
+                let original = descendants(&input, input.root)
+                    .into_iter()
+                    .find(|&node| input.nodes[node].tag.as_deref() == Some("code"))
+                    .unwrap();
+                let original_text = text(&input, original);
+                let markdown = Converter::new(Options {
+                    preformatted_code,
+                    ..Default::default()
+                })
+                .convert(&input, input.root);
+                let output = Tree::parse(&rendered_html(&markdown));
+                let codes: Vec<_> = descendants(&output, output.root)
+                    .into_iter()
+                    .filter(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                    .collect();
+                assert_eq!(codes.len(), 1, "{source}: {markdown}");
+                let expected = if preformatted_code && !pre {
+                    original_text
+                        .replace("\r\n", " ")
+                        .replace(['\r', '\n'], " ")
+                } else {
+                    original_text.clone()
+                };
+                assert_eq!(
+                    text(&output, codes[0]),
+                    expected,
+                    "preformatted_code={preformatted_code}: {source}: {markdown}"
+                );
+            }
+        }
+    }
+    let converter = Converter::new(Options {
+        preformatted_code: true,
+        ..Default::default()
+    });
+    for reference in ["", "<a href='#snippet'>Jump</a>"] {
+        let input = Tree::parse(&format!(
+            "<code id='snippet'>  a\n<span>  b&#13;</span><span>&#10;c  </span></code>{reference}"
+        ));
+        let markdown = converter.convert(&input, input.root);
+        let output = Tree::parse(&rendered_html(&markdown));
+        let code = descendants(&output, output.root)
+            .into_iter()
+            .find(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+            .unwrap();
+        assert_eq!(text(&output, code), "  a   b c  ", "{markdown}");
+    }
+    for source in containers(
+        "<code id='first'>a&#13;</code><code id='second'>&#10;b</code>\
+         <a href='#first'>First</a><a href='#second'>Second</a>",
+    ) {
+        let input = Tree::parse(&source);
+        let markdown = converter.convert(&input, input.root);
+        let output = Tree::parse(&rendered_html(&markdown));
+        let codes: Vec<_> = descendants(&output, output.root)
+            .into_iter()
+            .filter(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+            .map(|node| text(&output, node))
+            .collect();
+        assert_eq!(codes, ["a ", " b"], "{source}: {markdown}");
+    }
+}

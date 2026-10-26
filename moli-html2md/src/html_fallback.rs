@@ -167,6 +167,12 @@ pub(crate) fn render<D: Dom + ?Sized>(
     // Linked blocks receive an outer HTML wrapper. Numeric references preserve
     // source newlines without blank lines ending that CommonMark HTML block.
     let keep_source_lines = !in_link && matches!(dom.node_kind(root), NodeKind::Element("pre"));
+    let mut text_escaper = TextEscaper {
+        inline_root,
+        keep_newlines: keep_source_lines,
+        preformatted_code: options.preformatted_code,
+        trailing_cr: false,
+    };
     let mut output = String::new();
     let mut content = crate::content::Content::default();
     let mut table_modes = Vec::new();
@@ -181,7 +187,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 if content.mark() == before {
                     content.text(&label);
                     output.push(' ');
-                    escape(&label, &mut output);
+                    text_escaper.write(&label, &mut output, TextMode::Normal);
                     output.push(' ');
                 }
             }
@@ -227,12 +233,15 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 }
                 let mode = match dom.node_kind(node) {
                     NodeKind::Element("pre") => TextMode::Pre,
-                    NodeKind::Element("code") if matches!(mode, TextMode::Normal) => TextMode::Code,
+                    NodeKind::Element("code") if matches!(mode, TextMode::Normal) => {
+                        text_escaper.trailing_cr = false;
+                        TextMode::Code
+                    }
                     _ => mode,
                 };
                 let code = !matches!(mode, TextMode::Normal);
-                let write_text = |text: &str, output: &mut String| {
-                    escape_text(text, output, code, keep_source_lines && code, inline_root);
+                let mut write_text = |text: &str, output: &mut String| {
+                    text_escaper.write(text, output, mode);
                 };
                 if let NodeKind::Element(tag) = dom.node_kind(node)
                     && !allowed(tag)
@@ -574,27 +583,43 @@ pub(crate) fn escape(text: &str, output: &mut String) {
     }
 }
 
-fn escape_text(
-    text: &str,
-    output: &mut String,
-    code: bool,
-    keep_newlines: bool,
+struct TextEscaper {
     inline_root: bool,
-) {
-    for ch in text.chars() {
-        if !code && matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
-            if !output.ends_with([' ', '\n']) {
-                output.push(' ');
+    keep_newlines: bool,
+    preformatted_code: bool,
+    trailing_cr: bool,
+}
+
+impl TextEscaper {
+    fn write(&mut self, text: &str, output: &mut String, mode: TextMode) {
+        let code = !matches!(mode, TextMode::Normal);
+        let normalize_newlines = matches!(mode, TextMode::Code) && self.preformatted_code;
+        for ch in text.chars() {
+            let previous_cr = self.trailing_cr;
+            self.trailing_cr = normalize_newlines && ch == '\r';
+            // Treat CRLF as one line ending, including across inline wrappers.
+            if normalize_newlines && ch == '\n' && previous_cr {
+                continue;
             }
-            continue;
-        }
-        if keep_newlines && matches!(ch, '\n' | '\r') {
-            output.push(ch);
-        } else if code && inline_root && ch.is_ascii_punctuation() {
-            write!(output, "&#{};", ch as u32).expect("writing to String");
-        } else {
-            let mut bytes = [0; 4];
-            escape(ch.encode_utf8(&mut bytes), output);
+            let ch = if normalize_newlines && matches!(ch, '\r' | '\n') {
+                ' '
+            } else {
+                ch
+            };
+            if !code && matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}') {
+                if !output.ends_with([' ', '\n']) {
+                    output.push(' ');
+                }
+                continue;
+            }
+            if self.keep_newlines && code && ch == '\n' {
+                output.push(ch);
+            } else if code && self.inline_root && ch.is_ascii_punctuation() {
+                write!(output, "&#{};", ch as u32).expect("writing to String");
+            } else {
+                let mut bytes = [0; 4];
+                escape(ch.encode_utf8(&mut bytes), output);
+            }
         }
     }
 }
