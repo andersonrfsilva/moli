@@ -171,15 +171,14 @@ pub(crate) fn outgoing_request_headers_for_url(
         .to_byte_strings()
 }
 
-fn outgoing_request_header_bytes_for_url(
-    config: &FetchConfig,
-    request: &Request,
+// Header emission and cache eligibility must select the same literal data,
+// including host scope, credentials, empty values and explicit-header overrides.
+fn literal_cookie_header_for_request<'a>(
+    config: &'a FetchConfig,
+    request: &'a Request,
     request_url: &Url,
-    cookie_header: Option<&str>,
-) -> crate::RequestHeaders {
-    let mut outgoing = crate::RequestHeaders::default();
-
-    let additional = request
+) -> Option<&'a str> {
+    request
         .additional_cookies()
         .or_else(|| config.additional_cookies_for_request(request, request_url))
         .filter(|value| !value.is_empty())
@@ -193,7 +192,18 @@ fn outgoing_request_header_bytes_for_url(
                     .default_request_headers()
                     .iter()
                     .any(|(name, _)| name.eq_ignore_ascii_case("cookie"))
-        });
+        })
+}
+
+fn outgoing_request_header_bytes_for_url(
+    config: &FetchConfig,
+    request: &Request,
+    request_url: &Url,
+    cookie_header: Option<&str>,
+) -> crate::RequestHeaders {
+    let mut outgoing = crate::RequestHeaders::default();
+
+    let additional = literal_cookie_header_for_request(config, request, request_url);
     let cookie_header = match (cookie_header, additional) {
         (Some(stored), Some(literal)) => {
             Some(std::borrow::Cow::Owned(format!("{stored}; {literal}")))
