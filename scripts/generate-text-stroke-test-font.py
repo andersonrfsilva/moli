@@ -8,7 +8,9 @@ from pathlib import Path
 
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont, newTable
 from fontTools.ttLib.scaleUpem import scale_upem
+from fontTools.ttLib.tables.S_V_G_ import SVGDocument
 
 
 def triangle(left: int, right: int):
@@ -81,3 +83,19 @@ builder.save(
     Path(__file__).resolve().parents[1]
     / "moli-paint/tests/fixtures/moli-text-stroke-250.ttf"
 )
+
+# Keep the original glyf outlines. Moli's PDF backend does not install an SVG
+# renderer, so R must fall back to its rectangle even though it has SVG data.
+fixtures = Path(__file__).resolve().parents[1] / "moli-paint/tests/fixtures"
+svg_font = TTFont(fixtures / "moli-text-stroke.ttf", recalcTimestamp=False)
+svg_font["SVG "] = newTable("SVG ")
+glyph_id = svg_font.getGlyphID("R")
+svg_font["SVG "].docList = [
+    SVGDocument(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -800 600 1000">'
+        '<rect x="0" y="-800" width="600" height="800" fill="lime"/></svg>',
+        glyph_id,
+        glyph_id,
+    )
+]
+svg_font.save(fixtures / "moli-text-stroke-svg.ttf")

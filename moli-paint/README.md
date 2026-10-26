@@ -74,6 +74,11 @@ Krilla remains pinned to upstream without an expanded-glyph extension. The visib
 fill carries text semantics when available; path-only text retains one invisible
 native copy for searching and extraction. Font instances
 are cached separately by font identity and normalized variation coordinates.
+The PDF backend leaves SVG glyph rendering disabled, so SVG-backed glyphs use
+their available base outlines for synthetic fill and stroke. Fonts with SVG data
+bypass the native synthetic-fill shortcut, whose Type3 rendering forces a fill.
+Synthetic passes resolve each glyph's contour or native outline fallback independently;
+neighboring glyphs do not select its drawing mode or add searchable copies.
 The adapter reverses `avar` v1 and `fvar` normalization for Krilla's design-space
 variation API. Non-default `avar` v2 instances currently return an explicit error.
 

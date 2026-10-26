@@ -5,6 +5,7 @@ use moli_layout::{
     PaintSnapshot, PaintTextSemantics, PaintTransform2D, PaintViewport,
 };
 use skrifa::MetadataProvider;
+use skrifa::raw::TableProvider;
 
 use super::*;
 
@@ -489,13 +490,47 @@ fn form_contents(doc: &lopdf::Document) -> Vec<(&lopdf::Stream, lopdf::content::
         .collect()
 }
 
+fn page_graphic_contents(doc: &lopdf::Document) -> Vec<(&lopdf::Stream, lopdf::content::Content)> {
+    let page = doc.get_pages()[&1];
+    let resources = doc
+        .get_dict_in_dict(doc.get_dictionary(page).unwrap(), b"Resources")
+        .unwrap();
+    let Ok(graphics) = doc.get_dict_in_dict(resources, b"XObject") else {
+        return Vec::new();
+    };
+    // Inspect graphics drawn by the page, excluding the Type3 glyph resources
+    // of the invisible semantic text. Those can contain hidden filled outlines.
+    let content = lopdf::content::Content::decode(&doc.get_page_content(page)).unwrap();
+    let names: std::collections::BTreeSet<_> = content
+        .operations
+        .iter()
+        .filter(|op| op.operator == "Do")
+        .map(|op| op.operands[0].as_name().unwrap().to_vec())
+        .collect();
+    names
+        .iter()
+        .map(|name| {
+            let stream = doc
+                .dereference(graphics.get(name).unwrap())
+                .unwrap()
+                .1
+                .as_stream()
+                .unwrap();
+            let bytes = stream
+                .decompressed_content()
+                .unwrap_or_else(|_| stream.content.clone());
+            (stream, lopdf::content::Content::decode(&bytes).unwrap())
+        })
+        .collect()
+}
+
 fn synthetic_stroke_run(
     snapshot: &mut PaintSnapshot,
     bytes: &[u8],
     label: &str,
     size: f32,
 ) -> PaintGlyphRun {
-    let mut run = text(snapshot, label, 110.0, false);
+    let mut run = text(snapshot, &"A".repeat(label.chars().count()), 110.0, false);
     let face = skrifa::FontRef::from_index(bytes, 0).unwrap();
     let font = peniko::FontData::new(peniko::Blob::new(Arc::new(bytes.to_vec())), 0);
     run.font = snapshot.intern_font(&font);
@@ -503,6 +538,13 @@ fn synthetic_stroke_run(
         glyph.id = face.charmap().map(ch).unwrap().to_u32();
     }
     run.font_size = size;
+    run.text = Some(PaintTextSemantics {
+        text: Arc::from(label),
+        clusters: label
+            .char_indices()
+            .map(|(offset, ch)| offset..offset + ch.len_utf8())
+            .collect(),
+    });
     run.glyph_embolden = PaintPoint::new((size * 0.015125).min(0.3), (size * 0.0121).min(0.3));
     run.stroke = Some(moli_layout::PaintTextStroke {
         width: 2.0,
@@ -510,6 +552,181 @@ fn synthetic_stroke_run(
         paint_first: false,
     });
     run
+}
+
+fn extracted_type3_unicode(doc: &lopdf::Document) -> String {
+    // Prefer ToUnicode to Type3 Differences, matching PDF readers rather than
+    // lopdf's glyph-name fallback. Mixed runs can use both CID and Type3 fonts.
+    let mut doc = doc.clone();
+    for object in doc.objects.values_mut() {
+        if let Ok(font) = object.as_dict_mut()
+            && font.get(b"Subtype").and_then(|value| value.as_name()).ok() == Some(b"Type3")
+        {
+            font.remove(b"Encoding");
+        }
+    }
+    extracted(&doc, &[1]).replace(' ', "")
+}
+
+#[test]
+fn svg_backed_pdf_glyphs_keep_their_outline_paint_and_text() {
+    let bytes = include_bytes!("../../tests/fixtures/moli-text-stroke-svg.ttf");
+    let face = skrifa::FontRef::from_index(bytes, 0).unwrap();
+    let svg = face.svg().unwrap();
+    assert!(
+        svg.glyph_data(face.charmap().map('R').unwrap())
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        svg.glyph_data(face.charmap().map('A').unwrap())
+            .unwrap()
+            .is_none()
+    );
+    for size in [20.0, 32.0] {
+        for paint_first in [false, true] {
+            for alpha in [0.0, 0.5, 1.0] {
+                let mut reference = None;
+                for label in ["RR", "RA"] {
+                    let mut snapshot = snapshot();
+                    let mut run = synthetic_stroke_run(&mut snapshot, bytes, label, size);
+                    run.color = PaintColor::new(0.0, 0.0, 1.0, alpha);
+                    run.stroke.as_mut().unwrap().width = 4.0;
+                    run.stroke.as_mut().unwrap().paint_first = paint_first;
+                    for (i, glyph) in run.glyphs.iter_mut().enumerate() {
+                        glyph.x = 40.0 + i as f32 * 60.0;
+                    }
+                    snapshot.push_fragment(PaintFragment::GlyphRun(run));
+                    let doc = document(&snapshot, &options());
+                    assert_eq!(extracted_type3_unicode(&doc), label);
+                    let forms = page_graphic_contents(&doc);
+                    let strokes: Vec<_> = forms
+                        .iter()
+                        .filter(|(_, content)| {
+                            content.operations.iter().any(|op| op.operator == "S")
+                        })
+                        .collect();
+                    assert_eq!(
+                        strokes.len(),
+                        if label == "RR" { 1 } else { 2 },
+                        "SVG fallback must retain authored stroke; size={size}, alpha={alpha}, first={paint_first}, label={label}"
+                    );
+                    for (_, content) in &strokes {
+                        assert!(content.operations.iter().any(|op| {
+                            op.operator == "w" && op.operands[0].as_float().unwrap() == 4.0
+                        }));
+                        assert!(
+                            content.operations.iter().any(|op| {
+                                op.operator == "RG"
+                                    && op
+                                        .operands
+                                        .iter()
+                                        .map(|value| value.as_float().unwrap())
+                                        .eq([1.0, 0.0, 0.0])
+                            }),
+                            "the stroke must remain red"
+                        );
+                    }
+                    if let Some(reference) = &reference {
+                        assert!(
+                            strokes
+                                .iter()
+                                .any(|(_, content)| content.encode().unwrap() == *reference),
+                            "the same R must have the same contour and paint regardless of its neighbor"
+                        );
+                    } else {
+                        reference = Some(strokes[0].1.encode().unwrap());
+                    }
+                    let fills: Vec<_> = forms
+                        .iter()
+                        .filter(|(_, content)| {
+                            content.operations.iter().any(|op| op.operator == "f")
+                        })
+                        .collect();
+                    if alpha == 0.0 {
+                        assert!(
+                            fills.is_empty(),
+                            "hollow SVG-backed text must not acquire a fill"
+                        );
+                    } else {
+                        assert!(
+                            !fills.is_empty(),
+                            "SVG-backed synthetic fill must use its expanded outline"
+                        );
+                        assert!(
+                            fills
+                                .iter()
+                                .all(|(_, content)| content.operations.iter().any(|op| {
+                                    op.operator == "rg"
+                                        && op
+                                            .operands
+                                            .iter()
+                                            .map(|value| value.as_float().unwrap())
+                                            .eq([0.0, 0.0, 1.0])
+                                })),
+                            "the fill must remain blue"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn hollow_synthetic_fallback_text_never_uses_visible_native_fill() {
+    for paint_first in [false, true] {
+        for label in ["★★", "★A"] {
+            let mut snapshot = snapshot();
+            let mut run = synthetic_stroke_run(
+                &mut snapshot,
+                include_bytes!("../../tests/fixtures/moli-pdf.ttf"),
+                label,
+                32.0,
+            );
+            run.color = PaintColor::TRANSPARENT;
+            run.stroke.as_mut().unwrap().paint_first = paint_first;
+            for (i, glyph) in run.glyphs.iter_mut().enumerate() {
+                glyph.x = 40.0 + i as f32 * 60.0;
+            }
+            snapshot.push_fragment(PaintFragment::GlyphRun(run));
+            let doc = document(&snapshot, &options());
+            assert_eq!(extracted_type3_unicode(&doc), label);
+            let page = doc.get_pages()[&1];
+            let resources = doc
+                .get_dict_in_dict(doc.get_dictionary(page).unwrap(), b"Resources")
+                .unwrap();
+            let states = doc.get_dict_in_dict(resources, b"ExtGState").ok();
+            let content = lopdf::content::Content::decode(&doc.get_page_content(page)).unwrap();
+            let mut opacity = 1.0;
+            let mut mode = 0;
+            let mut saved = Vec::new();
+            for operation in &content.operations {
+                match operation.operator.as_str() {
+                    "q" => saved.push((opacity, mode)),
+                    "Q" => (opacity, mode) = saved.pop().unwrap(),
+                    "Tr" => mode = operation.operands[0].as_i64().unwrap(),
+                    "gs" => {
+                        let name = operation.operands[0].as_name().unwrap();
+                        let state = doc
+                            .dereference(states.unwrap().get(name).unwrap())
+                            .unwrap()
+                            .1
+                            .as_dict()
+                            .unwrap();
+                        if let Ok(alpha) = state.get(b"ca") {
+                            opacity = alpha.as_float().unwrap();
+                        }
+                    }
+                    "Tj" | "TJ" => assert!(
+                        opacity == 0.0 || mode == 3,
+                        "hollow fallback glyphs need one invisible text layer, independent of neighbors: {label}"
+                    ),
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 #[test]

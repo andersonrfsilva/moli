@@ -11,6 +11,9 @@ visible stroke ink; the space glyph has no path at all.
 Glyph R is a rectangle for checking synthetic weight and both sides of its
 stroke. `moli-text-stroke-250.ttf` has the same shapes at UPEM 250, compared
 against the UPEM 1000 font to test the local CSS pixel contract.
+`moli-text-stroke-svg.ttf` preserves those outlines and adds an OpenType SVG
+record only for R. It checks PDF fallback to the rectangle when the SVG renderer
+is unavailable, both alone and next to ordinary outline glyphs.
 
 `moli-pdf.ttf` is derived from the project's generated Ahem font by
 `uv run scripts/generate-pdf-test-font.py`, under the same license.

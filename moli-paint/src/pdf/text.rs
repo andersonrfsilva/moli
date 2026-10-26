@@ -115,18 +115,15 @@ impl<'a> GlyphGeometry<'a> {
 
     fn expanded_outline(&self, id: skrifa::GlyphId, coords: &'a [NormalizedCoord]) -> Option<Path> {
         use skrifa::outline::pen::PathElement as E;
-        // Select the native representation before looking at the base outline.
-        // Cacheability must not depend on a run's clip, transform or stroke.
+        // COLR and bitmap glyphs use their native artwork. Moli does not install
+        // Krilla's SVG renderer, so an SVG record still falls back to this base
+        // outline. Cacheability does not depend on a run's clip or transform.
         if self.font.color_glyphs().get(id).is_some()
             || self
                 .font
                 .bitmap_strikes()
                 .glyph_for_size(Size::unscaled(), id)
                 .is_some()
-            || self
-                .font
-                .svg()
-                .is_ok_and(|svg| svg.glyph_data(id).is_ok_and(|data| data.is_some()))
         {
             return None;
         }
@@ -471,9 +468,11 @@ pub(super) fn draw(
     let synthesized = embolden != Diagonal2::new(0.0, 0.0);
     let fallback_embolden = embolden.xx.max(embolden.yy) as f32;
     // Native fill-and-stroke can represent an opaque isotropic expansion.
-    // Other synthesized fills use the actual contour, so transparency is
-    // applied once and the two expansion axes remain independent.
-    let native_fill = !synthesized || (embolden.xx == embolden.yy && run.color.alpha >= 1.0);
+    // SVG tables route glyphs through Krilla's force-filled Type3 fonts even
+    // when its SVG callback is unavailable. Use the fallback contour for this
+    // font instead, preserving the fill color and synthetic expansion.
+    let native_fill = !synthesized
+        || (embolden.xx == embolden.yy && run.color.alpha >= 1.0 && geometry.font.svg().is_err());
     let mut batches: Vec<(bool, Vec<usize>)> = Vec::new();
     let mut start = 0;
     while start < run.glyphs.len() {
@@ -627,24 +626,12 @@ pub(super) fn draw(
                 }
             })
             .collect();
-        let path_stroke = stroke_key.as_ref().is_some_and(|stroke| {
-            indices.iter().any(|&i| {
-                expanded
-                    .get(&key(run.glyphs[i].id))
-                    .and_then(Option::as_ref)
-                    .is_some_and(|glyph| glyph.graphics.contains_key(stroke))
-            })
-        });
-        let path_fill = !invisible
-            && has_fill
-            && (outlined || !native_fill)
-            && indices.iter().any(|&i| {
-                expanded
-                    .get(&key(run.glyphs[i].id))
-                    .and_then(Option::as_ref)
-                    .is_some_and(|glyph| glyph.graphics.contains_key(&fill_key))
-            });
-        let semantic_copy = !outlined && (path_fill || (!has_fill && path_stroke));
+        // Choose the synthetic passes from the style, then resolve each
+        // glyph's contour or native outline fallback independently below.
+        // A neighboring glyph must not change a fallback glyph's paint mode.
+        let expanded_stroke = synthesized && visible_stroke.is_some();
+        let expanded_fill = synthesized && !invisible && has_fill && (outlined || !native_fill);
+        let semantic_copy = !outlined && (expanded_fill || (!has_fill && expanded_stroke));
         if semantic_copy {
             let mut semantic = fill(run.color);
             semantic.opacity = krilla::num::NormalizedF32::ZERO;
@@ -726,7 +713,7 @@ pub(super) fn draw(
         };
         let draw_stroke = |surface: &mut Surface<'_>| {
             if let Some(stroke) = visible_stroke {
-                if path_stroke {
+                if expanded_stroke {
                     draw_paths(surface, false);
                 } else {
                     surface.set_fill(None);
@@ -750,7 +737,7 @@ pub(super) fn draw(
             draw_stroke(surface);
         }
         if has_fill || invisible {
-            if path_fill {
+            if expanded_fill {
                 draw_paths(surface, true);
             } else {
                 let mut paint = fill(run.color);
