@@ -70,7 +70,9 @@ const EXTERNAL_RAW_BODY_CHANNEL_CAPACITY: usize = 8;
 const ABOUT_BLANK_DOCUMENT_HTML: &str = "<!doctype html><html><head></head><body></body></html>";
 
 fn escape_error_page_html(value: &str) -> String {
-    html_escape::encode_quoted_attribute(value).into_owned()
+    let mut escaped = String::with_capacity(value.len());
+    v_htmlescape::escape_string(value, &mut escaped);
+    escaped
 }
 
 fn network_error_page_html(unreachable_url: &Url, error_text: &str) -> String {
@@ -4027,6 +4029,19 @@ mod tests {
         inline_html_navigation_source,
     };
     use serde_json::json;
+
+    #[test]
+    fn network_error_page_escapes_url_and_error_markup() {
+        let url = url::Url::parse("https://error.test/path?first=1&second=2").unwrap();
+        let html = super::network_error_page_html(&url, "café <script>alert(\"'&\");</script>");
+        assert!(html.contains(
+            "<strong>https:&#x2f;&#x2f;error.test&#x2f;path?first=1&amp;second=2</strong>"
+        ));
+        assert!(html.contains(
+            "<div>café &lt;script&gt;alert(&quot;&#x27;&amp;&quot;);&lt;&#x2f;script&gt;</div>"
+        ));
+        assert!(!html.contains("<script>"));
+    }
 
     #[tokio::test]
     async fn shared_body_cancellation_keeps_a_typed_cause_for_both_consumers() {

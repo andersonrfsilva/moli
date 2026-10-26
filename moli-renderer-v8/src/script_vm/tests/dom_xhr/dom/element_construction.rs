@@ -330,6 +330,8 @@ fn xml_serializer_matches_chromium_for_empty_elements_attrs_and_parser_errors() 
     serializer.serializeToString(xml.documentElement) === '<root/>',
     serializer.serializeToString(attribute) ===
       'a&lt;&amp;&quot;&gt;&#9;&#10;&#13;',
+    serializer.serializeToString(document.createTextNode(`"café" / '尾' &amp; < >`)) ===
+      `"café" / '尾' &amp;amp; &lt; &gt;`,
     emptyXml.documentElement.localName === 'html',
     emptyXml.documentElement.namespaceURI === 'http://www.w3.org/1999/xhtml',
     emptyXml.documentElement.getAttribute('xmlns') === null,
@@ -350,7 +352,7 @@ fn xml_serializer_matches_chromium_for_empty_elements_attrs_and_parser_errors() 
 
     assert_eq!(
         result,
-        "true|true|true|true|true|true|true|true|true|true|true|true"
+        "true|true|true|true|true|true|true|true|true|true|true|true|true"
     );
 }
 

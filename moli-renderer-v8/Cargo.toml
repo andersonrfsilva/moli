@@ -98,7 +98,6 @@ moli-xpath = { path = "../moli-xpath" }
 curl = { version = "0.4.51", default-features = false, features = ["brotli", "http2", "poll_7_68_0", "ssl", "static-curl"] }
 http = "1"
 httpdate = "1.0.3"
-html-escape = "0.2.13"
 html5ever = "0.40"
 hashlink = "0.12.2"
 indexmap = "2.14.2"

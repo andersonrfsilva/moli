@@ -466,7 +466,22 @@ fn attribute_value(
 }
 
 fn escape_text(value: &str) -> String {
-    html_escape::encode_text(value).into_owned()
+    // XML text keeps quotes and slashes literal, unlike HTML attribute escaping.
+    let mut escaped = String::with_capacity(value.len());
+    let mut start = 0;
+    for (index, byte) in value.bytes().enumerate() {
+        let replacement = match byte {
+            b'&' => "&amp;",
+            b'<' => "&lt;",
+            b'>' => "&gt;",
+            _ => continue,
+        };
+        escaped.push_str(&value[start..index]);
+        escaped.push_str(replacement);
+        start = index + 1;
+    }
+    escaped.push_str(&value[start..]);
+    escaped
 }
 
 fn escape_attr(value: &str) -> String {
@@ -491,10 +506,14 @@ mod tests {
     use super::{escape_attr, escape_text};
 
     #[test]
-    fn xml_serializer_escapes_text_with_html_escape_crate() {
+    fn xml_serializer_escapes_text_markup_and_preserves_other_characters() {
         assert_eq!(
             escape_text("a > b && a < c"),
             "a &gt; b &amp;&amp; a &lt; c"
+        );
+        assert_eq!(
+            escape_text("\"café\" / '尾' &amp; < >\t\n\r"),
+            "\"café\" / '尾' &amp;amp; &lt; &gt;\t\n\r"
         );
     }
 
