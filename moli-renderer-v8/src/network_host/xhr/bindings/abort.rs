@@ -5,11 +5,11 @@ pub(super) fn xhr_abort_callback(
     args: v8::FunctionCallbackArguments<'_>,
     _rv: v8::ReturnValue<'_, v8::Value>,
 ) {
-    if crate::worker::try_worker_xhr_abort_callback(scope, &args) {
+    let xhr = xhr_receiver_target(scope, args.this());
+    if crate::worker::try_worker_xhr_abort_callback(scope, xhr) {
         return;
     }
 
-    let xhr = args.this();
     super::super::delivery::clear_xhr_request_timers(scope, xhr);
     let internal_id =
         xhr_state_number_property(scope, xhr, XHR_ACTIVE_INTERNAL_ID_SLOT).unwrap_or(0.0) as u64;
