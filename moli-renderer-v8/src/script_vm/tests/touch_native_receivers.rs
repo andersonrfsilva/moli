@@ -58,3 +58,54 @@ fn touch_native_receivers_reject_forgery_before_conversion_in_the_callee_realm()
     "#).unwrap();
     assert_eq!(result, "ok");
 }
+
+#[test]
+fn touch_lists_protect_native_entries_and_validate_receivers() {
+    let mut vm = new_storage_html_test_vm("https://touch-list-native.test/");
+    let result = vm.eval(r#"
+        document.body.innerHTML = '<iframe></iframe>';
+        const other = document.querySelector('iframe').contentWindow;
+        const first = new Touch({identifier: 1, target: document.body});
+        const second = new Touch({identifier: 2, target: document.body});
+        const source = [first, second];
+        const list = new TouchEvent('touchstart', {touches: source}).touches;
+        source.length = 0;
+        const check = (condition, name) => {if (!condition) throw new Error(name);};
+        for (const realm of [window, other]) {
+            const item = realm.TouchList.prototype.item;
+            const length = Object.getOwnPropertyDescriptor(realm.TouchList.prototype, 'length').get;
+            check(length.call(list) === 2 && item.call(list, 1) === second, 'cross-realm state');
+            let conversions = 0;
+            for (const fake of [{}, Object.create(list), new Proxy(list, {})]) {
+                for (const call of [() => length.call(fake), () => item.call(fake, {
+                    valueOf() {conversions++; return 0;}
+                })]) {
+                    let error;
+                    try {call();} catch (caught) {error = caught;}
+                    check(error && Object.getPrototypeOf(error) === realm.TypeError.prototype,
+                          'callee realm brand error');
+                }
+            }
+            check(conversions === 0, 'brand check precedes conversion');
+        }
+        for (const index of [0, 1]) {
+            const descriptor = Object.getOwnPropertyDescriptor(list, index);
+            check(descriptor.value === [first, second][index],
+                  'indexed value');
+            check(!descriptor.writable && descriptor.enumerable && descriptor.configurable,
+                  'indexed descriptor');
+        }
+        check(!Reflect.set(list, 0, second) && list[0] === first, 'read-only entry');
+        check(!Reflect.deleteProperty(list, 0) && list.item(0) === first, 'supported index deletion');
+        check(!Reflect.defineProperty(list, 0, {value: second}), 'entry definition');
+        check(!Reflect.defineProperty(list, 4, {get() {return first;}}), 'index accessor definition');
+        check(!Reflect.set(list, 4, first) && !Object.hasOwn(list, 4), 'unsupported index assignment');
+        check(Reflect.deleteProperty(list, 4) && list[4] === undefined && list.item(4) === null,
+              'unsupported index access');
+        check([...list][0] === first && [...list][1] === second, 'iteration');
+        check(Object.keys(list).join() === '0,1', 'enumeration');
+        check(Reflect.set(list, 'note', 3) && list.note === 3, 'ordinary expando');
+        'ok';
+    "#).unwrap();
+    assert_eq!(result, "ok");
+}
