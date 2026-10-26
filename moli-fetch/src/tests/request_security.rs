@@ -1,5 +1,5 @@
 use super::*;
-use crate::{RedirectInfo, RedirectSource};
+use crate::{CookieHeaderPolicy, RedirectInfo, RedirectSource};
 
 #[derive(Clone, Copy, Debug)]
 enum Transport {
@@ -53,6 +53,47 @@ fn synthetic_redirect(from: &Url, to: &Url) -> RedirectInfo {
         from_cache: false,
         negotiated_http_version: None,
     }
+}
+
+#[tokio::test]
+async fn curl_explicit_cookies_do_not_cross_origins_in_any_transport() -> Result<()> {
+    for transport in Transport::ALL {
+        let target = ScriptedHttpServer::spawn(vec![ScriptedResponse::ok("target")]);
+        let source = ScriptedHttpServer::spawn(vec![
+            ScriptedResponse::status(302, "Found").with_header("Location", &target.url()),
+        ]);
+        let mut config = FetchConfig::default();
+        config.push_default_request_header("Cookie", "config=secret");
+        let client = FetchClient::new(&config, new_shared_browser_cookie_store());
+        let request = Request::new(
+            "GET",
+            &source.url(),
+            None,
+            vec![("cOoKiE".to_owned(), "request=secret".to_owned())],
+        )?
+        .with_cookie_header_policy(CookieHeaderPolicy::PreserveExplicit);
+
+        transport.fetch(&client, request).await?;
+        assert_eq!(source.hits(), 1, "{transport:?}");
+        let initial = source.requests()[0].to_ascii_lowercase();
+        assert!(
+            initial.contains("\r\ncookie: config=secret\r\n"),
+            "{initial}"
+        );
+        assert!(
+            initial.contains("\r\ncookie: request=secret\r\n"),
+            "{initial}"
+        );
+        assert_eq!(target.hits(), 1, "{transport:?}");
+        let redirected = target.requests()[0].to_ascii_lowercase();
+        assert!(
+            !redirected.contains("\r\ncookie:"),
+            "{transport:?}: {redirected}"
+        );
+        source.shutdown();
+        target.shutdown();
+    }
+    Ok(())
 }
 
 #[tokio::test]

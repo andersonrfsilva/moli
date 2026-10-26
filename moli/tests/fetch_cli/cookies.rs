@@ -71,6 +71,12 @@ impl CookieFixture {
                 }),
             )
             .route(
+                "/cross-host-headers",
+                get(move || async move {
+                    Redirect::temporary(&format!("http://localhost:{port}/headers"))
+                }),
+            )
+            .route(
                 "/cache",
                 get(|headers: HeaderMap| async move {
                     let cookie = headers
@@ -298,6 +304,54 @@ async fn cookie_store_and_manual_cookie_headers_are_both_sent() -> Result<()> {
         body.contains("<main>file=loaded|manual=1|manual=2</main>"),
         "{body}"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn explicit_cookie_redirect_scope_is_independent_of_literal_and_jar_cookies() -> Result<()> {
+    let fixture = CookieFixture::spawn().await?;
+    let file = super::unique_temp_file_path("cookie-redirect-scope", "cookies.txt")?;
+    std::fs::write(
+        &file,
+        format!(
+            "{}localhost\tFALSE\t/\tFALSE\t0\ttarget\tselected\n",
+            record()
+        ),
+    )?;
+    let file = file.to_string_lossy();
+    for with_jar in [false, true] {
+        for with_literal in [false, true] {
+            let mut args = vec!["-H", "Cookie: manual=1", "-H", "cOoKiE: manual=2"];
+            if with_jar {
+                args.extend(["--cookie", file.as_ref()]);
+            }
+            if with_literal {
+                // A configured Cookie header suppresses --cookie DATA even
+                // on hops where the header itself must not be forwarded.
+                args.extend(["--cookie", "literal=suppressed"]);
+            }
+            for (path, expected) in [
+                (
+                    "/redirect-headers",
+                    if with_jar {
+                        "file=loaded|manual=1|manual=2"
+                    } else {
+                        "manual=1|manual=2"
+                    },
+                ),
+                (
+                    "/cross-host-headers",
+                    if with_jar { "target=selected" } else { "" },
+                ),
+            ] {
+                let body = assert_success(&fixture.run(path, &args, b"")?);
+                assert!(
+                    body.contains(&format!("<main>{expected}</main>")),
+                    "{path}: {body}"
+                );
+            }
+        }
+    }
     Ok(())
 }
 

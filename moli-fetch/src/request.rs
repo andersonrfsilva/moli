@@ -30,7 +30,8 @@ pub enum CookieHeaderPolicy {
     /// Chromium's browser behavior gives a generated Cookie header precedence.
     #[default]
     PreferStore,
-    /// curl-style HTTP clients retain both generated and explicit Cookie headers.
+    /// curl-style HTTP clients retain generated cookies and send explicit Cookie
+    /// headers only to the initial origin, including after returning to it.
     PreserveExplicit,
 }
 
