@@ -123,9 +123,10 @@ struct TouchEventPrototypeDeclaration {
 struct TouchConstructorArgs<'s> {
     #[webidl(
         required,
+        dictionary,
         missing_message = "Failed to construct 'Touch': 1 argument required, but only 0 present."
     )]
-    init: v8::Local<'s, v8::Object>,
+    init: TouchInitMembers<'s>,
 }
 
 #[derive(webidl::WebIdlArgs)]
@@ -257,15 +258,10 @@ pub(in crate::context_bootstrap) fn touch_constructor_callback<'s>(
     let Some(parsed_args) = webidl::parse_args::<TouchConstructorArgs>(scope, &args) else {
         return;
     };
-    let init = match webidl::parse_dictionary_object::<TouchInitMembers>(scope, parsed_args.init) {
-        Ok(init) => init,
-        Err(error) => {
-            webidl::throw_error(scope, &error);
-            return;
-        }
-    };
-
-    init.initialize_snapshot(scope, touch).expect("Touch state");
+    parsed_args
+        .init
+        .initialize_snapshot(scope, touch)
+        .expect("Touch state");
     web_api_interfaces::initialize(scope, touch, "Touch").expect("Touch brand");
 
     rv.set(touch.into());
