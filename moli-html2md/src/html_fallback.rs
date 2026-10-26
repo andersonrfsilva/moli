@@ -276,6 +276,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     )
                     | NodeKind::Other => {}
                     NodeKind::Element("math") => {
+                        // MathML contributes content without going through the
+                        // text escaper, so a later LF cannot complete a prior CR.
+                        text_escaper.trailing_cr = false;
                         content.object();
                         for id in crate::anchors::within(dom, node, limit - depth, anchor_targets) {
                             if emitted_anchors.insert(id.clone()) {

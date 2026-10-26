@@ -1068,3 +1068,72 @@ fn block_html_fallback_preserves_the_enclosing_formatting_stack() {
         }
     }
 }
+
+#[test]
+fn math_content_ends_code_crlf_continuity_but_transparent_markup_does_not() {
+    for middle in [
+        "<math><mi>x</mi></math>",
+        "<span><math><mrow><mi>x</mi></mrow></math></span>",
+        "<span><math><mi>x</mi></math><span aria-hidden='true'>x</span></span>",
+        "<math><semantics><mi>x</mi><annotation>alternate</annotation></semantics></math>",
+        "<span>x</span>",
+    ] {
+        for pre in [false, true] {
+            let code = format!("<code id='snippet'>a&#13;{middle}&#10;b</code>");
+            let code = if pre {
+                format!("<pre>{code}</pre>")
+            } else {
+                code
+            };
+            for source in containers(&format!("{code}<a href='#snippet'>Jump</a>")) {
+                let input = Tree::parse(&source);
+                for preformatted_code in [false, true] {
+                    let markdown = Converter::new(Options {
+                        preformatted_code,
+                        ..Default::default()
+                    })
+                    .convert(&input, input.root);
+                    let output = Tree::parse(&rendered_html(&markdown));
+                    let codes: Vec<_> = descendants(&output, output.root)
+                        .into_iter()
+                        .filter(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                        .collect();
+                    assert_eq!(codes.len(), 1, "{source}: {markdown}");
+                    let actual = text(&output, codes[0]);
+                    assert_eq!(
+                        actual.split_whitespace().collect::<Vec<_>>(),
+                        ["a", "x", "b"],
+                        "preformatted_code={preformatted_code}: {source}: {markdown}"
+                    );
+                    if preformatted_code && !pre {
+                        assert_eq!(actual, "a x b", "{markdown}");
+                    }
+                }
+            }
+        }
+    }
+    for middle in [
+        "",
+        "<span></span>",
+        "<span><i></i></span>",
+        "<span id='empty'></span>",
+    ] {
+        for source in containers(&format!(
+            "<code id='snippet'>a&#13;{middle}&#10;b</code>\
+             <a href='#snippet'>Jump</a><a href='#empty'>Empty</a>"
+        )) {
+            let input = Tree::parse(&source);
+            let markdown = Converter::new(Options {
+                preformatted_code: true,
+                ..Default::default()
+            })
+            .convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let code = descendants(&output, output.root)
+                .into_iter()
+                .find(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                .unwrap();
+            assert_eq!(text(&output, code), "a b", "{source}: {markdown}");
+        }
+    }
+}
