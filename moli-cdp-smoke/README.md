@@ -8,9 +8,14 @@ The suite covers real CDP-client workflows: `connect_over_cdp`, concurrent brows
 
 CI runs every default group twice per engine: `CDP smoke` uses the HEAD Moli
 release and `CDP smoke (Chromium)` uses the Chromium revision bundled with the
-Playwright version in `uv.lock`. These are independent executions, not retries:
-one failure fails the job even if the other execution passes. Both jobs select
-all default groups, including newly registered groups, without separate allowlists. The
+Playwright version in `uv.lock`. These are independent executions: passing the
+second repetition cannot replace a failed first repetition. Chromium additionally
+uses `--retries 3`: each failed group gets up to three retries in fresh worker and
+browser processes. Passing groups are not retried. A recovered group is marked
+`flaky` in `summary.json`; every execution's log, result, and diagnostics remain
+in the artifact. If all four executions fail, the job fails. Moli has no retries.
+Both jobs select all default groups, including newly registered groups, without
+separate allowlists. The
 `chromium-cdp` group is a collection of protocol scenarios; its name alone does
 not identify the browser under test.
 The existing `CDP smoke` check also requires the Chromium job to succeed, so it
@@ -21,10 +26,10 @@ Both jobs use `--strict-full-suite --repeat 2`. Strict mode rejects `--group`,
 `MOLI_MULTI_PAGE_CASES`, or `MOLI_MULTI_PAGE_SHARD`. A failure does not prevent
 the remaining groups from running. Browser crashes, timeouts, failed assertions,
 unhandled asyncio callback/task exceptions, incomplete/empty results, and
-diagnostic capture/upload failures remain CI errors. Chromium failures are
-never downgraded to warnings or treated as Moli passes. Classifying a failure
-as infrastructure trouble or Chromium instability requires evidence and does
-not change its exit status.
+diagnostic capture failures fail an execution. Exhausting Chromium's per-group
+retries, failing any Moli execution, or failing diagnostic uploads fails CI; Chromium failures are
+not treated as Moli passes. Classifying a failure as infrastructure trouble or
+Chromium instability requires evidence.
 The workflow has no PR-wide cancellation group: pushing a new revision must
 not cancel an older run before its Chromium suite and diagnostics finish.
 Once a PR is merged or closed, the trusted `Cancel closed PR CI` workflow

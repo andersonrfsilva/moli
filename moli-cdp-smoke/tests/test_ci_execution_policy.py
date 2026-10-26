@@ -34,5 +34,9 @@ class CiExecutionPolicyTests(unittest.TestCase):
                 self.assertIsNotNone(match)
                 job = match.group(1)
                 self.assertRegex(job, rf"--browser {engine} --strict-full-suite --repeat 2")
+                if engine == "chromium":
+                    self.assertIn("--retries 3", job)
+                else:
+                    self.assertNotIn("--retries", job)
                 self.assertNotIn("continue-on-error:", job)
                 self.assertIn("if-no-files-found: error", job)

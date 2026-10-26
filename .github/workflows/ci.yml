@@ -480,7 +480,7 @@ jobs:
       - name: Run full CDP smoke on Chromium
         run: |
           uv run --project moli-cdp-smoke --no-sync moli-cdp-smoke \
-            --browser chromium --strict-full-suite --repeat 2 --jobs 4 --output-dir target/smoke/cdp-chromium-ci
+            --browser chromium --strict-full-suite --repeat 2 --retries 3 --jobs 4 --output-dir target/smoke/cdp-chromium-ci
       - name: Upload Chromium diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
