@@ -485,6 +485,14 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             if !matches!(tag, "br" | "hr" | "img") {
                                 tasks.push(Task::Close(tag.to_owned()));
                             }
+                        } else {
+                            // Supported tags can still be expanded, for example
+                            // SVG links nested inside an author's outer link.
+                            for id in anchor_targets.targets(dom, node) {
+                                if emitted_anchors.insert(id.to_owned()) {
+                                    output.push_str(&crate::anchors::markup(id));
+                                }
+                            }
                         }
                         if crate::mathml::primary_alternative(dom, node, limit - depth).is_some() {
                             for id in

@@ -693,3 +693,70 @@ fn block_html_fallback_preserves_the_enclosing_author_link() {
         }
     }
 }
+
+#[test]
+fn expanded_svg_links_preserve_targets_inside_the_author_link() {
+    for label in ["", "Inner"] {
+        let content = format!(
+            "<a href='/outer'><svg><a id='inner' href='/inner'><text>{label}</text></a></svg>\
+             Outer<video src='/preview.mp4'></video></a>\
+             <a href='#inner'>Jump</a><a href='/after'>After</a>"
+        );
+        for source in containers(&content) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let targets = with_attribute(&output, "id", "inner");
+            assert_eq!(targets.len(), 1, "{source}: {markdown}");
+            let links = with_attribute(&output, "href", "/outer");
+            assert_eq!(links.len(), 1, "{markdown}");
+            assert!(
+                descendants(&output, links[0]).contains(&targets[0]),
+                "{markdown}"
+            );
+            let body = text(&output, links[0]);
+            assert!(
+                body.contains("Outer") && body.contains("/preview.mp4"),
+                "{markdown}"
+            );
+            assert!(body.contains(label), "{markdown}");
+            assert!(
+                with_attribute(&output, "href", "/inner").is_empty(),
+                "{markdown}"
+            );
+            assert!(
+                with_attribute(&output, "href", "/preview.mp4").is_empty(),
+                "{markdown}"
+            );
+            let after = with_attribute(&output, "href", "/after");
+            assert_eq!(after.len(), 1, "{markdown}");
+            assert_eq!(text(&output, after[0]), "After", "{markdown}");
+        }
+    }
+}
+
+#[test]
+fn expanded_presentational_columns_preserve_referenced_targets() {
+    let content = "<a href='#columns'>Columns</a><a href='#column'>Column</a>\
+        <table role='presentation'><colgroup id='columns'><col id='column'></colgroup>\
+        <tr><td>A</td><td>B</td></tr></table>";
+    for source in containers(content) {
+        let input = Tree::parse(&source);
+        let markdown = convert(&input, input.root);
+        let output = Tree::parse(&rendered_html(&markdown));
+        for id in ["columns", "column"] {
+            assert_eq!(
+                with_attribute(&output, "id", id).len(),
+                1,
+                "{source}: {markdown}"
+            );
+        }
+        assert!(
+            !output
+                .nodes
+                .iter()
+                .any(|node| matches!(node.tag.as_deref(), Some("col" | "colgroup"))),
+            "{markdown}"
+        );
+    }
+}
