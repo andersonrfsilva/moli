@@ -278,15 +278,15 @@ Kitesurf ist ein entfernter Dienst, dessen CPU, Arbeitsspeicher und Prozessanzah
 
 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) ruft mit 430 Aufgaben Live-Websites auf. Die Erfolgsquote umfasst daher sowohl den Zugriff auf die Website als auch die korrekte Inhaltsextraktion. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) verarbeitet 545 gespeicherte HTML-Seiten und bewertet nur die Extraktionsqualität. [Benchmark-Bericht lesen](https://browser.lexmount.com/blog/webfetch-benchmark).
 
-| Methode | Gesamt | Bot-Schutz /100 | Beliebte Websites /100 | Dynamische Websites /100 |
-| --- | ---: | ---: | ---: | ---: |
-| Moli | **386/430 · 89,8 %** | **88** | **91** | **90** |
-| Chromium | 234/430 · 54,4 % | 5 | 58 | 58 |
-| Lightpanda | 228/430 · 53,0 % | 37 | 38 | 44 |
-| Obscura | 223/430 · 51,9 % | 16 | 53 | 43 |
-| Kitesurf | 192/430 · 44,7 % | 10 | 40 | 41 |
+| Methode | Gesamt | Statisch /100 | Bot-Schutz /100 | Beliebte Websites /100 | Dynamische Websites /100 | Dokumente und Medien /30 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Moli | **386/430 · 89,8 %** | 97 | **88** | **91** | **90** | **20** |
+| Chromium | 234/430 · 54,4 % | **99** | 5 | 58 | 58 | 14 |
+| Lightpanda | 228/430 · 53,0 % | 92 | 37 | 38 | 44 | 17 |
+| Obscura | 223/430 · 51,9 % | 94 | 16 | 53 | 43 | 17 |
+| Kitesurf | 192/430 · 44,7 % | 90 | 10 | 40 | 41 | 11 |
 
-Die drei Kategorien zeigen die Anzahl bestandener Aufgaben. Der verlinkte Bericht enthält alle sieben Kategorien.
+Die Zellen zeigen die Anzahl bestandener Aufgaben. Die letzte Spalte fasst Dokumentinhalte, direkte Mediendateien und in Webseiten eingebettete Medien zusammen; damit deckt die Tabelle alle sieben Kategorien ab.
 
 <details>
 <summary><strong>WebMainBench · Extraktionsqualität auf 545 gespeicherten Seiten</strong></summary>
