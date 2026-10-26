@@ -1829,15 +1829,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "html-escape"
-version = "0.2.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
-dependencies = [
- "utf8-width",
-]
-
-[[package]]
 name = "html5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3212,7 +3203,6 @@ dependencies = [
  "chromiumoxide_cdp",
  "data-url",
  "futures-util",
- "html-escape",
  "http",
  "indexmap",
  "lopdf",
@@ -3255,6 +3245,7 @@ dependencies = [
  "tracing",
  "url",
  "v8",
+ "v_htmlescape",
  "vergen-gitcl",
 ]
 
@@ -3343,7 +3334,6 @@ dependencies = [
  "flate2",
  "futures-util",
  "hashlink",
- "html-escape",
  "html5ever 0.40.1",
  "http",
  "httpdate",
@@ -6330,12 +6320,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
-name = "utf8-width"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1292c0d970b54115d14f2492fe0170adf21d68a1de108eebc51c1df4f346a091"
-
-[[package]]
 name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6382,6 +6366,21 @@ dependencies = [
  "temporal_capi",
  "temporal_rs",
  "timezone_provider",
+]
+
+[[package]]
+name = "v_escape-base"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1212fce830b75af194b578e55b3db9049f2c8c45f58d397fb25602fdb50fb3d"
+
+[[package]]
+name = "v_htmlescape"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "befb3d53c9e3ec641417685896cbc8cc5bd264d6a2e190c56aaef1af24740d99"
+dependencies = [
+ "v_escape-base",
 ]
 
 [[package]]
