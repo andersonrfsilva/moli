@@ -63,11 +63,17 @@ pub struct Request {
     pub credentials_mode: RequestCredentialsMode,
     pub(crate) redirect_chain: Vec<RedirectInfo>,
     network_partition_key: Option<String>,
-    auth: Option<RequestAuth>,
+    auth: Option<ScopedRequestAuth>,
     pub cookie_context: NetworkCookieRequestContext,
     timeout_policy: RequestTimeoutPolicy,
     network_observation_recorder: Option<NetworkObservationRecorder>,
     browser_identity: Option<std::sync::Arc<moli_browser_profile::BrowserIdentityProfile>>,
+}
+
+#[derive(Debug, Clone)]
+struct ScopedRequestAuth {
+    credentials: RequestAuth,
+    origin: WebOrigin,
 }
 
 /// The lifetime of request headers supplied by an interception command.
@@ -1000,6 +1006,12 @@ impl Request {
         &self.redirect_chain
     }
 
+    pub(crate) fn initial_url(&self) -> &Url {
+        self.redirect_chain
+            .first()
+            .map_or(&self.url, |redirect| &redirect.from_url)
+    }
+
     /// Records a followed redirect. The caller controls method and current URL
     /// updates so this also supports transports that retain the original URL.
     pub fn record_redirect(&mut self, redirect: RedirectInfo) {
@@ -1130,29 +1142,39 @@ impl Request {
     }
 
     pub fn auth(&self) -> Option<&RequestAuth> {
-        self.auth.as_ref()
+        self.auth.as_ref().map(|auth| &auth.credentials)
+    }
+
+    pub(crate) fn auth_for_url(&self, request_url: &Url) -> Option<&RequestAuth> {
+        let auth = self.auth.as_ref()?;
+        (auth.credentials.target != RequestAuthTarget::Server
+            || auth.origin.same_origin(&WebOrigin::from_url(request_url)))
+        .then_some(&auth.credentials)
     }
 
     pub fn auth_requires_buffered_transport(&self) -> bool {
-        self.auth
-            .as_ref()
+        self.auth()
             .is_some_and(|auth| !auth.can_use_header_transport())
     }
 
     pub fn preemptive_server_basic_auth_for_url(&self, request_url: &Url) -> Option<(&str, &str)> {
-        let auth = self.auth.as_ref()?;
-        (auth.target == RequestAuthTarget::Server
-            && auth.scheme == RequestAuthScheme::Basic
-            && same_origin(&self.url, request_url))
-        .then_some((auth.username.as_str(), auth.password.as_str()))
+        let auth = self.auth_for_url(request_url)?;
+        (auth.target == RequestAuthTarget::Server && auth.scheme == RequestAuthScheme::Basic)
+            .then_some((auth.username.as_str(), auth.password.as_str()))
     }
 
     pub fn set_auth(&mut self, auth: Option<RequestAuth>) {
-        self.auth = auth;
+        // Pin credentials to where they were supplied, rather than the mutable
+        // current URL. A later CDP auth response grants new credentials only to
+        // that challenged origin, without authorizing subsequent redirects.
+        self.auth = auth.map(|credentials| ScopedRequestAuth {
+            credentials,
+            origin: WebOrigin::from_url(&self.url),
+        });
     }
 
     pub fn with_auth(mut self, auth: RequestAuth) -> Self {
-        self.auth = Some(auth);
+        self.set_auth(Some(auth));
         self
     }
 

@@ -648,12 +648,12 @@ impl ScriptVm {
         .with_request_mode(pending_fetch.request_mode)
         .with_use_cors_preflight(pending_fetch.continuation.use_cors_preflight())
         .with_credentials_mode(pending_fetch.credentials_mode)
-        .with_auth(auth.into())
         .with_subframe_context(pending_fetch.info.frame_id.is_some());
         for redirect in &response.redirect_chain {
             request.apply_redirect_status(redirect.status);
         }
         request.url = response.final_url.clone();
+        request.set_auth(Some(auth.into()));
         request = request.with_redirect_chain(
             response
                 .redirect_chain

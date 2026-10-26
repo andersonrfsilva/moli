@@ -2,16 +2,16 @@ use super::*;
 use crate::{CookieHeaderPolicy, RedirectInfo, RedirectSource};
 
 #[derive(Clone, Copy, Debug)]
-enum Transport {
+pub(super) enum Transport {
     Buffered,
     Html,
     Raw,
 }
 
 impl Transport {
-    const ALL: [Self; 3] = [Self::Buffered, Self::Html, Self::Raw];
+    pub(super) const ALL: [Self; 3] = [Self::Buffered, Self::Html, Self::Raw];
 
-    async fn fetch(self, client: &FetchClientHandle, request: Request) -> Result<()> {
+    pub(super) async fn fetch(self, client: &FetchClientHandle, request: Request) -> Result<()> {
         match self {
             Self::Buffered => {
                 let (tx, rx) = oneshot::channel();

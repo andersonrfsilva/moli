@@ -217,29 +217,27 @@ fn outgoing_request_header_bytes_for_url(
         outgoing.push(("Cookie".to_owned(), cookie_header.as_bytes().to_vec()));
     }
 
+    // Scope custom credentials to the transfer's initial origin. Preserve the
+    // configured headers so returning to that origin can restore them.
+    let send_authorization = same_origin(request.initial_url(), request_url);
     let send_explicit_cookies = match request.cookie_header_policy() {
         CookieHeaderPolicy::PreferStore => cookie_header.is_none(),
-        CookieHeaderPolicy::PreserveExplicit => {
-            // curl scopes custom Cookie headers to the initial origin, including
-            // scheme and port. Keep the configured headers so returning to that
-            // origin restores them; literal cookies and the store are separate.
-            let initial_url = request
-                .redirect_chain()
-                .first()
-                .map_or(&request.url, |redirect| &redirect.from_url);
-            same_origin(initial_url, request_url)
-        }
+        CookieHeaderPolicy::PreserveExplicit => send_authorization,
     };
 
     for (name, value) in config.default_request_headers() {
-        if !send_explicit_cookies && name.eq_ignore_ascii_case("cookie") {
+        if (!send_explicit_cookies && name.eq_ignore_ascii_case("cookie"))
+            || (!send_authorization && name.eq_ignore_ascii_case("authorization"))
+        {
             continue;
         }
         outgoing.push((name.clone(), value.as_bytes().to_vec()));
     }
 
     for (name, value) in request.request_headers.iter() {
-        if !send_explicit_cookies && name.eq_ignore_ascii_case("cookie") {
+        if (!send_explicit_cookies && name.eq_ignore_ascii_case("cookie"))
+            || (!send_authorization && name.eq_ignore_ascii_case("authorization"))
+        {
             continue;
         }
         outgoing.push((name.clone(), value.clone()));
@@ -283,21 +281,6 @@ fn outgoing_request_header_bytes_for_url(
         outgoing.push((
             "Authorization".to_owned(),
             format!("Basic {}", encode_basic_auth(username, password)).into_bytes(),
-        ));
-    }
-
-    if let Some(auth) = request.auth()
-        && auth.target == RequestAuthTarget::Server
-        && auth.scheme == RequestAuthScheme::Basic
-        && !header_present(&outgoing, "authorization")
-    {
-        outgoing.push((
-            "Authorization".to_owned(),
-            format!(
-                "Basic {}",
-                encode_basic_auth(&auth.username, &auth.password)
-            )
-            .into_bytes(),
         ));
     }
 
@@ -752,7 +735,7 @@ pub(crate) fn configure_easy(
             .context("failed to suppress curl default content-type")?;
     }
 
-    if let Some(auth) = request.auth()
+    if let Some(auth) = request.auth_for_url(request_url)
         && request.auth_requires_buffered_transport()
     {
         let mut methods = Auth::new();
