@@ -466,21 +466,8 @@ fn attribute_value(
 }
 
 fn escape_text(value: &str) -> String {
-    // XML text keeps quotes and slashes literal, unlike HTML attribute escaping.
     let mut escaped = String::with_capacity(value.len());
-    let mut start = 0;
-    for (index, byte) in value.bytes().enumerate() {
-        let replacement = match byte {
-            b'&' => "&amp;",
-            b'<' => "&lt;",
-            b'>' => "&gt;",
-            _ => continue,
-        };
-        escaped.push_str(&value[start..index]);
-        escaped.push_str(replacement);
-        start = index + 1;
-    }
-    escaped.push_str(&value[start..]);
+    v_xmlescape::escape_string(value, &mut escaped);
     escaped
 }
 
