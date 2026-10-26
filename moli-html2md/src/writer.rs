@@ -78,12 +78,17 @@ impl<'a> Writer<'a> {
         self.heading = true;
     }
 
+    pub(crate) fn in_link(&self) -> bool {
+        self.desired
+            .iter()
+            .any(|style| matches!(style, Style::Link { .. }))
+    }
+
     pub(crate) fn push_style(&mut self, style: Style<'a>) -> bool {
         // Repeated emphasis has the same visible meaning. Nested links cannot
         // be represented in Markdown, so retain the outer destination.
         if self.desired.contains(&style) && !matches!(style, Style::Superscript | Style::Subscript)
-            || matches!(style, Style::Link { .. })
-                && self.desired.iter().any(|s| matches!(s, Style::Link { .. }))
+            || matches!(style, Style::Link { .. }) && self.in_link()
         {
             return false;
         }

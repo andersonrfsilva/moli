@@ -378,14 +378,17 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                             &self.anchor_targets,
                         ))
                 {
+                    // Inline HTML remains inside the writer's formatting;
+                    // block HTML is appended outside it.
+                    let in_link = tag == "code" && self.writer().in_link();
                     let html = crate::html_fallback::render(
                         self.dom,
                         node,
                         depth,
-                        self.options.max_depth,
+                        self.options,
                         &self.anchor_targets,
-                        self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
+                        in_link,
                     );
                     self.writer().html(html, tag == "pre");
                     return;
@@ -420,10 +423,10 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.dom,
                         node,
                         depth,
-                        self.options.max_depth,
+                        self.options,
                         &self.anchor_targets,
-                        self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
+                        false,
                     );
                     self.writer().html(html, true);
                     return;
@@ -464,10 +467,10 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.dom,
                         node,
                         depth,
-                        self.options.max_depth,
+                        self.options,
                         &self.anchor_targets,
-                        self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
+                        false,
                     );
                     self.writer().html(html, true);
                     return;
@@ -497,10 +500,10 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.dom,
                         node,
                         depth,
-                        self.options.max_depth,
+                        self.options,
                         &self.anchor_targets,
-                        self.options.default_code_language.as_deref(),
                         &mut self.emitted_anchors,
+                        false,
                     );
                     self.writer().html(html, true);
                     return;

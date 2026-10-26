@@ -149,16 +149,17 @@ pub(crate) fn render<D: Dom + ?Sized>(
     dom: &D,
     root: D::NodeId,
     depth: usize,
-    limit: usize,
+    options: &crate::Options,
     anchor_targets: &crate::anchors::Targets,
-    default_language: Option<&str>,
     emitted_anchors: &mut HashSet<String>,
+    mut in_link: bool,
 ) -> crate::content::Html {
+    let limit = options.max_depth;
+    let default_language = options.default_code_language.as_deref();
     let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
     let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
     let mut content = crate::content::Content::default();
-    let mut in_link = false;
     let mut table_modes = Vec::new();
     let mut tasks = vec![Task::Node(root, depth, false)];
     while let Some(task) = tasks.pop() {
@@ -324,7 +325,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             let poster = crate::media::poster(dom, node, tag);
                             if !urls.is_empty() || poster.is_some() {
                                 content.object();
-                                let block = tag == "audio";
+                                let block = tag == "audio" && !code;
                                 output.push_str(if block { "<div>" } else { " " });
                                 if let Some(poster) = poster {
                                     output.push_str("<img src=\"");

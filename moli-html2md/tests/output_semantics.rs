@@ -421,3 +421,42 @@ fn retained_dialogs_and_details_preserve_their_open_state() {
         }
     }
 }
+
+#[test]
+fn inline_html_fallback_inherits_and_releases_the_writer_link_context() {
+    for media in ["video", "audio", "iframe"] {
+        let content = format!(
+            "<a href='/watch'><code id='snippet'><{media} src='/v.mp4'></{media}></code>Watch</a>\
+             <a href='#snippet'>Jump</a>\
+             <code id='outside'><video src='/outside.mp4'></video></code><a href='#outside'>Outside</a>"
+        );
+        for source in containers(&content) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let links = with_attribute(&output, "href", "/watch");
+            assert_eq!(links.len(), 1, "{source}: {markdown}");
+            let body = text(&output, links[0]);
+            assert!(
+                body.contains("Watch") && body.contains("/v.mp4"),
+                "{source}: {markdown}"
+            );
+            let targets = with_attribute(&output, "id", "snippet");
+            assert_eq!(targets.len(), 1, "{source}: {markdown}");
+            assert!(
+                descendants(&output, links[0]).contains(&targets[0]),
+                "{markdown}"
+            );
+            assert!(
+                with_attribute(&output, "href", "/v.mp4").is_empty(),
+                "{markdown}"
+            );
+            let outside = with_attribute(&output, "href", "/outside.mp4");
+            assert_eq!(outside.len(), 1, "{markdown}");
+            assert!(
+                !descendants(&output, links[0]).contains(&outside[0]),
+                "{markdown}"
+            );
+        }
+    }
+}
