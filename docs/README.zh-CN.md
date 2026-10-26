@@ -229,32 +229,18 @@ Moli 是一个独立的浏览器内核，而不是对 Chromium 的封装。它�
 
 文档和样式只有一个事实来源：原生 DOM 与 Stylo 的集成。每次真正的刷新，都会据此构建临时工作树，按需生成并消费一份新的绘制快照，把最终的盒与文字分片几何冻结成紧凑的 `FrozenLayoutTree`，随后丢弃工作树、样式借用、布局缓存、诊断和绘制状态。屏幕串流 token 只包含 generation 元数据，不包含布局或绘制数据。来源查询表和命中测试候选仍在查询时从冻结树派生。整个系统没有增量维护的布局树、损伤区域图、保留式显示列表、GPU 合成器或持久化窗口。
 
-## 测试数据
+## 评测
 
-下面的实测数据展示了 Moli 目前的能力区间。测试覆盖真实网站、自动化客户端、Chromium/WPT 行为验证，以及大规模的 nextest 回归测试套件。
+### 公开评测集
+
+| 评测方式 | 评测集 | 指标 |
+| --- | --- | --- |
+| 标准与回归测试 | 选定的 [WPT](https://github.com/web-platform-tests/wpt) 测试与 [Moli](https://github.com/lexmount/moli/blob/main/.github/workflows/ci.yml) 回归测试 | 测试通过项数、功能回退 |
+| 浏览器自动化 | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser) · 1,308 项浏览器操作与 Web 测试 | 操作与功能测试通过率 |
+| CPU 与内存开销 | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md) · 557 项 CDP/Web 任务中四个本地浏览器共同完成的部分 | CPU 时间、内存峰值 |
+| Web Fetch | [lexbench-webfetch](https://github.com/lexmount/lexbench-webfetch) · 430 道真实网站任务；[WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) · 545 份 HTML 快照 | 真实网站任务通过率；网页快照正文提取质量 |
 
 ### 网页内容提取
-
-<details open>
-<summary><strong>LexBench Web Fetch · 430 道任务</strong></summary>
-
-五种 Web Fetch 方法使用相同的 430 道任务，覆盖七类场景。只有返回的正文、结构、资源地址或文件字节满足题目要求，才算通过。
-
-| 方法 | 通过任务数 | 通过率 |
-| --- | ---: | ---: |
-| Moli 开发版（含 WebFetch 修复） | **385/430** | **89.53%** |
-| Chrome for Testing 155.0.8059.39 | 233/430 | 54.19% |
-| Lightpanda 1.0.0 | 227/430 | 52.79% |
-| Obscura 0.2.4 | 222/430 | 51.63% |
-| Kitesurf（托管服务） | 194/430 | 45.12% |
-
-各方法的调用时间为 2026 年 10 月 9 日至 15 日。Moli 这一行来自 1.1.17 之后、尚未发布的开发版（提交 `a737f2ae` 和 `0d9a7ceb`；430 道任务中有 56 道在后一个提交上重跑），不是 Moli 1.1.17 正式版二进制。
-
-题目取自 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) 的评测套件；[`browser-eval`](https://github.com/lexmount/browser-eval) 负责组装和修订 430 道题的集合，并执行评测和生成报告。
-
-[完整报告、任务要求及失败证据](https://artifact-site.lexmount.cn/v/IqGpMUYHWat-dw4n8usQttTptoPzboAo?version=ver_7c1cd4072edf4403a8ec3c64205f878f)
-
-</details>
 
 ### 智能体工作负载样例
 
@@ -286,6 +272,31 @@ Moli 是一个独立的浏览器内核，而不是对 Chromium 的封装。它�
 </picture>
 
 Kitesurf 是远程服务，无法测量 CPU、内存和进程数，因此资源对比只覆盖四个本地引擎。在另一轮 557 道任务的测试中，只统计四个引擎都完成的工作。Moli 单题 CPU 中位数为 **100.6 ms**，内存峰值中位数为 **92 MiB**；Chrome 分别为 **687 ms** 和 **697 MiB**。Moli 的 CPU 时间约为 Chrome 的 15%，内存峰值约为 13%。测试方法和完整数据见 benchmark 的[资源报告](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md)。
+
+### Web Fetch 评测
+
+[`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) 直接访问真实网站，共有 430 道任务，因此通过率同时反映网站能否访问，以及返回内容是否正确。[WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) 使用 545 份预先保存的 HTML，只比较正文提取质量，不包含真实网站访问。[查看完整评测报告](https://browser.lexmount.com/blog/webfetch-benchmark)。
+
+| 方法 | 通过任务数 | 通过率 |
+| --- | ---: | ---: |
+| Moli | **386/430** | **89.8%** |
+| Chromium | 234/430 | 54.4% |
+| Lightpanda | 228/430 | 53.0% |
+| Obscura | 223/430 | 51.9% |
+| Kitesurf | 192/430 | 44.7% |
+
+<details>
+<summary><strong>WebMainBench · 545 份网页快照的正文提取质量</strong></summary>
+
+| 方法 | 生成正文 | 综合 | 全文 | 代码 | 公式 | 表格内容 | 表格结构 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Moli | 545/545 | **39.27%** | 40.73% | **91.06%** | 28.20% | 22.62% | 13.75% |
+| Lightpanda | 545/545 | 35.00% | 41.52% | 84.71% | 12.97% | 21.81% | **14.00%** |
+| Obscura | 543/545 | 31.03% | **41.88%** | 81.82% | **31.39%** | 0.03% | 0.00% |
+| Chromium | 545/545 | 27.02% | 39.40% | 35.86% | 21.12% | **25.01%** | 13.73% |
+| Kitesurf | 524/545 | 33.43% | 36.99% | 80.70% | 19.32% | 18.25% | 11.87% |
+
+</details>
 
 ## 项目范围
 

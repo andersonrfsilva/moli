@@ -233,30 +233,16 @@ Le document et les styles n'ont qu'une seule source de vérité : le DOM natif, 
 
 ## Données de test
 
-Les mesures ci-dessous illustrent les capacités actuelles de Moli. Elles couvrent des sites réels, des clients d'automatisation, des vérifications du comportement Chromium/WPT et une large suite de régression nextest.
+### Jeux de tests publics
+
+| Évaluation | Jeu de tests | Mesures |
+| --- | --- | --- |
+| Standards et régressions | Sélection de tests [WPT](https://github.com/web-platform-tests/wpt) ; tests de régression [Moli](https://github.com/lexmount/moli/blob/main/.github/workflows/ci.yml) | Tests réussis et régressions |
+| Automatisation du navigateur | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser) · 1 308 tests d’actions et de fonctions Web | Taux de réussite des tests d’actions et de fonctions |
+| CPU et mémoire | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md) · travail terminé par tous sur 557 tâches CDP/Web | Temps CPU et mémoire maximale |
+| Web Fetch | [lexbench-webfetch](https://github.com/lexmount/lexbench-webfetch) · 430 tâches sur des sites en ligne ; [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) · 545 instantanés HTML | Taux de réussite sur le Web en direct ; qualité d'extraction sur des pages figées |
 
 ### Extraction du contenu web
-
-<details open>
-<summary><strong>LexBench Web Fetch · 430 tâches</strong></summary>
-
-Cinq méthodes Web Fetch sont comparées sur les mêmes 430 tâches, réparties en sept catégories. Une tâche est réussie seulement si le contenu, la structure, les adresses de ressources ou les octets du fichier répondent aux exigences.
-
-| Méthode | Tâches réussies | Taux de réussite |
-| --- | ---: | ---: |
-| Build de développement Moli (correctifs WebFetch) | **385/430** | **89.53%** |
-| Chrome for Testing 155.0.8059.39 | 233/430 | 54.19% |
-| Lightpanda 1.0.0 | 227/430 | 52.79% |
-| Obscura 0.2.4 | 222/430 | 51.63% |
-| Kitesurf (hébergé) | 194/430 | 45.12% |
-
-Les appels ont été effectués du 9 au 15 octobre 2026. La ligne Moli correspond à un build de développement postérieur à la version 1.1.17 et non publié (commits `a737f2ae` et `0d9a7ceb` ; 56 des 430 tâches ont été relancées sur le second commit). Il ne s’agit pas du binaire publié sous Moli 1.1.17.
-
-Les tâches proviennent des suites de [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch). [`browser-eval`](https://github.com/lexmount/browser-eval) assemble et corrige les 430 tâches, les exécute et produit le rapport.
-
-[Rapport complet, critères des tâches et preuves des échecs (en chinois)](https://artifact-site.lexmount.cn/v/IqGpMUYHWat-dw4n8usQttTptoPzboAo?version=ver_7c1cd4072edf4403a8ec3c64205f878f).
-
-</details>
 
 ### Exemple de charge de travail d'un agent
 
@@ -288,6 +274,31 @@ Le corpus complet de [Lexbench-Headless-Browser](https://github.com/lexmount/Lex
 </picture>
 
 Kitesurf est un service distant, dont le CPU, la mémoire et le nombre de processus ne sont pas mesurables. La comparaison des ressources ne couvre donc que les quatre moteurs locaux. Une exécution distincte de 557 tâches ne comptabilise que le travail terminé par les quatre. La médiane de Moli par tâche était de **100,6 ms de CPU** et **92 MiB de mémoire de pointe** ; Chrome a enregistré respectivement **687 ms** et **697 MiB**. Moli a utilisé environ 15 % du temps CPU et 13 % de la mémoire de pointe de Chrome. La méthodologie et les données complètes figurent dans la [fiche de ressources](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md) du benchmark.
+
+### Benchmarks Web Fetch
+
+[`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) exécute 430 tâches sur des sites en ligne. Son taux de réussite couvre donc l'accès au site et l'extraction correcte du contenu. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) traite 545 pages HTML figées et mesure uniquement la qualité d'extraction. [Lire le rapport du benchmark](https://browser.lexmount.com/blog/webfetch-benchmark).
+
+| Méthode | Tâches réussies | Taux de réussite |
+| --- | ---: | ---: |
+| Moli | **386/430** | **89,8 %** |
+| Chromium | 234/430 | 54,4 % |
+| Lightpanda | 228/430 | 53,0 % |
+| Obscura | 223/430 | 51,9 % |
+| Kitesurf | 192/430 | 44,7 % |
+
+<details>
+<summary><strong>WebMainBench · qualité d'extraction sur 545 pages figées</strong></summary>
+
+| Méthode | Contenu principal produit | Global | Texte | Code | Formules | Contenu des tableaux | Structure des tableaux |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Moli | 545/545 | **39,27 %** | 40,73 % | **91,06 %** | 28,20 % | 22,62 % | 13,75 % |
+| Lightpanda | 545/545 | 35,00 % | 41,52 % | 84,71 % | 12,97 % | 21,81 % | **14,00 %** |
+| Obscura | 543/545 | 31,03 % | **41,88 %** | 81,82 % | **31,39 %** | 0,03 % | 0,00 % |
+| Chromium | 545/545 | 27,02 % | 39,40 % | 35,86 % | 21,12 % | **25,01 %** | 13,73 % |
+| Kitesurf | 524/545 | 33,43 % | 36,99 % | 80,70 % | 19,32 % | 18,25 % | 11,87 % |
+
+</details>
 
 ## Périmètre du projet
 
