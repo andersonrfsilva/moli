@@ -5,7 +5,7 @@ mod redirect_navigation;
 
 use std::{
     fmt,
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
     path::Path,
     process::ExitCode,
     sync::Arc,
@@ -467,19 +467,6 @@ fn cookie_header_from_args(config: &AppConfig) -> Result<Option<String>> {
     Ok((!values.is_empty()).then(|| values.join(";")))
 }
 
-fn read_cli_cookie_file(reader: impl BufRead) -> Result<Vec<moli_cookie_jar::StoredCookie>> {
-    let mut cookies = Vec::new();
-    for record in reader.split(b'\n') {
-        let record = record?;
-        // curl skips malformed records while retaining valid records in the
-        // same file. Strict profile/import readers keep their existing policy.
-        if let Ok(parsed) = moli_cookie_cache::read_cookie_file(std::io::Cursor::new(record)) {
-            cookies.extend(parsed);
-        }
-    }
-    Ok(cookies)
-}
-
 fn load_cookie_state_cookies(config: &AppConfig) -> Result<Vec<moli_cookie_jar::StoredCookie>> {
     let mut cookies = Vec::new();
     for path in &config.fetch.cookie_files {
@@ -488,14 +475,14 @@ fn load_cookie_state_cookies(config: &AppConfig) -> Result<Vec<moli_cookie_jar::
         }
         if path == "-" {
             cookies.extend(
-                read_cli_cookie_file(std::io::stdin().lock())
+                moli_cookie_cache::read_cookie_file_lossy(std::io::stdin().lock())
                     .context("failed to read --cookie from stdin")?,
             );
             continue;
         }
         match std::fs::File::open(path) {
             Ok(file) if file.metadata().is_ok_and(|metadata| metadata.is_file()) => {
-                match read_cli_cookie_file(BufReader::new(file)) {
+                match moli_cookie_cache::read_cookie_file_lossy(BufReader::new(file)) {
                     Ok(loaded) => cookies.extend(loaded),
                     Err(error) => tracing::debug!(error = %error, "could not read cookie input"),
                 }

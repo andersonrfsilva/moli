@@ -29,6 +29,21 @@ pub fn read_cookie_file(reader: impl std::io::BufRead) -> Result<Vec<StoredCooki
     parse_netscape_cookie_file(reader)
 }
 
+/// Reads valid Netscape cookies, skipping malformed or unrepresentable records.
+/// I/O errors still fail the read rather than accepting an incomplete stream.
+pub fn read_cookie_file_lossy(reader: impl std::io::BufRead) -> Result<Vec<StoredCookie>> {
+    let mut cookies = Vec::new();
+    for parsed in netscape_cookie_file_parser::parse_lossy(reader)? {
+        let Ok(cookie) = stored_cookie_from_netscape_cookie(parsed, cookies.len() as u64) else {
+            continue;
+        };
+        if !cookie.is_expired() {
+            cookies.push(cookie);
+        }
+    }
+    Ok(cookies)
+}
+
 /// Saves unexpired, unpartitioned cookies in the interoperable Netscape format.
 ///
 /// Netscape cookie files cannot represent partition keys, so partitioned

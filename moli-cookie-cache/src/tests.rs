@@ -445,6 +445,53 @@ fn netscape_cookie_parser_reports_line_number_for_malformed_record() {
     assert!(error.to_string().contains("line 2"), "error={error:#}");
 }
 
+#[test]
+fn netscape_cookie_lossy_reader_skips_invalid_records_and_preserves_order() -> Result<()> {
+    let input = b"# Netscape HTTP Cookie File\r\n\
+example.com\tFALSE\t/\tFALSE\t0\tfirst\tone\r\n\
+malformed record\n\
+.\tFALSE\t/\tFALSE\t0\tempty-domain\tinvalid\n\
+example.com\tFALSE\trelative\tFALSE\t0\tbad-path\tinvalid\n\
+example.com\tFALSE\t/\tFALSE\t0\tbad-utf8\t\xff\n\
+example.com\tFALSE\t/\tFALSE\t18446744073709551615\tbad-expiry\tinvalid\n\
+example.com\tFALSE\t/\tFALSE\t1\texpired\tgone\n\
+#HttpOnly_.example.com\tTRUE\t/account/\tTRUE\t2147483647\tsecond\ttwo\n";
+
+    assert!(read_cookie_file(std::io::Cursor::new(input)).is_err());
+    let cookies = read_cookie_file_lossy(std::io::Cursor::new(input))?;
+    assert_eq!(cookies.len(), 2);
+    assert_eq!(cookies[0].name, "first");
+    assert_eq!(cookies[0].value, "one");
+    assert_eq!(cookies[0].creation_index, 0);
+    assert_eq!(cookies[1].name, "second");
+    assert_eq!(cookies[1].value, "two");
+    assert_eq!(cookies[1].creation_index, 1);
+    assert_eq!(cookies[1].domain, "example.com");
+    assert_eq!(cookies[1].path, "/account/");
+    assert!(!cookies[1].host_only);
+    assert!(cookies[1].http_only);
+    assert!(cookies[1].secure);
+    Ok(())
+}
+
+#[test]
+fn netscape_cookie_lossy_reader_propagates_io_errors() {
+    struct FailedCookieInput;
+    impl std::io::Read for FailedCookieInput {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("cookie fixture read failure"))
+        }
+    }
+
+    let error = read_cookie_file_lossy(std::io::BufReader::new(FailedCookieInput))
+        .expect_err("I/O failures must not be treated as malformed cookie records");
+    assert!(error.root_cause().is::<std::io::Error>());
+    assert_eq!(
+        error.root_cause().to_string(),
+        "cookie fixture read failure"
+    );
+}
+
 fn stored_cookie(name: &str, value: &str) -> StoredCookie {
     StoredCookie {
         name: name.to_owned(),
