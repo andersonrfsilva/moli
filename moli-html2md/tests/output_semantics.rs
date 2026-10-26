@@ -539,3 +539,39 @@ fn serialized_state_filter_applies_before_special_element_branches() {
         }
     }
 }
+
+#[test]
+fn percent_encoded_fragments_replace_invalid_utf8_after_literal_matching() {
+    for (fragment, target) in [
+        ("%FF", "�"),
+        ("%E4%B8", "�"),
+        ("%C0%AF", "��"),
+        ("caf%C3%A9%FF", "café�"),
+        ("caf%C3%A9", "café"),
+    ] {
+        let content = format!("<a href='#{fragment}'>Jump</a><p id='{target}'>Target</p>");
+        for source in containers(&content) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            assert_eq!(
+                with_attribute(&output, "id", target).len(),
+                1,
+                "{source}: {markdown}"
+            );
+            assert_eq!(
+                with_attribute(&output, "href", &format!("#{fragment}")).len(),
+                1,
+                "{markdown}"
+            );
+        }
+    }
+    for source in containers("<a href='#%FF'>Jump</a><p id='%FF'>Literal</p><p id='�'>Decoded</p>")
+    {
+        let input = Tree::parse(&source);
+        let markdown = convert(&input, input.root);
+        let output = Tree::parse(&rendered_html(&markdown));
+        assert_eq!(with_attribute(&output, "id", "%FF").len(), 1, "{markdown}");
+        assert!(with_attribute(&output, "id", "�").is_empty(), "{markdown}");
+    }
+}

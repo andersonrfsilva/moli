@@ -176,7 +176,8 @@ pub(crate) fn decode_fragment(fragment: &str) -> String {
         decoded.push(bytes[offset]);
         offset += 1;
     }
-    String::from_utf8(decoded).unwrap_or_else(|_| fragment.to_owned())
+    String::from_utf8(decoded)
+        .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned())
 }
 
 pub(crate) fn markup(id: &str) -> String {
