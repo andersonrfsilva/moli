@@ -411,7 +411,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             for name in [
                                 "rowspan", "colspan", "scope", "headers", "href", "src", "alt",
                                 "title", "start", "reversed", "value", "label", "selected",
-                                "multiple", "disabled",
+                                "multiple", "disabled", "open",
                             ] {
                                 if expanded
                                     && matches!(name, "rowspan" | "colspan" | "scope" | "headers")

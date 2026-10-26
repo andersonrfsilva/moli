@@ -393,3 +393,31 @@ fn input_values_keep_their_word_boundaries_in_every_output_path() {
         }
     }
 }
+
+#[test]
+fn retained_dialogs_and_details_preserve_their_open_state() {
+    for tag in ["dialog", "details"] {
+        for state in ["open", "open=''", "open='false'", ""] {
+            let input = Tree::parse(&format!(
+                "<table><tr><td colspan='2'><{tag} {state}>Important content</{tag}></td></tr></table>"
+            ));
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let elements: Vec<_> = descendants(&output, output.root)
+                .into_iter()
+                .filter(|&node| output.nodes[node].tag.as_deref() == Some(tag))
+                .collect();
+            assert_eq!(elements.len(), 1, "{markdown}");
+            assert_eq!(
+                output.attribute(elements[0], "open").is_some(),
+                !state.is_empty(),
+                "{markdown}"
+            );
+            assert_eq!(
+                text(&output, elements[0]),
+                "Important content",
+                "{markdown}"
+            );
+        }
+    }
+}
