@@ -547,6 +547,7 @@ fn allowed(tag: &str) -> bool {
                 | "em"
                 | "i"
                 | "s"
+                | "strike"
                 | "del"
                 | "sup"
                 | "sub"

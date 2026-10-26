@@ -695,6 +695,29 @@ fn block_html_fallback_preserves_the_enclosing_author_link() {
 }
 
 #[test]
+fn strike_elements_retain_their_deletion_semantics_in_every_output_path() {
+    for tag in ["strike", "s", "del"] {
+        for source in containers(&format!("<{tag}>100</{tag}> 50")) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let deletions: Vec<_> = descendants(&output, output.root)
+                .into_iter()
+                .filter(|&node| {
+                    matches!(
+                        output.nodes[node].tag.as_deref(),
+                        Some("strike" | "s" | "del")
+                    )
+                })
+                .collect();
+            assert_eq!(deletions.len(), 1, "{source}: {markdown}");
+            assert_eq!(text(&output, deletions[0]), "100", "{markdown}");
+            assert!(text(&output, output.root).contains("100 50"), "{markdown}");
+        }
+    }
+}
+
+#[test]
 fn expanded_svg_links_preserve_targets_inside_the_author_link() {
     for label in ["", "Inner"] {
         let content = format!(
