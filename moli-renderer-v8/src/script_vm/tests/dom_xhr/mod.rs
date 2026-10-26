@@ -12,6 +12,7 @@ mod dom;
 mod file_input;
 mod forms;
 mod misc;
+mod native_events;
 mod no_cors_redirect;
 mod receivers;
 mod reopen;
