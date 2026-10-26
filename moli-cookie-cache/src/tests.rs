@@ -56,6 +56,133 @@ fn atomic_write_uses_unique_temp_name_instead_of_fixed_tmp_path() -> Result<()> 
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn atomic_write_respects_the_existing_targets_write_permissions() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = TempDir::new("readonly");
+    fs::create_dir_all(&temp.path)?;
+    let target = temp.path.join("cookies.txt");
+    fs::write(&target, b"protected content")?;
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o444))?;
+    // Privileged users can write 0444 files. Match the kernel's open result
+    // rather than assuming the test process lacks that capability.
+    let writable = fs::OpenOptions::new().write(true).open(&target).is_ok();
+
+    let result = write_file_atomically(&target, b"replacement", "readonly test");
+
+    assert_eq!(result.is_ok(), writable, "result={result:?}");
+    assert_eq!(
+        fs::read(&target)?,
+        if writable {
+            b"replacement".as_slice()
+        } else {
+            b"protected content".as_slice()
+        }
+    );
+    assert_eq!(fs::read_dir(&temp.path)?.count(), 1);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_write_keeps_regular_file_contents_when_temp_creation_fails() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = TempDir::new("readonly-directory");
+    fs::create_dir_all(&temp.path)?;
+    let target = temp.path.join("cookies.txt");
+    let probe = temp.path.join("permission-probe");
+    fs::write(&target, b"original content")?;
+    fs::set_permissions(&temp.path, fs::Permissions::from_mode(0o555))?;
+    let can_create = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+        .is_ok();
+
+    let result = write_file_atomically(&target, b"replacement", "atomic failure test");
+    fs::set_permissions(&temp.path, fs::Permissions::from_mode(0o755))?;
+
+    assert_eq!(result.is_ok(), can_create, "result={result:?}");
+    assert_eq!(
+        fs::read(&target)?,
+        if can_create {
+            b"replacement".as_slice()
+        } else {
+            b"original content".as_slice()
+        }
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_write_writes_to_a_device_without_replacing_its_symlink() -> Result<()> {
+    use std::os::unix::fs::{FileTypeExt, symlink};
+
+    let temp = TempDir::new("device");
+    fs::create_dir_all(&temp.path)?;
+    let target = temp.path.join("null-device");
+    symlink("/dev/null", &target)?;
+
+    write_file_atomically(&target, b"cookie data", "device test")?;
+
+    assert!(fs::symlink_metadata(&target)?.file_type().is_symlink());
+    assert!(fs::metadata(&target)?.file_type().is_char_device());
+    assert_eq!(fs::read_dir(&temp.path)?.count(), 1);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn atomic_write_delivers_bytes_to_a_fifo_without_replacing_it() -> Result<()> {
+    use anyhow::Context;
+    use std::{
+        io::Read,
+        os::unix::fs::FileTypeExt,
+        process::{Command, Stdio},
+        sync::mpsc,
+        time::Duration,
+    };
+
+    let temp = TempDir::new("fifo");
+    fs::create_dir_all(&temp.path)?;
+    let target = temp.path.join("cookie-pipe");
+    assert!(Command::new("mkfifo").arg(&target).status()?.success());
+    let mut reader = Command::new("cat")
+        .arg(&target)
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut stdout = reader.stdout.take().unwrap();
+    let (tx, rx) = mpsc::channel();
+    let read_thread = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout.read_to_end(&mut bytes).map(|_| bytes);
+        let _ = tx.send(result);
+    });
+
+    // Opening the writer pairs with cat's reader; closing it delivers EOF.
+    // Bound the completion wait so replacing the FIFO fails instead of hanging.
+    let written = write_file_atomically(&target, b"cookie data", "fifo test");
+    let received = rx.recv_timeout(Duration::from_secs(5));
+    if received.is_err() {
+        let _ = reader.kill();
+    }
+    let status = reader.wait()?;
+    read_thread.join().expect("pipe reader should not panic");
+    written?;
+    assert!(status.success(), "reader status={status}");
+    assert_eq!(
+        received.context("FIFO reader did not complete")??,
+        b"cookie data"
+    );
+    assert!(fs::metadata(&target)?.file_type().is_fifo());
+    assert_eq!(fs::read_dir(&temp.path)?.count(), 1);
+    Ok(())
+}
+
 #[test]
 fn profile_cookie_cache_round_trips_unexpired_cookies() -> Result<()> {
     let temp = TempDir::new("roundtrip");
