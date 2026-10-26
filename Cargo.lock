@@ -1137,6 +1137,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 
 [[package]]
+name = "derive-new"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cdc8d50f426189eef89dac62fabfa0abb27d5cc008f25bf4156a0203325becc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "derive_more"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3423,6 +3434,7 @@ dependencies = [
  "url",
  "uuid",
  "v8",
+ "v_xmlescape",
  "wasm_dep_analyzer",
  "widestring",
  "wuff",
@@ -6375,12 +6387,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1212fce830b75af194b578e55b3db9049f2c8c45f58d397fb25602fdb50fb3d"
 
 [[package]]
+name = "v_escape-base"
+version = "0.1.0"
+source = "git+https://github.com/lexmount/v_escape?rev=d30e780f4d498ffae80e836bc046501f6dfde47a#d30e780f4d498ffae80e836bc046501f6dfde47a"
+dependencies = [
+ "derive-new",
+]
+
+[[package]]
 name = "v_htmlescape"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "befb3d53c9e3ec641417685896cbc8cc5bd264d6a2e190c56aaef1af24740d99"
 dependencies = [
- "v_escape-base",
+ "v_escape-base 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "v_xmlescape"
+version = "0.1.0"
+source = "git+https://github.com/lexmount/v_escape?rev=d30e780f4d498ffae80e836bc046501f6dfde47a#d30e780f4d498ffae80e836bc046501f6dfde47a"
+dependencies = [
+ "v_escape-base 0.1.0 (git+https://github.com/lexmount/v_escape?rev=d30e780f4d498ffae80e836bc046501f6dfde47a)",
 ]
 
 [[package]]
