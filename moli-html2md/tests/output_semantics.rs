@@ -783,3 +783,98 @@ fn expanded_presentational_columns_preserve_referenced_targets() {
         );
     }
 }
+
+#[test]
+fn generated_html_code_content_preserves_literal_labels_and_link_ownership() {
+    for label in [
+        "[API](/wrong)",
+        "**literal**",
+        "`literal`",
+        "![image](/wrong)",
+    ] {
+        for tag in ["video", "audio", "iframe", "img"] {
+            for pre in [false, true] {
+                let resource = if tag == "img" {
+                    format!("<img src='javascript:invalid' alt='{label}'>")
+                } else {
+                    format!("<{tag} src='/resource' title='{label}'></{tag}>")
+                };
+                let code = format!("<code id='snippet'>x{resource}y</code>");
+                let code = if pre {
+                    format!("<pre>{code}</pre>")
+                } else {
+                    code
+                };
+                for source in containers(&format!("{code}<a href='#snippet'>Jump</a>")) {
+                    let input = Tree::parse(&source);
+                    let markdown = convert(&input, input.root);
+                    let output = Tree::parse(&rendered_html(&markdown));
+                    let codes: Vec<_> = descendants(&output, output.root)
+                        .into_iter()
+                        .filter(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                        .collect();
+                    assert_eq!(codes.len(), 1, "{source}: {markdown}");
+                    assert!(
+                        text(&output, codes[0]).contains(label),
+                        "{source}: {markdown}"
+                    );
+                    assert!(
+                        with_attribute(&output, "href", "/wrong").is_empty(),
+                        "{markdown}"
+                    );
+                    assert!(
+                        with_attribute(&output, "src", "/wrong").is_empty(),
+                        "{markdown}"
+                    );
+                    if tag != "img" {
+                        let links = with_attribute(&output, "href", "/resource");
+                        assert_eq!(links.len(), 1, "{markdown}");
+                        assert_eq!(text(&output, links[0]), label, "{markdown}");
+                        assert!(
+                            descendants(&output, codes[0]).contains(&links[0]),
+                            "{markdown}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn linked_html_code_quotes_generated_labels_and_visible_resource_urls() {
+    let label = "[API](/wrong)";
+    let url = "/v[URL](/wrong).mp4";
+    for tag in ["video", "audio", "iframe"] {
+        let content = format!(
+            "<a href='/outer'><code id='snippet'><{tag} src='{url}' aria-label='{label}'></{tag}></code>Watch</a>\
+             <a href='#snippet'>Jump</a>"
+        );
+        for source in containers(&content) {
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let links = with_attribute(&output, "href", "/outer");
+            assert_eq!(links.len(), 1, "{source}: {markdown}");
+            let body = text(&output, links[0]);
+            assert!(
+                body.contains(label) && body.contains(url) && body.contains("Watch"),
+                "{source}: {markdown}"
+            );
+            assert!(
+                with_attribute(&output, "href", "/wrong").is_empty(),
+                "{markdown}"
+            );
+            assert!(
+                with_attribute(&output, "href", url).is_empty(),
+                "{markdown}"
+            );
+            let targets = with_attribute(&output, "id", "snippet");
+            assert_eq!(targets.len(), 1, "{markdown}");
+            assert!(
+                descendants(&output, links[0]).contains(&targets[0]),
+                "{markdown}"
+            );
+        }
+    }
+}

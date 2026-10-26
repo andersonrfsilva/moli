@@ -231,6 +231,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     _ => mode,
                 };
                 let code = !matches!(mode, TextMode::Normal);
+                let write_text = |text: &str, output: &mut String| {
+                    escape_text(text, output, code, keep_source_lines && code, inline_root);
+                };
                 if let NodeKind::Element(tag) = dom.node_kind(node)
                     && !allowed(tag)
                 {
@@ -250,13 +253,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         } else {
                             content.text(text);
                         }
-                        escape_text(
-                            text,
-                            &mut output,
-                            code,
-                            keep_source_lines && code,
-                            inline_root,
-                        );
+                        write_text(text, &mut output);
                     }
                     NodeKind::Element(
                         "head" | "title" | "script" | "style" | "noscript" | "template",
@@ -275,14 +272,14 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         if let Some(value) = crate::form::input_text(dom, node) {
                             content.text(value);
                             output.push(' ');
-                            escape(value, &mut output);
+                            write_text(value, &mut output);
                             output.push(' ');
                         }
                     }
                     NodeKind::Element("textarea") => {
                         if let Some(value) = dom.control_value(node) {
                             content.text(value);
-                            escape(value, &mut output);
+                            write_text(value, &mut output);
                         } else {
                             tasks.push(Task::Siblings(dom.first_child(node), depth + 1, mode));
                         }
@@ -325,7 +322,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 for id in targets {
                                     output.push_str(&crate::anchors::markup(id));
                                 }
-                                escape(label, &mut output);
+                                write_text(label, &mut output);
                             }
                             continue;
                         }
@@ -346,15 +343,21 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 let has_source = !urls.is_empty();
                                 for url in urls {
                                     if in_link {
-                                        escape(crate::media::label(dom, node, tag), &mut output);
+                                        write_text(
+                                            crate::media::label(dom, node, tag),
+                                            &mut output,
+                                        );
                                         output.push_str(" (");
-                                        escape(url, &mut output);
+                                        write_text(url, &mut output);
                                         output.push_str(") ");
                                     } else {
                                         output.push_str("<a href=\"");
                                         escape(url, &mut output);
                                         output.push_str("\">");
-                                        escape(crate::media::label(dom, node, tag), &mut output);
+                                        write_text(
+                                            crate::media::label(dom, node, tag),
+                                            &mut output,
+                                        );
                                         output.push_str("</a> ");
                                     }
                                 }
@@ -587,10 +590,7 @@ fn escape_text(
         }
         if keep_newlines && matches!(ch, '\n' | '\r') {
             output.push(ch);
-        } else if code
-            && inline_root
-            && matches!(ch, '\\' | '*' | '_' | '`' | '~' | '[' | ']' | '$')
-        {
+        } else if code && inline_root && ch.is_ascii_punctuation() {
             write!(output, "&#{};", ch as u32).expect("writing to String");
         } else {
             let mut bytes = [0; 4];
