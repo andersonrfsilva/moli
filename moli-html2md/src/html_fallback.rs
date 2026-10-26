@@ -383,8 +383,12 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     | "td"
                                     | "th"
                                     | "caption"
+                                    | "colgroup"
+                                    | "col"
                             );
-                        let retained = if expanded {
+                        let retained = if expanded && matches!(tag, "colgroup" | "col") {
+                            None
+                        } else if expanded {
                             Some("div")
                         } else if allowed(tag)
                             && (tag != "a" || !in_link)
@@ -411,6 +415,8 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     | "td"
                                     | "th"
                                     | "caption"
+                                    | "colgroup"
+                                    | "col"
                             ) {
                                 begin_html_line(&mut output);
                             }
@@ -427,7 +433,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             for name in [
                                 "rowspan", "colspan", "scope", "headers", "href", "src", "alt",
                                 "title", "start", "reversed", "value", "label", "selected",
-                                "multiple", "disabled", "open",
+                                "multiple", "disabled", "open", "span",
                             ] {
                                 if expanded
                                     && matches!(name, "rowspan" | "colspan" | "scope" | "headers")
@@ -482,9 +488,10 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             if tag == "pre" {
                                 output.push('\n');
                             }
-                            if !matches!(tag, "br" | "hr" | "img") {
-                                tasks.push(Task::Close(tag.to_owned()));
+                            if matches!(tag, "br" | "hr" | "img" | "col") {
+                                continue;
                             }
+                            tasks.push(Task::Close(tag.to_owned()));
                         } else {
                             // Supported tags can still be expanded, for example
                             // SVG links nested inside an author's outer link.
@@ -531,6 +538,8 @@ fn allowed(tag: &str) -> bool {
         || matches!(
             tag,
             "select"
+                | "colgroup"
+                | "col"
                 | "optgroup"
                 | "option"
                 | "button"

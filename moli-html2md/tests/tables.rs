@@ -33,7 +33,16 @@ fn table_signature(html: &str) -> Vec<String> {
         let table_tag = node.tag.as_deref().filter(|tag| {
             matches!(
                 *tag,
-                "table" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "caption"
+                "table"
+                    | "thead"
+                    | "tbody"
+                    | "tfoot"
+                    | "tr"
+                    | "td"
+                    | "th"
+                    | "caption"
+                    | "colgroup"
+                    | "col"
             )
         });
         if close {
@@ -44,13 +53,19 @@ fn table_signature(html: &str) -> Vec<String> {
         }
         if let Some(tag) = table_tag {
             result.push(tag.to_owned());
-            for (key, value) in &node.attrs {
-                if matches!(key.as_str(), "rowspan" | "colspan" | "scope" | "headers")
-                    || (key == "id" && headers.contains(value.as_str()))
-                {
-                    result.push(format!("{key}={value}"));
-                }
-            }
+            let mut attributes: Vec<_> = node
+                .attrs
+                .iter()
+                .filter(|(key, value)| {
+                    matches!(
+                        key.as_str(),
+                        "rowspan" | "colspan" | "scope" | "headers" | "span"
+                    ) || (key == "id" && headers.contains(value.as_str()))
+                })
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect();
+            attributes.sort_unstable();
+            result.extend(attributes);
         }
         if let Some(text) = &node.text {
             let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -75,6 +90,25 @@ fn assert_preserves_table(source: &str) {
         table_signature(&rendered_html(&markdown(source))),
         table_signature(source)
     );
+}
+
+#[test]
+fn structured_tables_preserve_column_group_header_relationships() {
+    for columns in [
+        "<colgroup span='2'></colgroup><colgroup span='2'></colgroup>",
+        "<colgroup><col span='2'></colgroup><colgroup><col><col></colgroup>",
+        "<colgroup span='2'></colgroup><colgroup><col span='2'></colgroup>",
+    ] {
+        let source = format!(
+            "<table>{columns}\
+             <thead><tr><th scope='colgroup' colspan='2'>First</th>\
+             <th scope='colgroup' colspan='2'>Second</th></tr></thead>\
+             <tbody><tr><td>A</td><td>B</td><td>C</td><td>D</td></tr></tbody></table>"
+        );
+        assert_preserves_table(&source);
+        let result = markdown(&source);
+        assert!(!result.contains("</col>"), "{result}");
+    }
 }
 
 #[test]
