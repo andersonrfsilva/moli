@@ -257,6 +257,68 @@ async fn literal_cookies_follow_redirects_without_entering_the_exported_store() 
     Ok(())
 }
 
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cookie_inputs_read_fifo_streams_without_replacing_them() -> Result<()> {
+    use super::subprocess::run_command_with_process_timeout;
+    use std::{os::unix::fs::FileTypeExt, time::Duration};
+
+    let fixture = CookieFixture::spawn().await?;
+    let timeout = Duration::from_secs(10);
+    for flag in ["--cookie", "--cookie-file"] {
+        for (input, expected) in [
+            (record(), "file=loaded"),
+            (
+                "Set-Cookie: header=loaded; Domain=127.0.0.1; Path=/; HttpOnly\r\n",
+                "header=loaded",
+            ),
+        ] {
+            let pipe = super::unique_temp_file_path("cookie-fifo-input", "cookies.fifo")?;
+            let mut create = Command::new("mkfifo");
+            create.arg(&pipe);
+            assert_success(&run_command_with_process_timeout(create, timeout)?);
+
+            let mut producer = Command::new("sh");
+            producer.args(["-c", "printf '%s' \"$1\" > \"$2\"", "cookie-fifo-writer"]);
+            producer.arg(input).arg(&pipe);
+            // The FIFO open pairs reader and writer; producer exit delivers EOF.
+            // Bound both children independently so either missing peer is reaped.
+            let writer =
+                std::thread::spawn(move || run_command_with_process_timeout(producer, timeout));
+            let mut command = Command::new(env!("CARGO_BIN_EXE_moli"));
+            command
+                .args([
+                    "fetch",
+                    "--http-no-proxy",
+                    "*",
+                    "--redirect-wait-ms",
+                    "0",
+                    "--wait-until",
+                    "load",
+                    "--timeout",
+                    "5000",
+                    flag,
+                ])
+                .arg(&pipe)
+                .arg(format!("{}/echo", fixture.base));
+            let output = run_command_with_process_timeout(command, timeout);
+            let written = writer.join().expect("FIFO producer should not panic");
+            let is_fifo = std::fs::metadata(&pipe)?.file_type().is_fifo();
+            std::fs::remove_file(&pipe)?;
+            std::fs::remove_dir(pipe.parent().unwrap())?;
+
+            let body = assert_success(&output?);
+            assert!(
+                body.contains(&format!("<main>{expected}</main>")),
+                "{flag}: {body}"
+            );
+            assert_success(&written?);
+            assert!(is_fifo, "reading cookie input must preserve the FIFO");
+        }
+    }
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cookie_store_and_manual_cookie_headers_are_both_sent() -> Result<()> {
     let fixture = CookieFixture::spawn().await?;

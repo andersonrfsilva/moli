@@ -482,16 +482,13 @@ fn load_cookie_state_cookies(config: &AppConfig) -> Result<Vec<moli_cookie_jar::
             );
             continue;
         }
-        match std::fs::File::open(path) {
-            Ok(file) if file.metadata().is_ok_and(|metadata| metadata.is_file()) => {
-                match moli_cookie_cache::read_cookie_input_lossy(BufReader::new(file)) {
-                    Ok(loaded) => cookies.extend(loaded),
-                    Err(error) => tracing::debug!(error = %error, "could not read cookie input"),
-                }
+        // Like curl, a missing, unreadable, or directory input does not
+        // turn the transfer into a file-reading failure.
+        if let Ok(file) = std::fs::File::open(path) {
+            match moli_cookie_cache::read_cookie_input_lossy(BufReader::new(file)) {
+                Ok(loaded) => cookies.extend(loaded),
+                Err(error) => tracing::debug!(error = %error, "could not read cookie input"),
             }
-            // Like curl, a missing, unreadable, or directory input does not
-            // turn the transfer into a file-reading failure.
-            _ => {}
         }
     }
     Ok(cookies)
