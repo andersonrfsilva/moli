@@ -731,12 +731,11 @@ fn text_stroke_follows_synthetic_bold_outline_expansion() {
         color: RED,
         paint_first: true,
     });
-    // The fixture font has 1000 units per em, and emboldened fills are expanded
-    // in font units before scaling, so an amount of 40 grows the 50px fill by
-    // 2px per side: fill edge x=18, stroke 17..19 under it -> red 17, black 18.
+    // Embolden is expressed in local CSS pixels, independent of the font's
+    // UPEM: 2px moves the fill edge to x=18 and the stroke to 17..19.
     let regular = raster_stroked_ahem_box(stroke, 0.0);
-    let bold = raster_stroked_ahem_box(stroke, 40.0);
-    let bold_fill = raster_stroked_ahem_box(None, 40.0);
+    let bold = raster_stroked_ahem_box(stroke, 2.0);
+    let bold_fill = raster_stroked_ahem_box(None, 2.0);
     assert_eq!(pixel(&regular, 17, 30), [255, 255, 255, 255]);
     assert!(
         is_black(pixel(&bold_fill, 18, 30)),
@@ -747,6 +746,98 @@ fn text_stroke_follows_synthetic_bold_outline_expansion() {
     assert!(is_red(pixel(&bold, 17, 30)), "{:?}", pixel(&bold, 17, 30));
     assert!(is_black(pixel(&bold, 18, 30)), "{:?}", pixel(&bold, 18, 30));
     assert_eq!(pixel(&bold, 16, 30), [255, 255, 255, 255]);
+}
+
+#[test]
+fn synthetic_bold_fill_and_stroke_share_css_pixel_geometry_across_upem_and_sizes() {
+    use moli_layout::{PaintFillRule, PaintPath, PaintPathElement as E, PaintPoint, PaintStroke};
+    use skrifa::MetadataProvider;
+    for bytes in [
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf").as_slice(),
+        include_bytes!("../../tests/fixtures/moli-text-stroke-250.ttf").as_slice(),
+    ] {
+        let font = peniko::FontData::new(Blob::from(bytes.to_vec()), 0);
+        let face = skrifa::FontRef::from_index(bytes, 0).unwrap();
+        let id = face.charmap().map('R').unwrap().to_u32();
+        for font_size in [20.0, 50.0, 80.0] {
+            for order in [None, Some(false), Some(true)] {
+                let mut actual = snapshot(140, 140, 1.0);
+                let mut run = ahem_run(&mut actual, None, 0.3);
+                run.font = actual.intern_font(&font);
+                run.font_size = font_size;
+                run.glyphs[0] = moli_layout::PaintGlyph {
+                    id,
+                    x: 40.0,
+                    y: 100.0,
+                };
+                run.stroke = order.map(|paint_first| moli_layout::PaintTextStroke {
+                    width: 2.0,
+                    color: RED,
+                    paint_first,
+                });
+                actual.push_fragment(PaintFragment::GlyphRun(run));
+
+                // Ground truth is an ordinary rectangle expanded by 0.3px,
+                // with a 2px stroke around that new contour. In particular the
+                // inner stroke edge must not move another 0.6px into the fill.
+                let (left, top, right, bottom) = (
+                    39.7,
+                    100.0 - font_size * 0.8 - 0.3,
+                    40.0 + font_size * 0.6 + 0.3,
+                    100.3,
+                );
+                let rect = PaintRect::new(left, top, right - left, bottom - top);
+                let fill = PaintFragment::Fill {
+                    fill_rule: PaintFillRule::NonZero,
+                    shape: PaintShape::Rect(rect),
+                    brush: PaintBrush::Solid(PaintColor::BLACK),
+                    transform: PaintTransform2D::IDENTITY,
+                };
+                let stroke = PaintFragment::Stroke(PaintStroke {
+                    path: PaintPath {
+                        bounds: rect,
+                        elements: vec![
+                            E::MoveTo(PaintPoint::new(left, top)),
+                            E::LineTo(PaintPoint::new(right, top)),
+                            E::LineTo(PaintPoint::new(right, bottom)),
+                            E::LineTo(PaintPoint::new(left, bottom)),
+                            E::Close,
+                        ],
+                    },
+                    width: 2.0,
+                    color: RED,
+                    join: moli_layout::PaintLineJoin::Miter,
+                    start_cap: moli_layout::PaintLineCap::Butt,
+                    end_cap: moli_layout::PaintLineCap::Butt,
+                    miter_limit: 4.0,
+                    dash_pattern: Vec::new(),
+                    dash_offset: 0.0,
+                    transform: PaintTransform2D::IDENTITY,
+                });
+                let mut reference = snapshot(140, 140, 1.0);
+                if order == Some(true) {
+                    reference.push_fragment(stroke.clone());
+                }
+                reference.push_fragment(fill);
+                if order == Some(false) {
+                    reference.push_fragment(stroke);
+                }
+                let actual = raster_snapshot(&actual).unwrap();
+                let reference = raster_snapshot(&reference).unwrap();
+                let difference = actual
+                    .rgba
+                    .iter()
+                    .zip(&reference.rgba)
+                    .map(|(a, b)| a.abs_diff(*b))
+                    .max()
+                    .unwrap();
+                assert!(
+                    difference <= 1,
+                    "size={font_size}, order={order:?}, difference={difference}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

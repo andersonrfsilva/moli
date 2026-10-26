@@ -39,6 +39,11 @@ The dependency update preserves the subsetting algorithm, variable fonts and
 CFF2 support. Krilla's `imagesize` 0.14 and `base64` 0.22
 also coexist with usvg's 0.15 and 0.23; their version requirements do not overlap.
 
+Synthetic weight is expressed in local CSS pixels. The pinned AnyRender CPU
+adapter passes it to both fill and stroke; the Glifo patch converts it when
+absorbing transforms and preparing cached outlines. Its `vello_common` source
+matches the published 0.2.0 crate and is pinned alongside Glifo to share types.
+
 The PDF adapter embeds and subsets fonts, using Parley's existing glyph positions
 and the snapshot's shared logical text/UTF-8 cluster ranges. These mappings are
 collected only for print demands, keeping them out of the screenshot hot path.

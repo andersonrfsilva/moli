@@ -108,7 +108,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 [[package]]
 name = "anyrender"
 version = "0.12.0"
-source = "git+https://github.com/ldm0/anyrender?rev=18fd67d7a5622a9821d86434857fd69856912a43#18fd67d7a5622a9821d86434857fd69856912a43"
+source = "git+https://github.com/ldm0/anyrender?rev=bedd3b64c6031756e3bb98d0975a8b9648701a98#bedd3b64c6031756e3bb98d0975a8b9648701a98"
 dependencies = [
  "kurbo",
  "peniko",
@@ -119,7 +119,7 @@ dependencies = [
 [[package]]
 name = "anyrender_svg"
 version = "0.13.0"
-source = "git+https://github.com/ldm0/anyrender?rev=18fd67d7a5622a9821d86434857fd69856912a43#18fd67d7a5622a9821d86434857fd69856912a43"
+source = "git+https://github.com/ldm0/anyrender?rev=bedd3b64c6031756e3bb98d0975a8b9648701a98#bedd3b64c6031756e3bb98d0975a8b9648701a98"
 dependencies = [
  "anyrender",
  "kurbo",
@@ -130,7 +130,7 @@ dependencies = [
 [[package]]
 name = "anyrender_vello_cpu"
 version = "0.15.0"
-source = "git+https://github.com/ldm0/anyrender?rev=18fd67d7a5622a9821d86434857fd69856912a43#18fd67d7a5622a9821d86434857fd69856912a43"
+source = "git+https://github.com/ldm0/anyrender?rev=bedd3b64c6031756e3bb98d0975a8b9648701a98#bedd3b64c6031756e3bb98d0975a8b9648701a98"
 dependencies = [
  "anyrender",
  "debug_timer",
@@ -1689,8 +1689,7 @@ dependencies = [
 [[package]]
 name = "glifo"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "282a26c1e23de04bdab3e34a21b6f877a479b96737792516b9b8b8f69b6661be"
+source = "git+https://github.com/ldm0/vello?rev=beb2329c1f195967f1c461758fcc9d308d388aa0#beb2329c1f195967f1c461758fcc9d308d388aa0"
 dependencies = [
  "bytemuck",
  "foldhash",
@@ -6399,8 +6398,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vello_common"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbb2141a2bca6e6d598e471fd4d1d7eed8e020aad6a28187edda07f091a325dd"
+source = "git+https://github.com/ldm0/vello?rev=beb2329c1f195967f1c461758fcc9d308d388aa0#beb2329c1f195967f1c461758fcc9d308d388aa0"
 dependencies = [
  "bytemuck",
  "fearless_simd",

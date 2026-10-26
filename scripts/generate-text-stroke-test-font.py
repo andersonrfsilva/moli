@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib.scaleUpem import scale_upem
 
 
 def triangle(left: int, right: int):
@@ -27,6 +28,16 @@ def line(start: tuple[int, int], end: tuple[int, int]):
     return pen.glyph()
 
 
+def rectangle():
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 0))
+    pen.lineTo((600, 0))
+    pen.lineTo((600, 800))
+    pen.lineTo((0, 800))
+    pen.closePath()
+    return pen.glyph()
+
+
 builder = FontBuilder(1000, isTTF=True)
 glyphs = {
     ".notdef": triangle(0, 600),
@@ -36,9 +47,10 @@ glyphs = {
     "D": line((300, 0), (300, 800)),
     "E": line((0, 400), (600, 400)),
     "space": TTGlyphPen(None).glyph(),
+    "R": rectangle(),
 }
 builder.setupGlyphOrder(list(glyphs))
-builder.setupCharacterMap({**{ord(ch): ch for ch in "ABCDE"}, ord(" "): "space"})
+builder.setupCharacterMap({**{ord(ch): ch for ch in "ABCDER"}, ord(" "): "space"})
 builder.setupGlyf(glyphs)
 builder.setupHorizontalMetrics(
     {name: (600, {"B": 200, "C": -500, "D": 300}.get(name, 0)) for name in glyphs}
@@ -63,4 +75,9 @@ builder.setupHead(flags=1, created=2_082_844_800, modified=2_082_844_800)
 builder.save(
     Path(__file__).resolve().parents[1]
     / "moli-paint/tests/fixtures/moli-text-stroke.ttf"
+)
+scale_upem(builder.font, 250)
+builder.save(
+    Path(__file__).resolve().parents[1]
+    / "moli-paint/tests/fixtures/moli-text-stroke-250.ttf"
 )

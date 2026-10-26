@@ -7,9 +7,9 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 krilla = { git = "https://github.com/LaurenzV/krilla", rev = "5eb4e1fb24a24ce78b533c23b080969917530c32", default-features = false, features = ["raster-images"] }
 skrifa = "0.44.0"
-anyrender = { git = "https://github.com/ldm0/anyrender", rev = "18fd67d7a5622a9821d86434857fd69856912a43" }
-anyrender_svg = { git = "https://github.com/ldm0/anyrender", rev = "18fd67d7a5622a9821d86434857fd69856912a43", default-features = false, features = ["text"] }
-anyrender_vello_cpu = { git = "https://github.com/ldm0/anyrender", rev = "18fd67d7a5622a9821d86434857fd69856912a43", default-features = false, features = ["bitmap-glyphs", "filters"] }
+anyrender = { git = "https://github.com/ldm0/anyrender", rev = "bedd3b64c6031756e3bb98d0975a8b9648701a98" }
+anyrender_svg = { git = "https://github.com/ldm0/anyrender", rev = "bedd3b64c6031756e3bb98d0975a8b9648701a98", default-features = false, features = ["text"] }
+anyrender_vello_cpu = { git = "https://github.com/ldm0/anyrender", rev = "bedd3b64c6031756e3bb98d0975a8b9648701a98", default-features = false, features = ["bitmap-glyphs", "filters"] }
 moli-image = { path = "../moli-image" }
 moli-layout = { path = "../moli-layout" }
 peniko = "0.6.0"

@@ -8,6 +8,9 @@ Glyph C has a negative left side bearing that differs from its raw `glyf`
 bounds, checking that allocation uses the rendered glyph's origin.
 Glyphs D and E are closed vertical/horizontal lines with zero fill area but
 visible stroke ink; the space glyph has no path at all.
+Glyph R is a rectangle for checking synthetic weight and both sides of its
+stroke. `moli-text-stroke-250.ttf` has the same shapes at UPEM 250, compared
+against the UPEM 1000 font to test the local CSS pixel contract.
 
 `moli-pdf.ttf` is derived from the project's generated Ahem font by
 `uv run scripts/generate-pdf-test-font.py`, under the same license.
