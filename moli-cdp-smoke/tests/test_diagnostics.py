@@ -16,6 +16,7 @@ from moli_cdp_smoke.diagnostics import (
 )
 from moli_cdp_smoke.raw_cdp import RawCdpClient
 from moli_cdp_smoke.helpers import attach_cdp_event_collector
+from moli_cdp_smoke.progress import await_with_progress
 
 
 class _Socket:
@@ -31,6 +32,33 @@ class _Socket:
 
 
 class DiagnosticsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_failure_preserves_pending_commands_and_task_stack_before_later_cases(self) -> None:
+        entered = asyncio.Event()
+
+        async def pending_history_back() -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+        with tempfile.TemporaryDirectory() as directory:
+            with diagnostics_scope(Path(directory) / "worker.json") as diagnostics:
+                task = asyncio.create_task(pending_history_back(), name="pending-history-back")
+                await entered.wait()
+                record_wire(self, "send", {"id": 17, "method": "Page.goBack"})
+                with self.assertRaises(TimeoutError):
+                    await await_with_progress("history-back", task, timeout_seconds=0.01)
+                for index in range(150):
+                    record_phase(f"later-case-{index}", "passed")
+                    record_wire(self, "event", {"method": "later.event"})
+            saved = json.loads((diagnostics.directory / "failure-001.json").read_text())
+            self.assertEqual(saved["phases"][-1]["label"], "history-back")
+            self.assertEqual(saved["phases"][-1]["status"], "failed")
+            self.assertEqual(saved["pendingCommands"][0]["message"]["method"], "Page.goBack")
+            stack = next(item for item in saved["taskStacks"] if item["name"] == "pending-history-back")
+            self.assertIn("pending_history_back", "".join(stack["stack"]))
+            checkpoint = json.loads((diagnostics.directory / "checkpoint.json").read_text())
+            self.assertFalse(any(item["label"] == "history-back" for item in checkpoint["phases"]))
+            self.assertIn(str(diagnostics.directory / "failure-001.json"), diagnostics.artifacts)
+
     async def test_lone_utf16_surrogates_round_trip_in_protocol_and_trace_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             value = "high:\ud800-low:\udfff"

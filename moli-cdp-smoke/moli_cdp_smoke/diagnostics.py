@@ -61,6 +61,7 @@ class Diagnostics:
         self.errors: list[str] = []
         self.artifacts: list[str] = []
         self.message_count = 0
+        self.failure_count = 0
         self._checkpoint: asyncio.TimerHandle | None = None
         self._closed = False
         self.flush()
@@ -95,6 +96,19 @@ class Diagnostics:
         self.phases.append({"label": label, "status": status,
                             "elapsed": time.monotonic() - self.started,
                             **({"error": f"{type(error).__name__}: {error}"} if error else {})})
+        if error is not None and self.directory is not None:
+            self.failure_count += 1
+            snapshot = self._snapshot()
+            try:
+                snapshot["taskStacks"] = [
+                    {"name": task.get_name(),
+                     "stack": [line for frame in task.get_stack()
+                               for line in traceback.format_stack(frame)]}
+                    for task in asyncio.all_tasks()
+                ]
+            except RuntimeError:  # A synchronous diagnostic has no running loop.
+                snapshot["taskStacks"] = []
+            self.write(f"failure-{self.failure_count:03d}.json", snapshot)
         self._schedule_checkpoint()
 
     def write(self, name: str, payload: Any) -> str | None:
@@ -123,7 +137,10 @@ class Diagnostics:
         if self._checkpoint is not None:
             self._checkpoint.cancel()
             self._checkpoint = None
-        self.write("checkpoint.json", {
+        self.write("checkpoint.json", self._snapshot())
+
+    def _snapshot(self) -> dict[str, Any]:
+        return {
             "startedAt": self.started_at, "elapsed": time.monotonic() - self.started,
             "initialResources": self.initial_resources, "currentResources": _resources(),
             "messageCount": self.message_count, "lastMessages": list(self.messages),
@@ -133,7 +150,7 @@ class Diagnostics:
                 "playwright": "Local CDPSession call identifiers, not CDP wire request IDs.",
                 "playwright-driver": "Python SDK/driver RPC identifiers, not CDP wire request IDs.",
             },
-        })
+        }
 
     def finish(self) -> dict[str, Any]:
         if not self._closed:
