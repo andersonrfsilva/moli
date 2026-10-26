@@ -21,6 +21,19 @@ pub(crate) enum Style<'a> {
     },
 }
 
+impl Style<'_> {
+    fn html_tag(self) -> &'static str {
+        match self {
+            Self::Strong => "strong",
+            Self::Emphasis => "em",
+            Self::Strike => "del",
+            Self::Superscript => "sup",
+            Self::Subscript => "sub",
+            Self::Link { .. } => "a",
+        }
+    }
+}
+
 struct OpenStyle<'a> {
     style: Style<'a>,
     start: usize,
@@ -82,6 +95,13 @@ impl<'a> Writer<'a> {
         self.desired
             .iter()
             .any(|style| matches!(style, Style::Link { .. }))
+    }
+
+    pub(crate) fn html_context(&self, block: bool) -> crate::html_fallback::FormattingContext {
+        crate::html_fallback::FormattingContext {
+            in_link: self.in_link(),
+            wrapped_block: block && !self.desired.is_empty(),
+        }
     }
 
     pub(crate) fn push_style(&mut self, style: Style<'a>) -> bool {
@@ -159,35 +179,45 @@ impl<'a> Writer<'a> {
             self.content.object();
         }
         if block {
-            let output = if let Some(&Style::Link {
-                serial,
-                href,
-                title,
-            }) = self
-                .desired
-                .iter()
-                .find(|style| matches!(style, Style::Link { .. }))
-            {
-                // A Markdown link cannot contain a block. Keep its destination
-                // in HTML, with a block wrapper so CommonMark treats all of the
-                // enclosed markup as HTML rather than parsing another link.
-                let mut markup = String::from("<div><a href=\"");
-                crate::html_fallback::escape_attribute(href, &mut markup);
-                markup.push('"');
-                if let Some(title) = title {
-                    markup.push_str(" title=\"");
-                    crate::html_fallback::escape_attribute(title, &mut markup);
-                    markup.push('"');
-                }
-                markup.push('>');
-                let mut output = Output::default();
-                output.push_text(markup.into());
-                output.push_text(html.markup.into());
-                output.push_text("</a></div>".into());
-                self.last_link = self.last_link.max(serial);
-                output
-            } else {
+            let output = if self.desired.is_empty() {
                 html.markup.into()
+            } else {
+                // Block HTML cannot inherit Markdown delimiters. Recreate the
+                // enclosing styles in order, inside a CommonMark HTML block.
+                let mut opening = String::from("<div>");
+                for &style in &self.desired {
+                    opening.push('<');
+                    opening.push_str(style.html_tag());
+                    if let Style::Link {
+                        serial,
+                        href,
+                        title,
+                    } = style
+                    {
+                        opening.push_str(" href=\"");
+                        crate::html_fallback::escape_attribute(href, &mut opening);
+                        opening.push('"');
+                        if let Some(title) = title {
+                            opening.push_str(" title=\"");
+                            crate::html_fallback::escape_attribute(title, &mut opening);
+                            opening.push('"');
+                        }
+                        self.last_link = self.last_link.max(serial);
+                    }
+                    opening.push('>');
+                }
+                let mut closing = String::new();
+                for &style in self.desired.iter().rev() {
+                    closing.push_str("</");
+                    closing.push_str(style.html_tag());
+                    closing.push('>');
+                }
+                closing.push_str("</div>");
+                let mut output = Output::default();
+                output.push_text(opening.into());
+                output.push_text(html.markup.into());
+                output.push_text(closing.into());
+                output
             };
             self.append_block(output, 2, 2);
         } else {

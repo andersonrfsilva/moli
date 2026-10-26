@@ -149,6 +149,11 @@ enum Task<Id> {
     Literal(&'static str),
 }
 
+pub(crate) struct FormattingContext {
+    pub(crate) in_link: bool,
+    pub(crate) wrapped_block: bool,
+}
+
 /// HTML fallback preserves structural content and referenced navigation targets.
 /// Keep content markup only; scripts, styles, event handlers and unrelated
 /// presentation attributes are never copied.
@@ -159,14 +164,16 @@ pub(crate) fn render<D: Dom + ?Sized>(
     options: &crate::Options,
     anchor_targets: &crate::anchors::Targets,
     emitted_anchors: &mut HashSet<String>,
-    mut in_link: bool,
+    formatting: FormattingContext,
 ) -> crate::content::Html {
+    let mut in_link = formatting.in_link;
     let limit = options.max_depth;
     let default_language = options.default_code_language.as_deref();
     let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
-    // Linked blocks receive an outer HTML wrapper. Numeric references preserve
+    // Formatted blocks receive an outer HTML wrapper. Numeric references preserve
     // source newlines without blank lines ending that CommonMark HTML block.
-    let keep_source_lines = !in_link && matches!(dom.node_kind(root), NodeKind::Element("pre"));
+    let keep_source_lines =
+        !formatting.wrapped_block && matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut text_escaper = TextEscaper {
         inline_root,
         keep_newlines: keep_source_lines,

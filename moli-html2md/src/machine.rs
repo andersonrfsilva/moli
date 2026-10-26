@@ -215,7 +215,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
     }
 
     fn html(&mut self, node: D::NodeId, depth: usize, block: bool) {
-        let in_link = self.writer().in_link();
+        let formatting = self.writer().html_context(block);
         let html = crate::html_fallback::render(
             self.dom,
             node,
@@ -223,7 +223,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
             self.options,
             &self.anchor_targets,
             &mut self.emitted_anchors,
-            in_link,
+            formatting,
         );
         self.writer().html(html, block);
     }

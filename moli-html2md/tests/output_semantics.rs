@@ -995,3 +995,76 @@ fn pipe_target_ids_round_trip_without_table_specific_backslash_processing() {
         }
     }
 }
+
+#[test]
+fn block_html_fallback_preserves_the_enclosing_formatting_stack() {
+    let formats: &[(&str, &str, &[&str])] = &[
+        ("<del>", "</del>", &["del"]),
+        ("<s>", "</s>", &["del"]),
+        ("<strike>", "</strike>", &["del"]),
+        ("<strong>", "</strong>", &["strong"]),
+        ("<b>", "</b>", &["strong"]),
+        ("<em>", "</em>", &["em"]),
+        ("<i>", "</i>", &["em"]),
+        ("<sup>", "</sup>", &["sup"]),
+        ("<sub>", "</sub>", &["sub"]),
+        (
+            "<del><strong><em>",
+            "</em></strong></del>",
+            &["del", "strong", "em"],
+        ),
+        ("<del><a href='/product'>", "</a></del>", &["del", "a"]),
+        ("<a href='/product'><del>", "</del></a>", &["a", "del"]),
+    ];
+    for &(open, close, tags) in formats {
+        for block in [
+            "<table><tr><td>Product</td><td>Other</td></tr></table>",
+            "<table><tr><td colspan='2'>Product</td></tr></table>",
+            "<table><tr><td colspan='2'><table><tr><td>Product</td></tr></table></td></tr></table>",
+            "<pre id='source'><code>Product\n\n[](*x*)\n</code></pre>",
+            "<h2><div>Product</div></h2>",
+        ] {
+            for (before, after) in [("", ""), ("Before", "After")] {
+                let source = format!(
+                    "{open}{before}{block}{after}{close}<p>Outside</p><a href='#source'>Jump</a>"
+                );
+                let input = Tree::parse(&source);
+                let markdown = convert(&input, input.root);
+                let output = Tree::parse(&rendered_html(&markdown));
+                let mut parent = output.root;
+                for &tag in tags {
+                    parent = descendants(&output, output.root)
+                        .into_iter()
+                        .find(|&node| {
+                            output.nodes[node].tag.as_deref() == Some(tag)
+                                && text(&output, node).contains("Product")
+                        })
+                        .unwrap_or_else(|| panic!("missing {tag}: {source}: {markdown}"));
+                    assert!(!text(&output, parent).contains("Outside"), "{markdown}");
+                }
+                if tags.contains(&"a") {
+                    let links = with_attribute(&output, "href", "/product");
+                    assert!(
+                        links
+                            .iter()
+                            .any(|&node| text(&output, node).contains("Product")),
+                        "{markdown}"
+                    );
+                    assert!(
+                        links
+                            .iter()
+                            .all(|&node| !text(&output, node).trim().is_empty()),
+                        "{markdown}"
+                    );
+                }
+                if block.starts_with("<pre") {
+                    let code = descendants(&output, parent)
+                        .into_iter()
+                        .find(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                        .unwrap();
+                    assert_eq!(text(&output, code), "Product\n\n[](*x*)\n", "{markdown}");
+                }
+            }
+        }
+    }
+}
