@@ -108,7 +108,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 [[package]]
 name = "anyrender"
 version = "0.12.0"
-source = "git+https://github.com/ldm0/anyrender?rev=bedd3b64c6031756e3bb98d0975a8b9648701a98#bedd3b64c6031756e3bb98d0975a8b9648701a98"
+source = "git+https://github.com/ldm0/anyrender?rev=916ef982d2175081dafc1ba0f7489396124d9496#916ef982d2175081dafc1ba0f7489396124d9496"
 dependencies = [
  "kurbo",
  "peniko",
@@ -119,7 +119,7 @@ dependencies = [
 [[package]]
 name = "anyrender_svg"
 version = "0.13.0"
-source = "git+https://github.com/ldm0/anyrender?rev=bedd3b64c6031756e3bb98d0975a8b9648701a98#bedd3b64c6031756e3bb98d0975a8b9648701a98"
+source = "git+https://github.com/ldm0/anyrender?rev=916ef982d2175081dafc1ba0f7489396124d9496#916ef982d2175081dafc1ba0f7489396124d9496"
 dependencies = [
  "anyrender",
  "kurbo",
@@ -130,7 +130,7 @@ dependencies = [
 [[package]]
 name = "anyrender_vello_cpu"
 version = "0.15.0"
-source = "git+https://github.com/ldm0/anyrender?rev=bedd3b64c6031756e3bb98d0975a8b9648701a98#bedd3b64c6031756e3bb98d0975a8b9648701a98"
+source = "git+https://github.com/ldm0/anyrender?rev=916ef982d2175081dafc1ba0f7489396124d9496#916ef982d2175081dafc1ba0f7489396124d9496"
 dependencies = [
  "anyrender",
  "debug_timer",
@@ -1689,7 +1689,7 @@ dependencies = [
 [[package]]
 name = "glifo"
 version = "0.3.0"
-source = "git+https://github.com/ldm0/vello?rev=beb2329c1f195967f1c461758fcc9d308d388aa0#beb2329c1f195967f1c461758fcc9d308d388aa0"
+source = "git+https://github.com/ldm0/vello?rev=1f3376b102ca9a0950221f3df09316c4ef1299ba#1f3376b102ca9a0950221f3df09316c4ef1299ba"
 dependencies = [
  "bytemuck",
  "foldhash",
@@ -6398,7 +6398,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vello_common"
 version = "0.2.0"
-source = "git+https://github.com/ldm0/vello?rev=beb2329c1f195967f1c461758fcc9d308d388aa0#beb2329c1f195967f1c461758fcc9d308d388aa0"
+source = "git+https://github.com/ldm0/vello?rev=1f3376b102ca9a0950221f3df09316c4ef1299ba#1f3376b102ca9a0950221f3df09316c4ef1299ba"
 dependencies = [
  "bytemuck",
  "fearless_simd",

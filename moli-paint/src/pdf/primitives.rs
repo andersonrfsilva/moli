@@ -414,9 +414,9 @@ impl<'a, 's> PdfPainter<'a, 's> {
             return Ok(false);
         };
         let extent = if fragments.len() > 1 {
-            effect_bounds(self.snapshot, fragments)?.unwrap_or(self.source)
+            effect_bounds(self.snapshot, fragments, &mut self.fonts.glyphs)?.unwrap_or(self.source)
         } else {
-            fragment_bounds(self.snapshot, first)?.unwrap_or(self.source)
+            fragment_bounds(self.snapshot, first, &mut self.fonts.glyphs)?.unwrap_or(self.source)
         };
         // Keep filter input beyond the page edge. Cropping it at the output
         // clip would remove pixels that blur back into the printable area.
@@ -490,6 +490,7 @@ impl<'a, 's> PdfPainter<'a, 's> {
 fn fragment_bounds(
     snapshot: &PaintSnapshot,
     fragment: &PaintFragment,
+    glyphs: &mut anyrender_vello_cpu::GlyphMeasurer,
 ) -> Result<Option<Rect>, PdfError> {
     let (bounds, matrix) = match fragment {
         PaintFragment::Fill {
@@ -527,7 +528,9 @@ fn fragment_bounds(
             ),
             decoration.transform,
         ),
-        PaintFragment::GlyphRun(run) => return super::text::ink_bounds(snapshot, run).map(Some),
+        PaintFragment::GlyphRun(run) => {
+            return super::text::ink_bounds(snapshot, run, glyphs).map(Some);
+        }
         PaintFragment::BoxShadow(shadow) => (
             super::rect(shadow.rect).inflate(
                 (shadow.blur_radius * 3.0 + shadow.spread_radius.abs() + shadow.offset.x.abs())
@@ -791,6 +794,7 @@ fn filter_padding(fragments: &[PaintFragment]) -> f64 {
 fn effect_bounds(
     snapshot: &PaintSnapshot,
     fragments: &[PaintFragment],
+    glyphs: &mut anyrender_vello_cpu::GlyphMeasurer,
 ) -> Result<Option<Rect>, PdfError> {
     let mut bounds: Option<Rect> = None;
     for fragment in fragments {
@@ -802,7 +806,7 @@ fn effect_bounds(
         ) {
             continue;
         }
-        let Some(local) = fragment_bounds(snapshot, fragment)? else {
+        let Some(local) = fragment_bounds(snapshot, fragment, glyphs)? else {
             return Ok(None);
         };
         if local.width() > 0.0 && local.height() > 0.0 {

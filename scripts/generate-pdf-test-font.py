@@ -4,6 +4,8 @@
 # ///
 """Derive an original variable/ligature PDF fixture from Moli's generated Ahem font."""
 import copy
+import struct
+import zlib
 from pathlib import Path
 
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
@@ -12,6 +14,9 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
+from fontTools.ttLib.tables.otTables import PaintFormat
+from fontTools.ttLib.tables.sbixGlyph import Glyph as SbixGlyph
+from fontTools.ttLib.tables.sbixStrike import Strike
 
 root = Path(__file__).resolve().parents[1]
 font = TTFont(root / "moli-layout/tests/fixtures/moli-ahem.ttf", recalcTimestamp=False)
@@ -78,3 +83,43 @@ font.save(root / "moli-paint/tests/fixtures/moli-pdf.ttf")
 for tag in ["gvar", "fvar", "avar"]:
     del font[tag]
 font.save(root / "moli-paint/tests/fixtures/moli-colr.ttf")
+
+# COLRv1 layers can be transformed beyond a generic two-em guard. The base
+# remains empty; the paint graph, rather than its glyf box, supplies the ink.
+font["COLR"] = buildCOLR({
+    "uni2606": {
+        "Format": PaintFormat.PaintTranslate,
+        "dx": 0,
+        "dy": 1600,
+        "Paint": {
+            "Format": PaintFormat.PaintColrLayers,
+            "Layers": [
+                {
+                    "Format": PaintFormat.PaintGlyph,
+                    "Glyph": glyph,
+                    "Paint": {"Format": PaintFormat.PaintSolid, "PaletteIndex": palette, "Alpha": 1.0},
+                }
+                for glyph, palette in [("uni0066", 0), ("uni0301", 1)]
+            ],
+        },
+    },
+}, version=1, glyphMap=font.getReverseGlyphMap(), clipBoxes={"uni2606": (-100, 1500, 700, 2750)})
+font.save(root / "moli-paint/tests/fixtures/moli-colr-v1.ttf")
+
+# An original PNG strike with nonzero bearings, lying outside its monochrome
+# outline. Use only standard-library PNG encoding to keep generation pinned.
+bitmap = TTFont(root / "moli-layout/tests/fixtures/moli-ahem.ttf", recalcTimestamp=False)
+def png_chunk(tag, payload):
+    return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload))
+png = b"\x89PNG\r\n\x1a\n"
+png += png_chunk(b"IHDR", struct.pack(">IIBBBBB", 32, 48, 8, 6, 0, 0, 0))
+png += png_chunk(b"IDAT", zlib.compress((b"\x00" + bytes([0, 64, 255, 255]) * 32) * 48))
+png += png_chunk(b"IEND", b"")
+strike = Strike(ppem=100, resolution=72)
+strike.glyphs["uni0041"] = SbixGlyph(
+    glyphName="uni0041", originOffsetX=-24, originOffsetY=80,
+    graphicType="png ", imageData=png,
+)
+bitmap["sbix"] = newTable("sbix")
+bitmap["sbix"].strikes = {100: strike}
+bitmap.save(root / "moli-paint/tests/fixtures/moli-bitmap.ttf")

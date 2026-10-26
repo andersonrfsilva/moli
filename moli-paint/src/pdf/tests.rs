@@ -891,38 +891,10 @@ fn assert_filtered_fixture_ink(snapshot: &PaintSnapshot, label: &str) -> [usize;
         );
         return expected;
     }
-    // lopdf's general extractor prefers Type3 Differences names to ToUnicode.
-    // Decode the emitted text through its CMap, as PDF readers do. These
-    // one-glyph fixtures have exactly one font in their page resources.
-    let page = doc.get_pages()[&1];
-    let fonts = doc.get_page_fonts(page).unwrap();
-    assert_eq!(fonts.len(), 1);
-    let mut font = (*fonts.values().next().unwrap()).clone();
-    if font.get(b"Subtype").unwrap().as_name().unwrap() == b"Type3" {
-        font.remove(b"Encoding");
-    }
-    let encoding = font.get_font_encoding(&doc).unwrap();
-    let content = lopdf::content::Content::decode(&doc.get_page_content(page)).unwrap();
-    let mut text = String::new();
-    for operation in content
-        .operations
-        .iter()
-        .filter(|op| matches!(op.operator.as_str(), "Tj" | "TJ"))
-    {
-        for operand in &operation.operands {
-            let items = match operand {
-                lopdf::Object::Array(items) => items.as_slice(),
-                value => std::slice::from_ref(value),
-            };
-            for item in items {
-                if let lopdf::Object::String(bytes, _) = item {
-                    text.push_str(&encoding.bytes_to_string(bytes).unwrap());
-                }
-            }
-        }
-    }
-    assert_eq!(text, label);
+    assert_eq!(fixture_unicode(&doc), label);
     assert_eq!(images.len(), 1);
+    let width = images[0].dict.get(b"Width").unwrap().as_i64().unwrap();
+    let height = images[0].dict.get(b"Height").unwrap().as_i64().unwrap();
     let rgb = images[0].decompressed_content().unwrap();
     let mask = images[0]
         .dict
@@ -948,7 +920,47 @@ fn assert_filtered_fixture_ink(snapshot: &PaintSnapshot, label: &str) -> [usize;
         expected,
         "all glyph layers and stroke ink must survive"
     );
+    if matches!(label, "★" | "☆" | "A") {
+        assert!(
+            width * height < 100_000,
+            "image glyphs must use their prepared ink, got {width}x{height}"
+        );
+    }
     expected
+}
+
+fn fixture_unicode(doc: &lopdf::Document) -> String {
+    // lopdf's general extractor prefers Type3 Differences names to ToUnicode.
+    // Decode the emitted text through its CMap, as PDF readers do. These
+    // one-glyph fixtures have exactly one font in their page resources.
+    let page = doc.get_pages()[&1];
+    let fonts = doc.get_page_fonts(page).unwrap();
+    assert_eq!(fonts.len(), 1);
+    let mut font = (*fonts.values().next().unwrap()).clone();
+    if font.get(b"Subtype").unwrap().as_name().unwrap() == b"Type3" {
+        font.remove(b"Encoding");
+    }
+    let encoding = font.get_font_encoding(doc).unwrap();
+    let content = lopdf::content::Content::decode(&doc.get_page_content(page)).unwrap();
+    let mut text = String::new();
+    for operation in content
+        .operations
+        .iter()
+        .filter(|op| matches!(op.operator.as_str(), "Tj" | "TJ"))
+    {
+        for operand in &operation.operands {
+            let items = match operand {
+                lopdf::Object::Array(items) => items.as_slice(),
+                value => std::slice::from_ref(value),
+            };
+            for item in items {
+                if let lopdf::Object::String(bytes, _) = item {
+                    text.push_str(&encoding.bytes_to_string(bytes).unwrap());
+                }
+            }
+        }
+    }
+    text
 }
 
 #[test]
@@ -974,6 +986,120 @@ fn filtered_colr_glyph_with_an_empty_base_keeps_ink_and_text() {
         counts[1] > 0 && counts[2] > 0,
         "both color layers are visible"
     );
+}
+
+#[test]
+fn filtered_colr_v1_translated_layers_use_their_clip_box() {
+    let mut snapshot = filtered_fixture_glyph(
+        include_bytes!("../../tests/fixtures/moli-colr-v1.ttf"),
+        '☆',
+        None,
+    );
+    for fragment in &mut snapshot.fragments {
+        if let PaintFragment::GlyphRun(run) = fragment {
+            run.glyphs[0].y = 280.0;
+        }
+    }
+    let counts = assert_filtered_fixture_ink(&snapshot, "☆");
+    assert!(counts[1] > 0 && counts[2] > 0);
+}
+
+#[test]
+fn filtered_bitmap_strike_uses_image_placement_and_keeps_text() {
+    let snapshot = filtered_fixture_glyph(
+        include_bytes!("../../tests/fixtures/moli-bitmap.ttf"),
+        'A',
+        None,
+    );
+    let counts = assert_filtered_fixture_ink(&snapshot, "A");
+    assert_eq!(counts[1], 32 * 48 * 4);
+}
+
+#[test]
+fn native_pdf_culling_keeps_colr_layer_ink_outside_the_base_outline() {
+    for (bytes, ch, baseline, top) in [
+        (
+            include_bytes!("../../tests/fixtures/moli-pdf.ttf").as_slice(),
+            '★',
+            150.0,
+            35.0,
+        ),
+        (
+            include_bytes!("../../tests/fixtures/moli-colr.ttf").as_slice(),
+            '☆',
+            150.0,
+            35.0,
+        ),
+        (
+            include_bytes!("../../tests/fixtures/moli-colr-v1.ttf").as_slice(),
+            '☆',
+            280.0,
+            5.0,
+        ),
+    ] {
+        let mut snapshot = filtered_fixture_glyph(bytes, ch, None);
+        let PaintFragment::GlyphRun(mut run) = snapshot.fragments.remove(1) else {
+            unreachable!()
+        };
+        run.glyphs[0].y = baseline;
+        snapshot.fragments = vec![
+            PaintFragment::PushClip {
+                shape: PaintShape::Rect(PaintRect::new(90.0, top, 90.0, 30.0)),
+                transform: PaintTransform2D::IDENTITY,
+            },
+            PaintFragment::GlyphRun(run),
+            PaintFragment::PopLayer,
+        ];
+        let doc = document(&snapshot, &options());
+        assert_eq!(fixture_unicode(&doc), ch.to_string());
+    }
+}
+
+#[test]
+fn native_pdf_culling_measures_its_isotropic_synthetic_weight() {
+    let mut snapshot = filtered_fixture_glyph(
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+        'R',
+        None,
+    );
+    let PaintFragment::GlyphRun(mut run) = snapshot.fragments.remove(1) else {
+        unreachable!()
+    };
+    run.glyph_embolden = PaintPoint::new(0.3, 0.0);
+    // Native PDF expands both axes by the maximum snapshot amount. Only the
+    // added top edge reaches this clip; the raw rectangle starts at y=70.
+    snapshot.fragments = vec![
+        PaintFragment::PushClip {
+            shape: PaintShape::Rect(PaintRect::new(100.0, 69.71, 60.0, 0.19)),
+            transform: PaintTransform2D::IDENTITY,
+        },
+        PaintFragment::GlyphRun(run),
+        PaintFragment::PopLayer,
+    ];
+    assert_eq!(fixture_unicode(&document(&snapshot, &options())), "R");
+}
+
+#[test]
+fn native_pdf_bitmap_culling_keeps_its_own_strike_placement() {
+    let mut snapshot = filtered_fixture_glyph(
+        include_bytes!("../../tests/fixtures/moli-bitmap.ttf"),
+        'A',
+        None,
+    );
+    let PaintFragment::GlyphRun(run) = snapshot.fragments.remove(1) else {
+        unreachable!()
+    };
+    // Krilla applies this sbix glyph's x bearing in the opposite direction to
+    // the CPU renderer. Its bitmap occupies x=76..108, CPU x=124..156.
+    snapshot.fragments = vec![
+        PaintFragment::PushClip {
+            shape: PaintShape::Rect(PaintRect::new(100.0, 0.0, 5.0, 300.0)),
+            transform: PaintTransform2D::IDENTITY,
+        },
+        PaintFragment::GlyphRun(run),
+        PaintFragment::PopLayer,
+    ];
+    assert_eq!(fixture_unicode(&document(&snapshot, &options())), "A");
 }
 
 #[test]

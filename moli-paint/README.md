@@ -44,6 +44,19 @@ adapter passes it to both fill and stroke; the Glifo patch converts it when
 absorbing transforms and preparing cached outlines. Its `vello_common` source
 matches the published 0.2.0 crate and is pinned alongside Glifo to share types.
 
+The AnyRender CPU adapter exposes a cached glyph measurer backed by Glifo's
+prepared-glyph ink query. Native PDF culling and filter image allocation consume
+the adapter's result types, without depending on Glifo builders or caches.
+The query resolves COLR layers and clip boxes, supported
+bitmap strikes and outlines in renderer priority order, with variation,
+hinting, synthetic weight, stroke joins and transforms applied. Bounds exclude
+device sampling, filters and caller clips. Empty ink is distinct from unavailable
+geometry, which retains a conservative fallback. PDF measurement reuses its
+adapter-owned measurement cache; raster allocation adds a sampling guard. This replaces
+the adapter's separate outline-metric, side-bearing and empty-path checks.
+Native bitmap culling retains a conservative fallback because Krilla selects
+and places bitmap strikes differently from the CPU renderer.
+
 The PDF adapter embeds and subsets fonts, using Parley's existing glyph positions
 and the snapshot's shared logical text/UTF-8 cluster ranges. These mappings are
 collected only for print demands, keeping them out of the screenshot hot path.
