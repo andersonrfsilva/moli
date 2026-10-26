@@ -183,6 +183,7 @@ fn outgoing_request_header_bytes_for_url(
         .additional_cookies()
         .or_else(|| config.additional_cookies())
         .filter(|value| !value.is_empty())
+        .filter(|_| request.allows_credentials_for_url(request_url))
         .filter(|_| {
             !request
                 .request_headers

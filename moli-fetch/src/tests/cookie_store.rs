@@ -349,6 +349,47 @@ fn outgoing_request_headers_preserve_explicit_cookies_for_curl_policy() {
 }
 
 #[test]
+fn literal_cookies_obey_browser_credentials_for_both_configuration_sources() {
+    let origin = Url::parse("https://app.test/page").unwrap();
+    for in_config in [false, true] {
+        let mut config = FetchConfig::default();
+        if in_config {
+            config.set_additional_cookies(Some("session=literal".to_owned()));
+        }
+        for target in ["https://app.test/resource", "https://other.test/resource"] {
+            for credentials in [
+                RequestCredentialsMode::Omit,
+                RequestCredentialsMode::SameOrigin,
+                RequestCredentialsMode::Include,
+            ] {
+                let mut request = Request::get(target)
+                    .unwrap()
+                    .with_request_origin(moli_url::WebOrigin::from_url(&origin))
+                    .with_credentials_mode(credentials);
+                if !in_config {
+                    request = request.with_additional_cookies(Some("session=literal".to_owned()));
+                }
+                let expected = match credentials {
+                    RequestCredentialsMode::Include => Some("session=literal"),
+                    RequestCredentialsMode::SameOrigin
+                        if target.starts_with("https://app.test/") =>
+                    {
+                        Some("session=literal")
+                    }
+                    _ => None,
+                };
+                let headers = outgoing_request_headers(&config, &request, None);
+                assert_eq!(
+                    header_value(&headers, "cookie"),
+                    expected,
+                    "{target}, {credentials:?}, in_config={in_config}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn outgoing_request_headers_keep_default_cookie_without_store_cookie() {
     let mut config = FetchConfig::default();
     config.push_default_request_header("Cookie", "manual=1");

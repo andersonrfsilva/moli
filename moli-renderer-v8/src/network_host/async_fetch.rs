@@ -1077,6 +1077,12 @@ mod tests {
                     .contains("\r\nreferer:")
             );
             assert!(
+                !preflight_request
+                    .to_ascii_lowercase()
+                    .contains("\r\ncookie:"),
+                "preflight must omit configured cookie literals: {preflight_request}"
+            );
+            assert!(
                 preflight_request
                     .to_ascii_lowercase()
                     .contains("access-control-request-method: put")
@@ -1086,6 +1092,7 @@ mod tests {
                 concat!(
                     "HTTP/1.1 200 OK\r\n",
                     "Access-Control-Allow-Origin: http://origin.test\r\n",
+                    "Access-Control-Allow-Credentials: true\r\n",
                     "Access-Control-Allow-Methods: PUT\r\n",
                     "Access-Control-Allow-Headers: x-test\r\n",
                     "Content-Length: {}\r\n",
@@ -1107,6 +1114,12 @@ mod tests {
             assert!(
                 actual_request
                     .to_ascii_lowercase()
+                    .contains("\r\ncookie: session=literal\r\n"),
+                "the credentialed request must retain the configured cookie: {actual_request}"
+            );
+            assert!(
+                actual_request
+                    .to_ascii_lowercase()
                     .contains("\r\norigin: http://origin.test\r\n")
             );
             let body = "ok";
@@ -1114,6 +1127,7 @@ mod tests {
                 concat!(
                     "HTTP/1.1 200 OK\r\n",
                     "Access-Control-Allow-Origin: http://origin.test\r\n",
+                    "Access-Control-Allow-Credentials: true\r\n",
                     "Content-Length: {}\r\n",
                     "Connection: close\r\n",
                     "\r\n",
@@ -1125,7 +1139,9 @@ mod tests {
             actual.write_all(response.as_bytes()).await.unwrap();
         });
 
-        let loader_owner = ResourceRequestClient::new(&FetchConfig::default())?;
+        let mut config = FetchConfig::default();
+        config.set_additional_cookies(Some("session=literal".to_owned()));
+        let loader_owner = ResourceRequestClient::new(&config)?;
         let loader = loader_owner.handle();
         let request = Request::new(
             "PUT",
@@ -1136,7 +1152,7 @@ mod tests {
         .with_request_origin(moli_url::WebOrigin::from_url(&Url::parse(
             "http://origin.test/page",
         )?))
-        .with_credentials_mode(RequestCredentialsMode::SameOrigin)
+        .with_credentials_mode(RequestCredentialsMode::Include)
         .with_browser_request_metadata(BrowserRequestMetadata::Fetch);
 
         let response = fetch_browser_subresource_with_preflight(loader, request, None)

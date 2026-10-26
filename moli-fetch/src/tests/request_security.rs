@@ -97,6 +97,46 @@ async fn curl_explicit_cookies_do_not_cross_origins_in_any_transport() -> Result
 }
 
 #[tokio::test]
+async fn literal_cookies_obey_browser_credentials_in_every_transport() -> Result<()> {
+    for transport in Transport::ALL {
+        let server = ScriptedHttpServer::spawn(vec![ScriptedResponse::ok("ok"); 5]);
+        let target_url = Url::parse(&server.url())?;
+        let other_origin = Url::parse("http://other.test/")?;
+        let mut config = FetchConfig::default();
+        config.set_additional_cookies(Some("session=literal".to_owned()));
+        let client = FetchClient::new(&config, new_shared_browser_cookie_store());
+        for (origin, credentials, expected) in [
+            (&target_url, RequestCredentialsMode::Omit, false),
+            (&other_origin, RequestCredentialsMode::Omit, false),
+            (&target_url, RequestCredentialsMode::SameOrigin, true),
+            (&other_origin, RequestCredentialsMode::SameOrigin, false),
+            (&other_origin, RequestCredentialsMode::Include, true),
+        ] {
+            let request = Request::new_browser(
+                "GET",
+                target_url.clone(),
+                None,
+                Vec::new(),
+                moli_url::WebOrigin::from_url(origin),
+            )
+            .with_request_mode(RequestMode::NoCors)
+            .with_credentials_mode(credentials);
+            transport.fetch(&client, request).await?;
+            let requests = server.requests();
+            let actual = requests.last().unwrap().to_ascii_lowercase();
+            assert_eq!(
+                actual.contains("\r\ncookie: session=literal\r\n"),
+                expected,
+                "{transport:?}, {credentials:?}, origin={origin}: {actual}"
+            );
+        }
+        assert_eq!(server.hits(), 5, "{transport:?}");
+        server.shutdown();
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn plain_http_requests_do_not_infer_browser_origin_from_referrer() -> Result<()> {
     let server = ScriptedHttpServer::spawn(vec![ScriptedResponse::ok("http"); 3]);
     let url = Url::parse(&server.url())?;
