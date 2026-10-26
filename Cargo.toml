@@ -95,12 +95,14 @@ members = [
     "moli-http-cache",
     "moli-wpt-compat"
 ]
-exclude = ["vendor/html5ever-0.40.1", "vendor/url-2.5.8", "vendor/urlpattern-0.6.0", "vendor/shiguredo_libvpx-2026.1.0"]
+exclude = ["vendor/html5ever-0.40.1", "vendor/url-2.5.8", "vendor/urlpattern-0.6.0", "vendor/shiguredo_libvpx-2026.1.0", "vendor/quinn-0.11.12"]
 
 [workspace.package]
 license = "MIT OR Apache-2.0"
 
 [patch.crates-io]
+# Backport upstream terminal-reader waker cleanup for passive RESET observers.
+quinn = { path = "vendor/quinn-0.11.12" }
 # Share AWS-LC 0.46 with aws-lc-rs until upstream openssl-sys updates its backend.
 openssl-sys = { git = "https://github.com/lexmount/rust-openssl", rev = "4497b245b09660f838dd00750616929b4cfe52ba" }
 shiguredo_libvpx = { path = "vendor/shiguredo_libvpx-2026.1.0" }
