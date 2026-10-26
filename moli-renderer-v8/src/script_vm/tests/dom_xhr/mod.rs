@@ -12,6 +12,7 @@ mod dom;
 mod event_modifiers;
 mod file_input;
 mod forms;
+mod local_tasks;
 mod misc;
 mod no_cors_redirect;
 mod null_body;
