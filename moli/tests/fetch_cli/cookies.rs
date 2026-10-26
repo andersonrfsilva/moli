@@ -79,7 +79,17 @@ impl CookieFixture {
     }
 
     fn run(&self, path: &str, args: &[&str], stdin: &[u8]) -> Result<Output> {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_moli"))
+        self.run_command(Command::new(env!("CARGO_BIN_EXE_moli")), path, args, stdin)
+    }
+
+    fn run_command(
+        &self,
+        mut command: Command,
+        path: &str,
+        args: &[&str],
+        stdin: &[u8],
+    ) -> Result<Output> {
+        let mut child = command
             .args([
                 "fetch",
                 "--http-no-proxy",
@@ -100,6 +110,50 @@ impl CookieFixture {
         child.stdin.take().unwrap().write_all(stdin)?;
         Ok(child.wait_with_output()?)
     }
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cookie_jar_creation_and_replacement_follow_curl_permission_rules() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = CookieFixture::spawn().await?;
+    for (mask, previous, expected) in [
+        ("022", None, 0o644),
+        ("022", Some(0o600), 0o600),
+        ("022", Some(0o644), 0o644),
+        ("077", None, 0o600),
+        ("077", Some(0o644), 0o600),
+    ] {
+        let jar = super::unique_temp_file_path("cookie-jar-permissions", "cookies.txt")?;
+        if let Some(mode) = previous {
+            std::fs::write(&jar, record())?;
+            std::fs::set_permissions(&jar, std::fs::Permissions::from_mode(mode))?;
+        }
+        // Keep umask changes in the child process, away from parallel tests.
+        let mut command = Command::new("sh");
+        command
+            .args([
+                "-c",
+                "umask \"$1\"; shift; exec \"$@\"",
+                "cookie-jar-test",
+                mask,
+            ])
+            .arg(env!("CARGO_BIN_EXE_moli"));
+        assert_success(&fixture.run_command(
+            command,
+            "/echo",
+            &["--cookie-jar", &jar.to_string_lossy()],
+            b"",
+        )?);
+        assert_eq!(
+            std::fs::metadata(&jar)?.permissions().mode() & 0o777,
+            expected,
+            "umask={mask}, previous={previous:?}"
+        );
+        assert!(std::fs::read_to_string(jar)?.contains("\tsession\tfixture\n"));
+    }
+    Ok(())
 }
 
 impl Drop for CookieFixture {

@@ -22,6 +22,24 @@ pub(crate) fn write_file_atomically(path: &Path, bytes: &[u8], label: &str) -> R
     let tmp_path = unique_temp_path(path);
     let mut options = OpenOptions::new();
     options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        match fs::metadata(path) {
+            // Like curl's atomic writer, retain an existing file's mode while
+            // still allowing umask to remove permissions from the new inode.
+            Ok(metadata) => {
+                options.mode(0o600 | metadata.permissions().mode());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to inspect {label} permissions `{}`", path.display())
+                });
+            }
+        }
+    }
 
     let mut file = options
         .open(&tmp_path)
