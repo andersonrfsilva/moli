@@ -549,16 +549,16 @@ fn pdf_text_stroke_sets_the_miter_limit_and_keeps_miter_only_ink() {
 fn pdf_synthetic_bold_uses_css_pixels_with_and_without_text_stroke() {
     for cjk in [false, true] {
         for font_size in [16.0, 32.0, 64.0] {
-            for stroke in [false, true] {
+            for stroke in [None, Some(false), Some(true)] {
                 let mut snapshot = snapshot();
                 let label = if cjk { "中" } else { "B" };
                 let mut run = text(&mut snapshot, label, 90.0, cjk);
                 run.font_size = font_size;
                 run.glyph_embolden = PaintPoint::new(0.3, 0.3);
-                run.stroke = stroke.then_some(moli_layout::PaintTextStroke {
+                run.stroke = stroke.map(|paint_first| moli_layout::PaintTextStroke {
                     width: 2.0,
                     color: PaintColor::BLACK,
-                    paint_first: false,
+                    paint_first,
                 });
                 snapshot.push_fragment(PaintFragment::GlyphRun(run));
                 let doc = document(&snapshot, &options());
@@ -570,12 +570,43 @@ fn pdf_synthetic_bold_uses_css_pixels_with_and_without_text_stroke() {
                     .collect();
                 assert!(
                     widths.iter().any(|width| (width - 0.6).abs() < 0.001),
-                    "cjk={cjk}, size={font_size}, stroke={stroke}: {widths:?}"
+                    "cjk={cjk}, size={font_size}, stroke={stroke:?}: {widths:?}"
                 );
-                if stroke {
-                    assert!(widths.iter().any(|width| (width - 2.6).abs() < 0.001));
+                if stroke.is_some() {
+                    assert!(widths.iter().any(|width| (width - 2.0).abs() < 0.001));
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn synthetic_bold_path_strokes_keep_one_copy_of_positioned_and_hollow_text() {
+    for paint_first in [false, true] {
+        for hollow in [false, true] {
+            let mut snapshot = snapshot();
+            let mut run = text(&mut snapshot, "AB", 150.0, false);
+            run.font_size = 28.0;
+            run.glyph_embolden = PaintPoint::new(0.3, 0.3);
+            run.glyph_skew_radians = Some(0.2);
+            run.glyphs[1].x = 70.0;
+            run.glyphs[1].y = 168.0;
+            run.transform.coefficients = [1.0, 0.1, 0.2, 1.0, 0.0, 0.0];
+            if hollow {
+                run.color = PaintColor::TRANSPARENT;
+            }
+            run.stroke = Some(moli_layout::PaintTextStroke {
+                width: 2.0,
+                color: PaintColor::new(1.0, 0.0, 0.0, 1.0),
+                paint_first,
+            });
+            snapshot.push_fragment(PaintFragment::GlyphRun(run));
+            let doc = document(&snapshot, &options());
+            assert_eq!(
+                extracted(&doc, &[1]).replace(' ', ""),
+                "AB",
+                "paint_first={paint_first}, hollow={hollow}"
+            );
         }
     }
 }

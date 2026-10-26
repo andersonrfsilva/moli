@@ -48,7 +48,10 @@ The PDF adapter embeds and subsets fonts, using Parley's existing glyph position
 and the snapshot's shared logical text/UTF-8 cluster ranges. These mappings are
 collected only for print demands, keeping them out of the screenshot hot path.
 Ligature ranges are joined in logical order before arranging RTL clusters visually. Synthetic italic
-uses a glyph-local shear; synthetic weight uses PDF fill-and-stroke. Font instances
+uses a glyph-local shear; synthetic weight uses PDF fill-and-stroke for fills.
+When weight and text stroke are combined, the stroke follows the expanded
+outline with its authored width. These vector paths retain one invisible native
+text copy for searching and extraction. Font instances
 are cached separately by font identity and normalized variation coordinates.
 The adapter reverses `avar` v1 and `fvar` normalization for Krilla's design-space
 variation API. Non-default `avar` v2 instances currently return an explicit error.
