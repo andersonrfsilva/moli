@@ -960,3 +960,38 @@ fn html_code_normalizes_line_endings_only_in_preformatted_inline_mode() {
         assert_eq!(codes, ["a ", " b"], "{source}: {markdown}");
     }
 }
+
+#[test]
+fn pipe_target_ids_round_trip_without_table_specific_backslash_processing() {
+    for (fragment, source_id, id) in [
+        ("a%7Cb", "a|b", "a|b"),
+        ("a%5C%7Cb", "a\\|b", "a\\|b"),
+        ("a%26%23124%3Bb", "a&amp;#124;b", "a&#124;b"),
+        ("%E8%8A%82%7C%E7%82%B9", "节|点", "节|点"),
+    ] {
+        let jump = format!("<a href='#{fragment}'>Go</a>");
+        for target in [
+            format!("<p id='{source_id}'>Target</p>"),
+            format!("<table><tr><td id='{source_id}'>Target</td></tr></table>"),
+            format!("<table><tr><td id='{source_id}' colspan='2'>Target</td></tr></table>"),
+            format!(
+                "<table><tr><td><code id='{source_id}'>Target</code></td><td>Other</td></tr></table>"
+            ),
+        ] {
+            let input = Tree::parse(&format!("{jump}{target}"));
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            assert_eq!(with_attribute(&output, "id", id).len(), 1, "{markdown}");
+            assert_eq!(
+                with_attribute(&output, "href", &format!("#{fragment}")).len(),
+                1,
+                "{markdown}"
+            );
+            // Raw HTML attributes must also decode correctly before any
+            // renderer-specific removal of GFM backslash escapes.
+            let raw_html = Tree::parse(&markdown);
+            assert_eq!(with_attribute(&raw_html, "id", id).len(), 1, "{markdown}");
+            assert!(!markdown.contains("\\|"), "{markdown}");
+        }
+    }
+}

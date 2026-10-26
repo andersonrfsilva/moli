@@ -311,18 +311,18 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push_str(&crate::anchors::markup(id));
                                 }
                                 output.push_str("<img src=\"");
-                                escape(src, &mut output);
+                                escape_attribute(src, &mut output);
                                 output.push_str("\" alt=\"");
-                                escape(label, &mut output);
+                                escape_attribute(label, &mut output);
                                 output.push('"');
                                 if let Some(id) = targets.first() {
                                     output.push_str(" id=\"");
-                                    escape(id, &mut output);
+                                    escape_attribute(id, &mut output);
                                     output.push('"');
                                 }
                                 if let Some(title) = dom.attribute(node, "title") {
                                     output.push_str(" title=\"");
-                                    escape(title, &mut output);
+                                    escape_attribute(title, &mut output);
                                     output.push('"');
                                 }
                                 output.push('>');
@@ -344,9 +344,12 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 output.push_str(if block { "<div>" } else { " " });
                                 if let Some(poster) = poster {
                                     output.push_str("<img src=\"");
-                                    escape(poster, &mut output);
+                                    escape_attribute(poster, &mut output);
                                     output.push_str("\" alt=\"");
-                                    escape(&crate::media::poster_label(dom, node), &mut output);
+                                    escape_attribute(
+                                        &crate::media::poster_label(dom, node),
+                                        &mut output,
+                                    );
                                     output.push_str("\"> ");
                                 }
                                 let has_source = !urls.is_empty();
@@ -361,7 +364,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                         output.push_str(") ");
                                     } else {
                                         output.push_str("<a href=\"");
-                                        escape(url, &mut output);
+                                        escape_attribute(url, &mut output);
                                         output.push_str("\">");
                                         write_text(
                                             crate::media::label(dom, node, tag),
@@ -465,13 +468,13 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push(' ');
                                     output.push_str(name);
                                     output.push_str("=\"");
-                                    escape(value, &mut output);
+                                    escape_attribute(value, &mut output);
                                     output.push('"');
                                 }
                             }
                             if let Some(id) = targets.first() {
                                 output.push_str(" id=\"");
-                                escape(id, &mut output);
+                                escape_attribute(id, &mut output);
                                 output.push('"');
                             }
                             let language = if tag == "pre" {
@@ -485,7 +488,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                 language.and_then(|value| value.split_ascii_whitespace().next())
                             {
                                 output.push_str(" class=\"language-");
-                                escape(language, &mut output);
+                                escape_attribute(language, &mut output);
                                 output.push('"');
                             }
                             output.push('>');
@@ -567,19 +570,28 @@ fn allowed(tag: &str) -> bool {
         )
 }
 
-pub(crate) fn escape(text: &str, output: &mut String) {
+pub(crate) fn escape_attribute(text: &str, output: &mut String) {
     for ch in text.chars() {
-        match ch {
-            '&' => output.push_str("&amp;"),
-            '<' => output.push_str("&lt;"),
-            '>' => output.push_str("&gt;"),
-            '"' => output.push_str("&quot;"),
-            // Raw HTML blocks end at an empty Markdown line. Entities preserve
-            // preformatted line endings without prematurely ending the block.
-            '\n' => output.push_str("&#10;"),
-            '\r' => output.push_str("&#13;"),
-            _ => output.push(ch),
+        if ch == '|' {
+            // Keep raw HTML attributes independent of GFM pipe escaping.
+            output.push_str("&#124;");
+        } else {
+            escape_character(ch, output);
         }
+    }
+}
+
+fn escape_character(ch: char, output: &mut String) {
+    match ch {
+        '&' => output.push_str("&amp;"),
+        '<' => output.push_str("&lt;"),
+        '>' => output.push_str("&gt;"),
+        '"' => output.push_str("&quot;"),
+        // Raw HTML blocks end at an empty Markdown line. Entities preserve
+        // preformatted line endings without prematurely ending the block.
+        '\n' => output.push_str("&#10;"),
+        '\r' => output.push_str("&#13;"),
+        _ => output.push(ch),
     }
 }
 
@@ -617,8 +629,7 @@ impl TextEscaper {
             } else if code && self.inline_root && ch.is_ascii_punctuation() {
                 write!(output, "&#{};", ch as u32).expect("writing to String");
             } else {
-                let mut bytes = [0; 4];
-                escape(ch.encode_utf8(&mut bytes), output);
+                escape_character(ch, output);
             }
         }
     }

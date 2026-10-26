@@ -172,11 +172,11 @@ impl<'a> Writer<'a> {
                 // in HTML, with a block wrapper so CommonMark treats all of the
                 // enclosed markup as HTML rather than parsing another link.
                 let mut markup = String::from("<div><a href=\"");
-                crate::html_fallback::escape(href, &mut markup);
+                crate::html_fallback::escape_attribute(href, &mut markup);
                 markup.push('"');
                 if let Some(title) = title {
                     markup.push_str(" title=\"");
-                    crate::html_fallback::escape(title, &mut markup);
+                    crate::html_fallback::escape_attribute(title, &mut markup);
                     markup.push('"');
                 }
                 markup.push('>');

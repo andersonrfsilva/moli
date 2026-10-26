@@ -190,6 +190,7 @@ pub(crate) fn markup(id: &str) -> String {
             '>' => result.push_str("&gt;"),
             '\n' => result.push_str("&#10;"),
             '\r' => result.push_str("&#13;"),
+            '|' => result.push_str("&#124;"),
             character => result.push(character),
         }
     }
