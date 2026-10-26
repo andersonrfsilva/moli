@@ -502,3 +502,40 @@ fn code_whitespace_names_follow_the_preformatted_code_option() {
         }
     }
 }
+
+#[test]
+fn serialized_state_filter_applies_before_special_element_branches() {
+    let payload = format!("{{\"x\":\"{}\"}}", "a".repeat(512));
+    let prose = "Useful hidden content ".repeat(30);
+    for (attributes, body, filtered) in [
+        ("hidden", payload.as_str(), true),
+        ("style='display:none'", payload.as_str(), true),
+        (
+            "style='display:none!important;display:block'",
+            payload.as_str(),
+            true,
+        ),
+        ("", payload.as_str(), false),
+        ("hidden", prose.as_str(), false),
+        ("hidden", "{\"short\":1}", false),
+        (
+            "style='display:none;display:block'",
+            payload.as_str(),
+            false,
+        ),
+    ] {
+        for tag in ["textarea", "math", "code", "span"] {
+            let content = format!("<{tag} {attributes}>{body}</{tag}>");
+            for source in containers(&content) {
+                let input = Tree::parse(&source);
+                let markdown = convert(&input, input.root);
+                let output = Tree::parse(&rendered_html(&markdown));
+                assert_eq!(
+                    text(&output, output.root).contains(body.trim()),
+                    !filtered,
+                    "{source}: {markdown}"
+                );
+            }
+        }
+    }
+}

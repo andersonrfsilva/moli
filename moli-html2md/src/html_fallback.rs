@@ -206,7 +206,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 }
             }
             Task::Node(node, depth, mode) => {
-                if depth >= limit {
+                if depth >= limit || crate::visibility::nonrendered_serialized_state(dom, node) {
                     continue;
                 }
                 let code = !matches!(mode, TextMode::Normal);
@@ -292,9 +292,6 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         }
                     }
                     NodeKind::Element(tag) => {
-                        if crate::visibility::nonrendered_serialized_state(dom, node) {
-                            continue;
-                        }
                         if tag == "table" {
                             table_modes.push(crate::table::is_presentational(dom, node));
                             tasks.push(Task::EndTable);
