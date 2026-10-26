@@ -50,24 +50,45 @@ fn status_response_uses_webdriver_value_envelope() {
 }
 
 #[test]
-fn session_registry_allocates_unique_non_reused_ids() {
+fn session_registry_allocates_unique_v4_uuids_across_deletions() {
     let mut registry = ClassicSessionRegistry::new();
 
     let first = registry.create_session();
-    assert_eq!(first.session_id, "classic-session-1");
     assert_eq!(first.timeouts, ClassicTimeouts::default());
     assert_eq!(first.page_load_strategy, ClassicPageLoadStrategy::Normal);
     assert_eq!(
         first.unhandled_prompt_behavior.returned_capability(),
         json!("dismiss and notify")
     );
-    assert!(registry.has_session("classic-session-1"));
-    assert!(registry.release_session("classic-session-1"));
-
     let second = registry.create_session();
-    assert_eq!(second.session_id, "classic-session-2");
-    assert!(!registry.has_session("classic-session-1"));
-    assert!(registry.has_session("classic-session-2"));
+    assert_eq!(registry.session_count(), 2);
+    assert!(registry.has_session(&first.session_id));
+    assert!(registry.has_session(&second.session_id));
+    assert!(registry.release_session(&first.session_id));
+
+    let third = registry.create_session();
+    assert!(!registry.has_session(&first.session_id));
+    assert!(registry.has_session(&second.session_id));
+    assert!(registry.has_session(&third.session_id));
+    assert!(registry.release_session(&second.session_id));
+    assert!(registry.release_session(&third.session_id));
+    assert_eq!(registry.session_count(), 0);
+
+    let fourth = registry.create_session();
+    assert!(registry.has_session(&fourth.session_id));
+    assert_eq!(registry.session_count(), 1);
+
+    let mut ids = std::collections::BTreeSet::new();
+    for session in [first, second, third, fourth] {
+        let id = uuid::Uuid::parse_str(&session.session_id).expect("session ID must be a UUID");
+        assert_eq!(id.get_version_num(), 4);
+        assert_eq!(id.get_variant(), uuid::Variant::RFC4122);
+        assert_eq!(id.to_string(), session.session_id);
+        assert!(
+            ids.insert(session.session_id),
+            "session IDs must not be reused"
+        );
+    }
 }
 
 #[test]

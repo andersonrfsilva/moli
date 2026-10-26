@@ -26,7 +26,7 @@ async fn webdriver_classic_status_session_and_delete_routes_use_value_envelope()
         .as_str()
         .expect("classic session id")
         .to_owned();
-    assert_eq!(session_id, "classic-session-1");
+    assert!(!session_id.is_empty());
     assert_eq!(
         session["value"]["capabilities"]["browserName"],
         json!("moli")
