@@ -2265,6 +2265,7 @@ mod svg_matrix_native_receivers;
 mod lazy_window_surfaces;
 mod midi_owner_interfaces;
 mod mouse_snapshot;
+mod multipart_encoding;
 mod native_bridge_identity;
 
 mod document_implementation_realm;
