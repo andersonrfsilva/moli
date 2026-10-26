@@ -1582,7 +1582,9 @@ impl JsContextHost {
     }
 
     pub(crate) fn resource_scheduler(&self) -> RendererResourceScheduler {
-        self.resource_scheduler.clone()
+        // Reusing the initial Window replaces its Document completion sender.
+        // New requests snapshot that sender; in-flight work keeps its old one.
+        RendererResourceScheduler::new(self.resource_completion_sender())
     }
 
     #[cfg(test)]

@@ -593,7 +593,6 @@ impl JsContextHost {
             pending_network_body_sources: HashMap::new(),
             pending_network_body_clones: HashMap::new(),
             page_task_capabilities: std::cell::OnceCell::new(),
-            resource_scheduler: RendererResourceScheduler::new(resource_completion_tx.clone()),
             resource_completion_tx,
             next_worker_id: 1,
             workers: HashMap::new(),

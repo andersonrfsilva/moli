@@ -27,7 +27,6 @@ use crate::{
         native_bridge::{bindings::NativeBridgeBindings, element::ClientRect},
         observer_runtime::{ObserverStore, ObserverStoreAccessToken},
         page_task_queue::RendererResourceCompletionSender,
-        renderer_resource_scheduler::RendererResourceScheduler,
         runtime::{
             RendererBrowserContextRuntime, RendererDocumentLifecycleJournalHandle,
             RendererPageContextCancelReceiver, SharedRendererBackendNodeRegistry,
@@ -1087,7 +1086,6 @@ pub(crate) struct JsContextHost {
     pub(crate) pending_network_body_clones: HashMap<NetworkBodySourceId, Vec<NetworkBodySourceId>>,
     page_task_capabilities: OnceCell<JsContextHostPageTaskCapabilities>,
     resource_completion_tx: RendererResourceCompletionSender,
-    resource_scheduler: RendererResourceScheduler,
     next_worker_id: u64,
     workers: HashMap<DedicatedWorkerId, WorkerConnectionState>,
     next_websocket_id: u64,

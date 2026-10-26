@@ -1,6 +1,7 @@
 use super::*;
 
 mod auto_attach_startup;
+mod auxiliary_module_completion;
 mod auxiliary_page_identity;
 mod auxiliary_page_retirement;
 mod blank_navigation_inheritance;
