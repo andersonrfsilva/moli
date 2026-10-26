@@ -295,14 +295,8 @@ Moli는 Chromium 래퍼가 아닌 독립형 브라우저 커널입니다. Rust�
 
 ## 벤치마크
 
-### 공개 테스트셋
-
-| 평가 방식 | 벤치마크 | 지표 |
-| --- | --- | --- |
-| 웹 표준 및 회귀 테스트 | 선택된 [WPT](https://github.com/web-platform-tests/wpt) 및 [Moli](https://github.com/lexmount/moli/blob/main/.github/workflows/ci.yml) 테스트 | 통과한 테스트 및 기능 회귀 |
-| 브라우저 자동화 | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser) · 1,308개 브라우저 및 웹 테스트 | 작업 및 기능 테스트 통과율 |
-| CPU 및 메모리 | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md) · 557개 작업 중 네 로컬 브라우저가 모두 완료한 작업 | CPU 시간과 최대 메모리 |
-| Web Fetch | [lexbench-webfetch](https://github.com/lexmount/lexbench-webfetch) · 실제 웹사이트 430개 과제, [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) · HTML 스냅샷 545개 | 실제 웹사이트 과제 통과율, 저장된 페이지의 추출 품질 |
+다음 측정값은 Moli의 현재 기능 범위를 보여 줍니다. 실제 웹사이트, 자동화 클라이언트,
+Chromium/WPT 동작 검사, 대규모 nextest 회귀 테스트 모음을 다룹니다.
 
 ### 혼합 공개 웹 크롤 테스트
 
@@ -363,31 +357,6 @@ Kitesurf는 원격 서비스이므로 CPU, 메모리, 프로세스 수를 측정
 Moli는 Chrome CPU 시간의 약 15%, 최대 메모리의 약 13%를 사용했습니다. 방법론은
 [리소스 카드](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md)를
 참조하세요.
-
-### Web Fetch 벤치마크
-
-[`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch)는 실제 웹사이트에서 430개 과제를 실행하므로 통과율에는 사이트 접근과 정확한 콘텐츠 추출이 모두 반영됩니다. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main)는 저장된 HTML 페이지 545개를 처리하며 실제 사이트 접근을 제외한 추출 품질만 평가합니다. [벤치마크 보고서 보기](https://browser.lexmount.com/blog/webfetch-benchmark).
-
-| 방법 | 통과 과제 | 통과율 |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89.8%** |
-| Chromium | 234/430 | 54.4% |
-| Lightpanda | 228/430 | 53.0% |
-| Obscura | 223/430 | 51.9% |
-| Kitesurf | 192/430 | 44.7% |
-
-<details>
-<summary><strong>WebMainBench · 저장된 545개 페이지의 추출 품질</strong></summary>
-
-| 방법 | 본문 추출 | 종합 | 본문 | 코드 | 수식 | 표 내용 | 표 구조 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Moli | 545/545 | **39.27%** | 40.73% | **91.06%** | 28.20% | 22.62% | 13.75% |
-| Lightpanda | 545/545 | 35.00% | 41.52% | 84.71% | 12.97% | 21.81% | **14.00%** |
-| Obscura | 543/545 | 31.03% | **41.88%** | 81.82% | **31.39%** | 0.03% | 0.00% |
-| Chromium | 545/545 | 27.02% | 39.40% | 35.86% | 21.12% | **25.01%** | 13.73% |
-| Kitesurf | 524/545 | 33.43% | 36.99% | 80.70% | 19.32% | 18.25% | 11.87% |
-
-</details>
 
 ## 프로젝트 범위
 

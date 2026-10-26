@@ -303,16 +303,11 @@ Source lookup and hit-test candidates are derived from the frozen tree when
 queried. The system has no incrementally maintained layout tree, damage graph,
 retained display list, GPU compositor, or persistent window.
 
-## Benchmarks
+## Benchmark
 
-### Public test suites
-
-| Evaluation | Test suite | Measures |
-| --- | --- | --- |
-| Standards and regressions | Selected [WPT](https://github.com/web-platform-tests/wpt) tests; [Moli](https://github.com/lexmount/moli/blob/main/.github/workflows/ci.yml) regression tests | Tests passed and functional regressions |
-| Browser automation | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser) · 1,308 browser-operation and Web tests | Operation and feature test pass rate |
-| CPU and memory use | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md) · work completed by all four local browsers in 557 CDP/Web tasks | CPU time and peak memory |
-| Web Fetch | [lexbench-webfetch](https://github.com/lexmount/lexbench-webfetch) · 430 live-site tasks; [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) · 545 HTML snapshots | Live-site task pass rate; frozen-page extraction fidelity |
+The following measurements show Moli's current capability envelope. They cover
+real websites, automation clients, Chromium/WPT behavior checks, and a large
+nextest regression suite.
 
 ### Mixed public-web crawl test
 
@@ -376,31 +371,6 @@ Moli's median CPU time per task was **100.6 ms** and its median peak memory was
 about 15% of Chrome's CPU time and 13% of its peak memory. See the benchmark's
 [resource card](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md)
 for the methodology and full data.
-
-### Web Fetch benchmarks
-
-[`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) sends 430 tasks to live websites, so its pass rate reflects both site access and correct content extraction. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) processes 545 saved HTML pages and scores extraction quality without live-site access. [Read the benchmark report](https://browser.lexmount.com/blog/webfetch-benchmark).
-
-| Method | Tasks passed | Pass rate |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89.8%** |
-| Chromium | 234/430 | 54.4% |
-| Lightpanda | 228/430 | 53.0% |
-| Obscura | 223/430 | 51.9% |
-| Kitesurf | 192/430 | 44.7% |
-
-<details>
-<summary><strong>WebMainBench · extraction quality on 545 saved pages</strong></summary>
-
-| Method | Body produced | Overall | Text | Code | Formula | Table content | Table structure |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Moli | 545/545 | **39.27%** | 40.73% | **91.06%** | 28.20% | 22.62% | 13.75% |
-| Lightpanda | 545/545 | 35.00% | 41.52% | 84.71% | 12.97% | 21.81% | **14.00%** |
-| Obscura | 543/545 | 31.03% | **41.88%** | 81.82% | **31.39%** | 0.03% | 0.00% |
-| Chromium | 545/545 | 27.02% | 39.40% | 35.86% | 21.12% | **25.01%** | 13.73% |
-| Kitesurf | 524/545 | 33.43% | 36.99% | 80.70% | 19.32% | 18.25% | 11.87% |
-
-</details>
 
 ## Project scope
 
