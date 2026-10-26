@@ -1,6 +1,6 @@
 mod support;
 
-use moli_html2md::{Dom, convert};
+use moli_html2md::{Converter, Dom, Options, convert};
 use support::{Tree, rendered_html};
 
 fn containers(content: &str) -> [String; 3] {
@@ -457,6 +457,48 @@ fn inline_html_fallback_inherits_and_releases_the_writer_link_context() {
                 !descendants(&output, links[0]).contains(&outside[0]),
                 "{markdown}"
             );
+        }
+    }
+}
+
+#[test]
+fn code_whitespace_names_follow_the_preformatted_code_option() {
+    for (payload, default_name, preserved_name) in [
+        ("", true, true),
+        (" ", true, false),
+        (" \t\n", true, false),
+        ("&nbsp;", true, false),
+        ("<span> </span>", true, false),
+        ("x", false, false),
+    ] {
+        for tag in ["code", "pre"] {
+            for referenced in [false, true] {
+                let target = if referenced { "id='blank'" } else { "" };
+                let content = format!(
+                    "<a href='#blank'>Jump</a><a href='/search' aria-label='Search'><{tag} {target}>{payload}</{tag}></a>"
+                );
+                for source in containers(&content) {
+                    let input = Tree::parse(&source);
+                    for preformatted_code in [false, true] {
+                        let converter = Converter::new(Options {
+                            preformatted_code,
+                            ..Default::default()
+                        });
+                        let markdown = converter.convert(&input, input.root);
+                        let output = Tree::parse(&rendered_html(&markdown));
+                        let expected = if tag == "code" && preformatted_code {
+                            preserved_name
+                        } else {
+                            default_name
+                        };
+                        assert_eq!(
+                            text(&output, output.root).matches("Search").count(),
+                            usize::from(expected),
+                            "preformatted_code={preformatted_code}: {source}: {markdown}"
+                        );
+                    }
+                }
+            }
         }
     }
 }

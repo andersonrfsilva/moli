@@ -132,10 +132,17 @@ pub(crate) fn has_cells<D: Dom + ?Sized>(
     false
 }
 
+#[derive(Clone, Copy)]
+enum TextMode {
+    Normal,
+    Code,
+    Pre,
+}
+
 enum Task<Id> {
-    Node(Id, usize, bool),
-    Siblings(Option<Id>, usize, bool),
-    MathSiblings(Option<Id>, usize, bool),
+    Node(Id, usize, TextMode),
+    Siblings(Option<Id>, usize, TextMode),
+    MathSiblings(Option<Id>, usize, TextMode),
     Close(String),
     EndTable,
     Fallback(String, usize),
@@ -161,7 +168,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
     let mut output = String::new();
     let mut content = crate::content::Content::default();
     let mut table_modes = Vec::new();
-    let mut tasks = vec![Task::Node(root, depth, false)];
+    let mut tasks = vec![Task::Node(root, depth, TextMode::Normal)];
     while let Some(task) = tasks.pop() {
         match task {
             Task::Literal(value) => output.push_str(value),
@@ -188,20 +195,21 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 output.push('>');
             }
             Task::Siblings(None, _, _) | Task::MathSiblings(None, _, _) => {}
-            Task::Siblings(Some(node), depth, code) => {
-                tasks.push(Task::Siblings(dom.next_sibling(node), depth, code));
-                tasks.push(Task::Node(node, depth, code));
+            Task::Siblings(Some(node), depth, mode) => {
+                tasks.push(Task::Siblings(dom.next_sibling(node), depth, mode));
+                tasks.push(Task::Node(node, depth, mode));
             }
-            Task::MathSiblings(Some(node), depth, code) => {
-                tasks.push(Task::MathSiblings(dom.next_sibling(node), depth, code));
+            Task::MathSiblings(Some(node), depth, mode) => {
+                tasks.push(Task::MathSiblings(dom.next_sibling(node), depth, mode));
                 if !crate::mathml::is_hidden_alternative(dom, node) {
-                    tasks.push(Task::Node(node, depth, code));
+                    tasks.push(Task::Node(node, depth, mode));
                 }
             }
-            Task::Node(node, depth, code) => {
+            Task::Node(node, depth, mode) => {
                 if depth >= limit {
                     continue;
                 }
+                let code = !matches!(mode, TextMode::Normal);
                 if code && crate::content::is_code_control(dom, node) {
                     continue;
                 }
@@ -221,7 +229,12 @@ pub(crate) fn render<D: Dom + ?Sized>(
                         tasks.push(Task::Literal(" "));
                     }
                 }
-                let code = code || matches!(dom.node_kind(node), NodeKind::Element("pre" | "code"));
+                let mode = match dom.node_kind(node) {
+                    NodeKind::Element("pre") => TextMode::Pre,
+                    NodeKind::Element("code") if matches!(mode, TextMode::Normal) => TextMode::Code,
+                    _ => mode,
+                };
+                let code = !matches!(mode, TextMode::Normal);
                 if let NodeKind::Element(tag) = dom.node_kind(node)
                     && !allowed(tag)
                 {
@@ -233,7 +246,10 @@ pub(crate) fn render<D: Dom + ?Sized>(
                 }
                 match dom.node_kind(node) {
                     NodeKind::Text(text) => {
-                        if code && !text.is_empty() {
+                        if !text.is_empty()
+                            && matches!(mode, TextMode::Code)
+                            && options.preformatted_code
+                        {
                             content.object();
                         } else {
                             content.text(text);
@@ -272,7 +288,7 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             content.text(value);
                             escape(value, &mut output);
                         } else {
-                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
+                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1, mode));
                         }
                     }
                     NodeKind::Element(tag) => {
@@ -479,18 +495,18 @@ pub(crate) fn render<D: Dom + ?Sized>(
                                     output.push_str(&crate::anchors::markup(&id));
                                 }
                             }
-                            tasks.push(Task::MathSiblings(dom.first_child(node), depth + 1, code));
+                            tasks.push(Task::MathSiblings(dom.first_child(node), depth + 1, mode));
                         } else {
                             if let Some(label) =
                                 crate::content::fallback_text(dom, node, limit - depth)
                             {
                                 tasks.push(Task::Fallback(label, content.mark()));
                             }
-                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code));
+                            tasks.push(Task::Siblings(dom.first_child(node), depth + 1, mode));
                         }
                     }
                     NodeKind::Document => {
-                        tasks.push(Task::Siblings(dom.first_child(node), depth + 1, code))
+                        tasks.push(Task::Siblings(dom.first_child(node), depth + 1, mode))
                     }
                 }
             }
