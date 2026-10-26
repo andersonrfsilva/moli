@@ -807,17 +807,22 @@ impl RuntimeOwner {
                     Err(anyhow!("fetch runtime is shutting down")),
                 );
             }
-            RuntimeCommand::Request(job) => self.start_job_or_reply(state, job),
+            RuntimeCommand::Request(job) => {
+                self.config.bind_additional_cookie_scope(&job.request);
+                self.start_job_or_reply(state, job)
+            }
             RuntimeCommand::StreamingHtmlRequest(job) if state.closed => {
                 fail_streaming_job(job, anyhow!("fetch runtime is shutting down"));
             }
             RuntimeCommand::StreamingHtmlRequest(job) => {
+                self.config.bind_additional_cookie_scope(&job.request);
                 self.start_streaming_job_or_reply(state, job)
             }
             RuntimeCommand::StreamingRawRequest(job) if state.closed => {
                 fail_raw_streaming_job(job, anyhow!("fetch runtime is shutting down"));
             }
             RuntimeCommand::StreamingRawRequest(job) => {
+                self.config.bind_additional_cookie_scope(&job.request);
                 self.start_raw_streaming_job_or_reply(state, job)
             }
             #[cfg(test)]

@@ -181,7 +181,7 @@ fn outgoing_request_header_bytes_for_url(
 
     let additional = request
         .additional_cookies()
-        .or_else(|| config.additional_cookies())
+        .or_else(|| config.additional_cookies_for_request(request, request_url))
         .filter(|value| !value.is_empty())
         .filter(|_| request.allows_credentials_for_url(request_url))
         .filter(|_| {
@@ -1113,6 +1113,7 @@ mod tests {
                 .with_cookie_header_policy(CookieHeaderPolicy::PreserveExplicit);
             if literal_in_config {
                 config.set_additional_cookies(Some("literal=retained".to_owned()));
+                config.bind_additional_cookie_scope(&request);
             } else {
                 request = request.with_additional_cookies(Some("literal=retained".to_owned()));
             }

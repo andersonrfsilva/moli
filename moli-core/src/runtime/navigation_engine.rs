@@ -1097,6 +1097,7 @@ impl NavigationEngine {
         })
         .context("failed to build request")?;
         request.set_auth(auth.map(Into::into));
+        self.fetch_config.bind_additional_cookie_scope(&request);
         let navigation_loader = self.navigation_resource_loader(
             cookie_store,
             request.url.clone(),
@@ -1180,6 +1181,7 @@ impl NavigationEngine {
         })
         .context("failed to build request")?;
         request.set_auth(auth.map(Into::into));
+        self.fetch_config.bind_additional_cookie_scope(&request);
         let navigation_loader =
             self.navigation_resource_loader(cookie_store, request.url.clone(), cancel_handle)?;
         let service_worker_fetch = self

@@ -1063,6 +1063,19 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
         let server = tokio::spawn(async move {
+            let (mut navigation, _) = listener.accept().await.unwrap();
+            let initial = read_http_request_text(&mut navigation).await.unwrap();
+            assert!(initial.starts_with("GET / HTTP/1.1"));
+            assert!(
+                initial
+                    .to_ascii_lowercase()
+                    .contains("\r\ncookie: session=literal\r\n")
+            );
+            navigation
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .await
+                .unwrap();
+            drop(navigation);
             let (mut preflight, _) = listener.accept().await.unwrap();
             let preflight_request = read_http_request_text(&mut preflight).await.unwrap();
             assert!(preflight_request.starts_with("OPTIONS /resource HTTP/1.1"));
@@ -1143,6 +1156,12 @@ mod tests {
         config.set_additional_cookies(Some("session=literal".to_owned()));
         let loader_owner = ResourceRequestClient::new(&config)?;
         let loader = loader_owner.handle();
+        loader
+            .fetch(
+                Request::get(&format!("http://{addr}/"))?
+                    .with_request_origin(moli_url::WebOrigin::Opaque),
+            )
+            .await?;
         let request = Request::new(
             "PUT",
             &format!("http://{addr}/resource"),

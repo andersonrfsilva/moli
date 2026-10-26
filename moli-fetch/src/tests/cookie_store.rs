@@ -355,8 +355,9 @@ fn literal_cookies_obey_browser_credentials_for_both_configuration_sources() {
         let mut config = FetchConfig::default();
         if in_config {
             config.set_additional_cookies(Some("session=literal".to_owned()));
+            config.bind_additional_cookie_scope(&Request::get(origin.as_str()).unwrap());
         }
-        for target in ["https://app.test/resource", "https://other.test/resource"] {
+        for target in ["https://app.test/resource", "https://app.test:444/resource"] {
             for credentials in [
                 RequestCredentialsMode::Omit,
                 RequestCredentialsMode::SameOrigin,
@@ -387,6 +388,62 @@ fn literal_cookies_obey_browser_credentials_for_both_configuration_sources() {
             }
         }
     }
+}
+
+#[test]
+fn configured_literal_cookie_scope_is_pinned_and_shared_by_config_clones() {
+    let mut config = FetchConfig::default();
+    config.set_additional_cookies(Some("session=literal".to_owned()));
+    let cloned = config.clone();
+    let automatic = |url: &str| {
+        Request::new("GET", url, None, Vec::new())
+            .unwrap()
+            .with_request_mode(RequestMode::NoCors)
+            .with_credentials_mode(RequestCredentialsMode::Include)
+    };
+    let page = Request::get("https://app.test/start").unwrap();
+
+    for request in [
+        automatic("https://tracker.test/early-fetch"),
+        Request::get("https://tracker.test/iframe")
+            .unwrap()
+            .with_subframe_navigation_cookie_context(),
+        Request::get("data:text/html,initial").unwrap(),
+    ] {
+        config.bind_additional_cookie_scope(&request);
+        assert_eq!(
+            header_value(&outgoing_request_headers(&config, &request, None), "cookie"),
+            None
+        );
+    }
+    // Header inspection itself cannot choose the default host.
+    assert_eq!(
+        header_value(&outgoing_request_headers(&config, &page, None), "cookie"),
+        None
+    );
+    config.bind_additional_cookie_scope(&page);
+    assert_eq!(config, cloned);
+
+    cloned.bind_additional_cookie_scope(&Request::get("https://tracker.test/later").unwrap());
+    for candidate in [&config, &cloned] {
+        for (target, expected) in [
+            ("https://APP.test/asset", Some("session=literal")),
+            ("https://app.test:8443/asset", Some("session=literal")),
+            ("http://app.test/asset", Some("session=literal")),
+            ("https://sub.app.test/asset", None),
+            ("https://tracker.test/asset", None),
+        ] {
+            let headers = outgoing_request_headers(candidate, &automatic(target), None);
+            assert_eq!(header_value(&headers, "cookie"), expected, "{target}");
+        }
+        let headers = outgoing_request_headers(
+            candidate,
+            &automatic("https://tracker.test/asset"),
+            Some("target=stored"),
+        );
+        assert_eq!(header_value(&headers, "cookie"), Some("target=stored"));
+    }
+    assert_eq!(config, cloned);
 }
 
 #[test]

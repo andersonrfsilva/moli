@@ -617,6 +617,7 @@ pub struct CommonArgs {
     pub scrollbars: bool,
 
     /// Send Cookie header data or load a cookie file. Use - for stdin. May be repeated.
+    /// In serve mode, literal data defaults to the first HTTP(S) top-level navigation host.
     #[arg(
         long = "cookie",
         visible_alias = "cookie-file",
