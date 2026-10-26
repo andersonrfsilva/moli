@@ -316,3 +316,30 @@ fn range_arguments_preserve_registered_native_proxy_identity_without_traps() {
       return true;
     })()"#).unwrap(), "true");
 }
+
+#[test]
+fn svg_length_specified_units_use_restricted_float_conversion() {
+    let mut vm = new_storage_html_test_vm("https://svg-length-float.test/");
+    let result = vm.eval(r#"
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const length = svg.createSVGLength();
+        length.newValueSpecifiedUnits(SVGLength.SVG_LENGTHTYPE_NUMBER, 16777217);
+        if (length.valueInSpecifiedUnits !== Math.fround(16777217)) throw new Error('float rounding');
+        const original = length.valueInSpecifiedUnits;
+        for (const value of [NaN, Infinity, -Infinity, 1e39, -1e39, Symbol()]) {
+            let error;
+            try {length.newValueSpecifiedUnits(SVGLength.SVG_LENGTHTYPE_PX, value);}
+            catch (caught) {error = caught;}
+            if (!(error instanceof TypeError) || length.valueInSpecifiedUnits !== original)
+                throw new Error('restricted float must reject before mutation');
+        }
+        const seen = [], sentinel = new Error('value');
+        try {length.newValueSpecifiedUnits({valueOf() {seen.push('unit'); return 1;}},
+            {valueOf() {seen.push('value'); throw sentinel;}});}
+        catch (caught) {if (caught !== sentinel) throw caught;}
+        if (seen.join() !== 'unit,value' || length.valueInSpecifiedUnits !== original)
+            throw new Error('conversion order or exception identity');
+        'ok';
+    "#).unwrap();
+    assert_eq!(result, "ok");
+}

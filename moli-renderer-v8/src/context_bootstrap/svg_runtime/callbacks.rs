@@ -3740,7 +3740,12 @@ pub(super) fn svg_length_new_value_specified_units_callback<'s>(
         );
         return;
     }
-    set_svg_length_numeric_value(scope, args.this(), parsed.value, parsed.unit_type as u32);
+    set_svg_length_numeric_value(
+        scope,
+        args.this(),
+        f64::from(parsed.value),
+        parsed.unit_type as u32,
+    );
     reflect_svg_length_to_owner_attribute(scope, args.this());
     reflect_svg_value_list_item_to_owner_list(scope, args.this(), SvgListKind::Length);
     rv.set_undefined();
