@@ -1085,6 +1085,40 @@ fn fallback_keeps_code_boxes_and_ignores_column_boxes() {
 }
 
 #[test]
+fn stripped_block_elements_keep_their_computed_boundaries_in_tables() {
+    let content =
+        "<output style='display:block'>A</output><output style='display:block'>B</output>";
+    for source in [
+        format!("<div>{content}</div>"),
+        format!("<table><tr><td>{content}</td><td>Other</td></tr></table>"),
+        format!("<table><tr><td colspan='2'>{content}</td></tr></table>"),
+    ] {
+        let dom = Counted {
+            tree: Tree::parse(&source),
+            visits: Cell::new(0),
+        };
+        let markdown = convert(&dom, dom.tree.root);
+        let output = Tree::parse(&rendered_html(&markdown));
+        let mut text = String::new();
+        for node in &output.nodes {
+            if matches!(node.tag.as_deref(), Some("p" | "div" | "td" | "br")) {
+                text.push(' ');
+            }
+            if let Some(value) = &node.text {
+                text.push_str(value);
+            }
+        }
+        assert!(
+            text.split_whitespace()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|words| words == ["A", "B"]),
+            "{source}: {markdown}\n{text}"
+        );
+    }
+}
+
+#[test]
 fn content_after_a_nested_list_can_make_the_outer_list_loose() {
     assert_eq!(
         markdown("<ul><li>a<ul><li>b</li></ul>c</li><li>d</li></ul>"),

@@ -216,17 +216,11 @@ pub(crate) fn render<D: Dom + ?Sized>(
                     continue;
                 }
                 if let NodeKind::Element(tag) = dom.node_kind(node) {
-                    if !code
-                        && dom.has_block_layout(node)
-                        && !crate::structure::is_block(tag)
-                        && !crate::structure::owns_boundaries(tag)
-                    {
+                    let owns_boundaries = allowed(tag) && crate::structure::owns_boundaries(tag);
+                    if !code && dom.has_block_layout(node) && !owns_boundaries {
                         output.push_str("<div>");
                         tasks.push(Task::Close("div".to_owned()));
-                    } else if !code
-                        && dom.has_text_boundary(node)
-                        && !crate::structure::owns_boundaries(tag)
-                    {
+                    } else if !code && dom.has_text_boundary(node) && !owns_boundaries {
                         output.push(' ');
                         tasks.push(Task::Literal(" "));
                     }
