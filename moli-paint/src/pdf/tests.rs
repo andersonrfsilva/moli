@@ -473,6 +473,194 @@ fn content_operations(doc: &lopdf::Document) -> Vec<lopdf::content::Operation> {
         .collect()
 }
 
+fn form_contents(doc: &lopdf::Document) -> Vec<(&lopdf::Stream, lopdf::content::Content)> {
+    doc.objects
+        .values()
+        .filter_map(|object| object.as_stream().ok())
+        .filter(|stream| {
+            stream.dict.get(b"Subtype").and_then(|v| v.as_name()).ok() == Some(b"Form")
+        })
+        .map(|stream| {
+            let bytes = stream
+                .decompressed_content()
+                .unwrap_or_else(|_| stream.content.clone());
+            (stream, lopdf::content::Content::decode(&bytes).unwrap())
+        })
+        .collect()
+}
+
+fn synthetic_stroke_run(
+    snapshot: &mut PaintSnapshot,
+    bytes: &[u8],
+    label: &str,
+    size: f32,
+) -> PaintGlyphRun {
+    let mut run = text(snapshot, label, 110.0, false);
+    let face = skrifa::FontRef::from_index(bytes, 0).unwrap();
+    let font = peniko::FontData::new(peniko::Blob::new(Arc::new(bytes.to_vec())), 0);
+    run.font = snapshot.intern_font(&font);
+    for (glyph, ch) in run.glyphs.iter_mut().zip(label.chars()) {
+        glyph.id = face.charmap().map(ch).unwrap().to_u32();
+    }
+    run.font_size = size;
+    run.glyph_embolden = PaintPoint::new((size * 0.015125).min(0.3), (size * 0.0121).min(0.3));
+    run.stroke = Some(moli_layout::PaintTextStroke {
+        width: 2.0,
+        color: PaintColor::new(1.0, 0.0, 0.0, 1.0),
+        paint_first: false,
+    });
+    run
+}
+
+#[test]
+fn synthetic_weight_preserves_both_axes_in_pdf_fill_and_stroke_contours() {
+    for bytes in [
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf").as_slice(),
+        include_bytes!("../../tests/fixtures/moli-text-stroke-250.ttf").as_slice(),
+    ] {
+        for size in [16.0, 20.0, 32.0] {
+            for paint_first in [false, true] {
+                for alpha in [0.5, 1.0] {
+                    if size == 32.0 && alpha == 1.0 {
+                        continue; // Opaque uniform expansion uses native text below.
+                    }
+                    let mut snapshot = snapshot();
+                    let mut run = synthetic_stroke_run(&mut snapshot, bytes, "R", size);
+                    run.color.alpha = alpha;
+                    run.stroke.as_mut().unwrap().paint_first = paint_first;
+                    let x = run.glyph_embolden.x;
+                    let y = run.glyph_embolden.y;
+                    snapshot.push_fragment(PaintFragment::GlyphRun(run));
+                    let doc = document(&snapshot, &options());
+                    assert_eq!(extracted(&doc, &[1, 2]), "R");
+                    let forms = form_contents(&doc);
+                    let fills: Vec<_> = forms
+                        .iter()
+                        .filter(|(_, content)| {
+                            content.operations.iter().any(|op| op.operator == "f")
+                        })
+                        .collect();
+                    assert_eq!(fills.len(), 1, "one visible fill with opacity applied once");
+                    let bounds = fills[0].0.dict.get(b"BBox").unwrap().as_array().unwrap();
+                    for (actual, expected) in
+                        bounds.iter().zip([-x, -size * 0.8 - y, size * 0.6 + x, y])
+                    {
+                        assert!(
+                            (actual.as_float().unwrap() - expected).abs() < 0.02,
+                            "size={size}, alpha={alpha}, paint_first={paint_first}, bbox={bounds:?}"
+                        );
+                    }
+                    let strokes: Vec<_> = forms
+                        .iter()
+                        .filter(|(_, content)| {
+                            content.operations.iter().any(|op| op.operator == "S")
+                        })
+                        .collect();
+                    assert_eq!(strokes.len(), 1);
+                    assert!(
+                        strokes[0].1.operations.iter().any(|op| {
+                            op.operator == "w" && op.operands[0].as_float().unwrap() == 2.0
+                        }),
+                        "the authored stroke width must remain unchanged"
+                    );
+                    assert!(
+                        !content_operations(&doc).iter().any(|op| {
+                            op.operator == "Tr" && op.operands[0].as_i64().unwrap() == 2
+                        }),
+                        "expanded translucent fills must not add a native fill-and-stroke pass"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn repeated_uniform_synthetic_text_keeps_native_fill_and_reuses_stroke_graphics() {
+    for paint_first in [false, true] {
+        let mut snapshot = snapshot();
+        let label = "R".repeat(180);
+        let mut run = synthetic_stroke_run(
+            &mut snapshot,
+            include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+            &label,
+            32.0,
+        );
+        run.stroke.as_mut().unwrap().paint_first = paint_first;
+        for (i, glyph) in run.glyphs.iter_mut().enumerate() {
+            let row = i / 10;
+            glyph.x = 10.0 + (i % 10) as f32 * 24.0;
+            glyph.y = 30.0 + row as f32 * 30.0 + if row >= 9 { 30.0 } else { 0.0 };
+        }
+        snapshot.push_fragment(PaintFragment::GlyphRun(run));
+        let doc = document(&snapshot, &options());
+        assert_eq!(extracted(&doc, &[1, 2]).replace(' ', ""), label);
+        let forms = form_contents(&doc);
+        assert_eq!(
+            forms.len(),
+            1,
+            "one stroke graphic shared by glyphs on both pages"
+        );
+        assert!(forms[0].1.operations.iter().any(|op| op.operator == "S"));
+        assert!(!forms[0].1.operations.iter().any(|op| op.operator == "f"));
+        for page in doc.get_pages().values() {
+            let content = lopdf::content::Content::decode(&doc.get_page_content(*page)).unwrap();
+            assert!(
+                content
+                    .operations
+                    .iter()
+                    .any(|op| { op.operator == "Tr" && op.operands[0].as_i64().unwrap() == 2 }),
+                "the visible native fill must own the text semantics"
+            );
+        }
+    }
+}
+
+#[test]
+fn expanded_pdf_outlines_are_prepared_only_for_visible_unique_glyphs() {
+    let mut snapshot = snapshot();
+    let mut run = synthetic_stroke_run(
+        &mut snapshot,
+        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+        "RRAB",
+        20.0,
+    );
+    run.glyphs[2].y = 400.0;
+    run.glyphs[3].x = 400.0;
+    for (page_index, invisible) in [(0, false), (1, false), (0, true)] {
+        let mut fonts = text::FontCache::default();
+        let mut pdf = Document::new();
+        let mut page = pdf.start_page_with(PageSettings::from_wh(300.0, 300.0).unwrap());
+        let mut surface = page.surface();
+        let top = page_index as f64 * 300.0;
+        text::draw(
+            &mut surface,
+            &snapshot,
+            &run,
+            &mut fonts,
+            Rect::new(0.0, 0.0, 300.0, 600.0),
+            Rect::new(0.0, top, 300.0, top + 300.0),
+            &[],
+            300.0,
+            page_index,
+            invisible,
+        )
+        .unwrap();
+        let expected = if invisible {
+            Vec::new()
+        } else {
+            vec![run.glyphs[if page_index == 0 { 0 } else { 2 }].id]
+        };
+        assert_eq!(
+            fonts.expanded_glyphs, expected,
+            "page_index={page_index}, invisible={invisible}"
+        );
+        surface.finish();
+        page.finish();
+        pdf.finish().unwrap();
+    }
+}
+
 #[test]
 fn text_stroke_is_exported_as_a_pdf_stroke_with_one_semantic_copy() {
     for paint_first in [false, true] {
@@ -1056,27 +1244,47 @@ fn native_pdf_culling_keeps_colr_layer_ink_outside_the_base_outline() {
 }
 
 #[test]
-fn native_pdf_culling_measures_its_isotropic_synthetic_weight() {
-    let mut snapshot = filtered_fixture_glyph(
-        include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
-        'R',
-        None,
-    );
-    let PaintFragment::GlyphRun(mut run) = snapshot.fragments.remove(1) else {
-        unreachable!()
-    };
-    run.glyph_embolden = PaintPoint::new(0.3, 0.0);
-    // Native PDF expands both axes by the maximum snapshot amount. Only the
-    // added top edge reaches this clip; the raw rectangle starts at y=70.
-    snapshot.fragments = vec![
-        PaintFragment::PushClip {
-            shape: PaintShape::Rect(PaintRect::new(100.0, 69.71, 60.0, 0.19)),
-            transform: PaintTransform2D::IDENTITY,
-        },
-        PaintFragment::GlyphRun(run),
-        PaintFragment::PopLayer,
-    ];
-    assert_eq!(fixture_unicode(&document(&snapshot, &options())), "R");
+fn native_pdf_culling_keeps_synthetic_weight_axes_independent() {
+    for (embolden, horizontal) in [
+        (PaintPoint::new(0.3, 0.0), true),
+        (PaintPoint::new(0.0, 0.3), false),
+    ] {
+        for clip_left in [false, true] {
+            let mut snapshot = filtered_fixture_glyph(
+                include_bytes!("../../tests/fixtures/moli-text-stroke.ttf"),
+                'R',
+                None,
+            );
+            let PaintFragment::GlyphRun(mut run) = snapshot.fragments.remove(1) else {
+                unreachable!()
+            };
+            run.glyph_embolden = embolden;
+            // The raw rectangle occupies x=100..160, y=70..150. A clip just
+            // outside an edge sees ink only if that axis was expanded.
+            let clip = if clip_left {
+                PaintRect::new(99.71, 70.0, 0.19, 80.0)
+            } else {
+                PaintRect::new(100.0, 69.71, 60.0, 0.19)
+            };
+            snapshot.fragments = vec![
+                PaintFragment::PushClip {
+                    shape: PaintShape::Rect(clip),
+                    transform: PaintTransform2D::IDENTITY,
+                },
+                PaintFragment::GlyphRun(run),
+                PaintFragment::PopLayer,
+            ];
+            let doc = document(&snapshot, &options());
+            if horizontal == clip_left {
+                assert_eq!(fixture_unicode(&doc), "R");
+            } else {
+                assert!(
+                    doc.get_page_fonts(doc.get_pages()[&1]).unwrap().is_empty(),
+                    "unexpanded axis must not contribute ink: {embolden:?}, clip_left={clip_left}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

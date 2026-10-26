@@ -4,7 +4,8 @@ use anyrender_vello_cpu::{GlyphInkBounds, GlyphMeasurer, GlyphRepresentation};
 
 use krilla::{
     geom::{Path, Point},
-    paint::{LineJoin, Stroke},
+    graphic::Graphic,
+    paint::{Fill, LineJoin, Stroke},
     surface::Surface,
     text::{Font, GlyphId, KrillaGlyph, Tag},
 };
@@ -27,6 +28,8 @@ use super::{
 pub(super) struct FontCache {
     fonts: HashMap<(usize, Vec<i16>), Font>,
     pub(super) glyphs: GlyphMeasurer,
+    #[cfg(test)]
+    pub(super) expanded_glyphs: Vec<u32>,
 }
 impl FontCache {
     fn get(&mut self, snapshot: &PaintSnapshot, run: &PaintGlyphRun) -> Result<Font, PdfError> {
@@ -54,7 +57,7 @@ struct GlyphGeometry<'a> {
     outline_ids: HashSet<u32>,
     font_size: f32,
     skew: f32,
-    embolden: f32,
+    embolden: Diagonal2,
     ink_outset: f64,
 }
 
@@ -71,7 +74,10 @@ impl<'a> GlyphGeometry<'a> {
         let face = skrifa::FontRef::from_index(data.data.as_ref(), data.index)
             .map_err(|error| PdfError::Encoding(error.to_string()))?;
         // Snapshot synthesis and stroke widths are both local CSS pixels.
-        let embolden = run.glyph_embolden.x.max(run.glyph_embolden.y).max(0.0);
+        let embolden = Diagonal2::new(
+            f64::from(run.glyph_embolden.x.max(0.0)),
+            f64::from(run.glyph_embolden.y.max(0.0)),
+        );
         let mut ink = measure_ink(snapshot, run, stroke, raster, cache);
         if !raster {
             // Krilla picks the largest bitmap strike and applies its bearings
@@ -91,7 +97,7 @@ impl<'a> GlyphGeometry<'a> {
                 }
             }
         }
-        let outline_ids = if embolden > 0.0 && stroke.is_some() {
+        let outline_ids = if !raster && embolden != Diagonal2::new(0.0, 0.0) {
             run.glyphs
                 .iter()
                 .zip(&ink)
@@ -119,7 +125,7 @@ impl<'a> GlyphGeometry<'a> {
             embolden,
             ink_outset: f64::from(PaintTextStroke::ink_outset(
                 stroke.map_or(0.0, |stroke| stroke.width),
-                embolden,
+                embolden.xx.max(embolden.yy) as f32,
             )),
         })
     }
@@ -161,7 +167,7 @@ impl<'a> GlyphGeometry<'a> {
         // contour preserves its inner edge as well as its outer ink extent.
         let path = kurbo::expand_path(
             &path,
-            Diagonal2::new(f64::from(self.embolden), f64::from(self.embolden)),
+            self.embolden,
             Join::Miter,
             f64::from(PaintTextStroke::MITER_LIMIT),
             0.1,
@@ -213,14 +219,7 @@ fn measure_ink(
     let matrix = Affine::scale(scale) * crate::geometry::to_backend_transform(run.transform);
     let x = f64::from(run.glyph_embolden.x.max(0.0));
     let y = f64::from(run.glyph_embolden.y.max(0.0));
-    // Native PDF synthesis uses one isotropic width (including its expanded
-    // stroke contour); the CPU fallback supports separate horizontal/vertical
-    // amounts. Measure the parameters each path actually draws.
-    let embolden = if raster {
-        Vec2::new(x, y)
-    } else {
-        Vec2::new(x.max(y), x.max(y))
-    };
+    let embolden = Vec2::new(x, y);
     let glyph_transform = Some(Affine::skew(
         -f64::from(run.glyph_skew_radians.unwrap_or_default()).tan(),
         0.0,
@@ -362,6 +361,39 @@ pub(super) fn variation_coordinates(
     Ok(result)
 }
 
+struct ExpandedGlyph {
+    path: Path,
+    fill: Option<Graphic>,
+    stroke: Option<Graphic>,
+}
+
+fn glyph_graphic(
+    surface: &mut Surface<'_>,
+    path: &Path,
+    fill: Option<Fill>,
+    stroke: Option<Stroke>,
+) -> Graphic {
+    let mut stream = surface.stream_builder();
+    let mut glyph = stream.surface();
+    glyph.set_fill(fill);
+    glyph.set_stroke(stroke);
+    glyph.draw_path(path);
+    glyph.finish();
+    Graphic::new(stream.finish(), false)
+}
+
+fn stroke_paint(stroke: PaintTextStroke) -> Stroke {
+    let paint = fill(stroke.color);
+    Stroke {
+        paint: paint.paint,
+        opacity: paint.opacity,
+        width: stroke.width,
+        line_join: LineJoin::Miter,
+        miter_limit: PaintTextStroke::MITER_LIMIT,
+        ..Default::default()
+    }
+}
+
 pub(super) fn draw(
     surface: &mut Surface<'_>,
     snapshot: &PaintSnapshot,
@@ -413,15 +445,12 @@ pub(super) fn draw(
     let metrics = &geometry.metrics;
     let skew = geometry.skew;
     let embolden = geometry.embolden;
-    let expanded_outlines = (embolden > 0.0 && visible_stroke.is_some()).then(|| {
-        let mut paths = HashMap::new();
-        for glyph in &run.glyphs {
-            paths.entry(glyph.id).or_insert_with(|| {
-                geometry.expanded_outline(skrifa::GlyphId::new(glyph.id), &coords)
-            });
-        }
-        paths
-    });
+    let synthesized = embolden != Diagonal2::new(0.0, 0.0);
+    let fallback_embolden = embolden.xx.max(embolden.yy) as f32;
+    // Native fill-and-stroke can represent an opaque isotropic expansion.
+    // Other synthesized fills use the actual contour, so transparency is
+    // applied once and the two expansion axes remain independent.
+    let native_fill = !synthesized || (embolden.xx == embolden.yy && run.color.alpha >= 1.0);
     let mut batches: Vec<(bool, Vec<usize>)> = Vec::new();
     let mut start = 0;
     while start < run.glyphs.len() {
@@ -496,6 +525,51 @@ pub(super) fn draw(
         }
         start = end;
     }
+    // Prepare only glyph IDs that survived this page's cluster/clip checks.
+    // Reusable graphics keep repeated contours out of the page content streams.
+    let mut expanded = HashMap::<u32, Option<ExpandedGlyph>>::new();
+    if synthesized && !invisible {
+        for (outlined, indices) in &batches {
+            let path_fill = has_fill && (*outlined || !native_fill);
+            if !path_fill && visible_stroke.is_none() {
+                continue;
+            }
+            for &i in indices {
+                let glyph = run.glyphs[i];
+                let entry = expanded.entry(glyph.id).or_insert_with(|| {
+                    #[cfg(test)]
+                    fonts.expanded_glyphs.push(glyph.id);
+                    geometry
+                        .expanded_outline(skrifa::GlyphId::new(glyph.id), &coords)
+                        .map(|path| ExpandedGlyph {
+                            path,
+                            fill: None,
+                            stroke: None,
+                        })
+                });
+                if let Some(glyph) = entry {
+                    if path_fill && glyph.fill.is_none() {
+                        glyph.fill = Some(glyph_graphic(
+                            surface,
+                            &glyph.path,
+                            Some(fill(run.color)),
+                            None,
+                        ));
+                    }
+                    if let Some(stroke) = visible_stroke
+                        && glyph.stroke.is_none()
+                    {
+                        glyph.stroke = Some(glyph_graphic(
+                            surface,
+                            &glyph.path,
+                            None,
+                            Some(stroke_paint(stroke)),
+                        ));
+                    }
+                }
+            }
+        }
+    }
     for (outlined, indices) in batches {
         let first = run.glyphs[indices[0]];
         surface.push_transform(&transform(
@@ -531,12 +605,23 @@ pub(super) fn draw(
                 }
             })
             .collect();
-        let path_stroke = expanded_outlines
-            .as_ref()
-            .is_some_and(|paths| indices.iter().any(|&i| paths[&run.glyphs[i].id].is_some()));
-        if path_stroke && !outlined {
-            // Expanded contours are PDF paths. Retain one native text copy,
-            // then render both visible passes without duplicate semantics.
+        let path_stroke = visible_stroke.is_some()
+            && indices.iter().any(|&i| {
+                expanded
+                    .get(&run.glyphs[i].id)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|glyph| glyph.stroke.is_some())
+            });
+        let path_fill = has_fill
+            && (outlined || !native_fill)
+            && indices.iter().any(|&i| {
+                expanded
+                    .get(&run.glyphs[i].id)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|glyph| glyph.fill.is_some())
+            });
+        let semantic_copy = !outlined && (path_fill || (!has_fill && path_stroke));
+        if semantic_copy {
             let mut semantic = fill(run.color);
             semantic.opacity = krilla::num::NormalizedF32::ZERO;
             surface.set_fill(Some(semantic));
@@ -550,67 +635,79 @@ pub(super) fn draw(
                 false,
             );
         }
-        let outlined = outlined || path_stroke;
-        // `-webkit-text-stroke`: a separate stroke-only pass, before or after
-        // the fill per `paint-order`. Only the first drawn pass carries the
-        // searchable text; the other is emitted as outlines.
-        let draw_stroke = |surface: &mut Surface<'_>, outlined: bool| {
-            if let Some(stroke) = visible_stroke {
-                let paint = fill(stroke.color);
-                surface.set_fill(None);
-                let stroke_paint = Stroke {
-                    paint: paint.paint,
-                    opacity: paint.opacity,
-                    width: stroke.width,
-                    line_join: LineJoin::Miter,
-                    miter_limit: PaintTextStroke::MITER_LIMIT,
-                    ..Default::default()
-                };
-                if path_stroke {
-                    for &i in &indices {
-                        let glyph = run.glyphs[i];
-                        let dy = glyph.y - first.y;
-                        surface.push_transform(&transform(Affine::translate((
-                            f64::from(glyph.x - first.x + skew * dy),
-                            f64::from(dy),
-                        ))));
-                        let path = expanded_outlines.as_ref().unwrap()[&glyph.id].as_ref();
-                        surface.set_stroke(Some(Stroke {
-                            width: stroke.width + if path.is_some() { 0.0 } else { 2.0 * embolden },
-                            ..stroke_paint.clone()
-                        }));
-                        if let Some(path) = path {
-                            surface.draw_path(path);
+        let draw_paths = |surface: &mut Surface<'_>, filling: bool| {
+            for &i in &indices {
+                let glyph = run.glyphs[i];
+                let dy = glyph.y - first.y;
+                surface.push_transform(&transform(Affine::translate((
+                    f64::from(glyph.x - first.x + skew * dy),
+                    f64::from(dy),
+                ))));
+                let graphic = expanded
+                    .get(&glyph.id)
+                    .and_then(Option::as_ref)
+                    .and_then(|glyph| {
+                        if filling {
+                            glyph.fill.as_ref()
                         } else {
-                            // Color/image representations retain their native
-                            // fallback until their stroke behavior is defined.
-                            let native = KrillaGlyph {
-                                glyph_id: GlyphId::new(glyph.id),
-                                text_range: run
-                                    .text
-                                    .as_ref()
-                                    .map_or(0..0, |text| text.clusters[i].clone()),
-                                x_advance: 0.0,
-                                y_advance: 0.0,
-                                x_offset: 0.0,
-                                y_offset: 0.0,
-                                location: None,
-                            };
-                            surface.draw_glyphs(
-                                Point::from_xy(0.0, 0.0),
-                                &[native],
-                                font.clone(),
-                                source_text,
-                                font_size,
-                                true,
-                            );
+                            glyph.stroke.as_ref()
                         }
-                        surface.pop();
-                    }
+                    });
+                if let Some(graphic) = graphic {
+                    surface.draw_graphic(graphic.clone());
                 } else {
+                    // Keep the existing native fallback for image glyphs or
+                    // unavailable outlines, without adding another text copy.
+                    let paint = fill(run.color);
+                    surface.set_fill(filling.then(|| paint.clone()));
+                    surface.set_stroke(if filling {
+                        synthesized.then(|| Stroke {
+                            paint: paint.paint,
+                            opacity: paint.opacity,
+                            width: 2.0 * fallback_embolden,
+                            line_join: LineJoin::Miter,
+                            miter_limit: PaintTextStroke::MITER_LIMIT,
+                            ..Default::default()
+                        })
+                    } else {
+                        visible_stroke.map(|stroke| Stroke {
+                            width: stroke.width + 2.0 * fallback_embolden,
+                            ..stroke_paint(stroke)
+                        })
+                    });
+                    let native = KrillaGlyph {
+                        glyph_id: GlyphId::new(glyph.id),
+                        text_range: run
+                            .text
+                            .as_ref()
+                            .map_or(0..0, |text| text.clusters[i].clone()),
+                        x_advance: 0.0,
+                        y_advance: 0.0,
+                        x_offset: 0.0,
+                        y_offset: 0.0,
+                        location: None,
+                    };
+                    surface.draw_glyphs(
+                        Point::from_xy(0.0, 0.0),
+                        &[native],
+                        font.clone(),
+                        source_text,
+                        font_size,
+                        true,
+                    );
+                }
+                surface.pop();
+            }
+        };
+        let draw_stroke = |surface: &mut Surface<'_>| {
+            if let Some(stroke) = visible_stroke {
+                if path_stroke {
+                    draw_paths(surface, false);
+                } else {
+                    surface.set_fill(None);
                     surface.set_stroke(Some(Stroke {
-                        width: stroke.width + 2.0 * embolden,
-                        ..stroke_paint
+                        width: stroke.width + 2.0 * fallback_embolden,
+                        ..stroke_paint(stroke)
                     }));
                     surface.draw_glyphs(
                         Point::from_xy(0.0, 0.0),
@@ -618,41 +715,43 @@ pub(super) fn draw(
                         font.clone(),
                         source_text,
                         font_size,
-                        outlined,
+                        outlined || has_fill || semantic_copy,
                     );
                 }
             }
         };
         let stroke_first = visible_stroke.is_some_and(|stroke| stroke.paint_first);
         if stroke_first || !has_fill {
-            draw_stroke(surface, outlined);
+            draw_stroke(surface);
         }
-        // Filtered hollow text still needs an invisible fill pass to retain
-        // its searchable text after the visible stroke was rasterized.
         if has_fill || invisible {
-            let mut paint = fill(run.color);
-            if invisible {
-                paint.opacity = krilla::num::NormalizedF32::ZERO;
+            if path_fill {
+                draw_paths(surface, true);
+            } else {
+                let mut paint = fill(run.color);
+                if invisible {
+                    paint.opacity = krilla::num::NormalizedF32::ZERO;
+                }
+                surface.set_stroke((synthesized && !invisible).then(|| Stroke {
+                    paint: paint.paint.clone(),
+                    opacity: paint.opacity,
+                    width: 2.0 * fallback_embolden,
+                    line_join: LineJoin::Miter,
+                    miter_limit: PaintTextStroke::MITER_LIMIT,
+                    ..Default::default()
+                }));
+                surface.set_fill(Some(paint));
+                surface.draw_glyphs(
+                    Point::from_xy(0.0, 0.0),
+                    &glyphs,
+                    font.clone(),
+                    source_text,
+                    font_size,
+                    outlined || semantic_copy,
+                );
             }
-            surface.set_stroke((embolden > 0.0).then(|| Stroke {
-                paint: paint.paint.clone(),
-                opacity: paint.opacity,
-                width: 2.0 * embolden,
-                line_join: LineJoin::Miter,
-                miter_limit: PaintTextStroke::MITER_LIMIT,
-                ..Default::default()
-            }));
-            surface.set_fill(Some(paint));
-            surface.draw_glyphs(
-                Point::from_xy(0.0, 0.0),
-                &glyphs,
-                font.clone(),
-                source_text,
-                font_size,
-                outlined || stroke_first,
-            );
             if !stroke_first {
-                draw_stroke(surface, true);
+                draw_stroke(surface);
             }
         }
         surface.set_stroke(None);
