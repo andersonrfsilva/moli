@@ -231,7 +231,14 @@ Moli は、Chromium を外から操作するだけの仕組みではなく、独
 
 ## 検証結果
 
-以下の実測値は、Moli が現在対応できる範囲を示しています。検証対象には、実在する Web サイト、自動操作クライアント、Chromium/WPT の動作、大規模な nextest 回帰テストを含みます。
+### 公開テストセット
+
+| 評価方法 | テストセット | 指標 |
+| --- | --- | --- |
+| Web 標準・回帰テスト | 選定した [WPT](https://github.com/web-platform-tests/wpt) テストと [Moli](https://github.com/lexmount/moli/blob/main/.github/workflows/ci.yml) 回帰テスト | 合格件数・不具合の再発 |
+| ブラウザの自動操作 | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser) · ブラウザ操作・Web 機能テスト 1,308 件 | 操作・機能テストの合格率 |
+| CPU・メモリ使用量 | [Lexbench](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md) · CDP/Web の 557 タスク中、ローカル 4 ブラウザが完了した処理 | CPU 時間・ピークメモリ |
+| Web Fetch | [lexbench-webfetch](https://github.com/lexmount/lexbench-webfetch) · 実サイト 430 タスク、[WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) · HTML スナップショット 545 件 | 実サイトでのタスク成功率、保存ページの抽出品質 |
 
 ### 公開 Web サイトの横断取得試験
 
@@ -274,6 +281,31 @@ Moli のエージェント向けブラウザとしての対応範囲を検証す
 </picture>
 
 Kitesurf はリモートサービスのため、CPU、メモリ、プロセス数を測定できません。リソース比較は 4 つのローカルエンジンのみを対象とします。別に実施した 557 タスクの測定では、4 エンジンすべてが完了した処理だけを集計しています。Moli のタスクあたり中央値は **CPU 100.6 ms**、**ピークメモリ 92 MiB** でした。Chrome はそれぞれ **687 ms**、**697 MiB** でした。Moli の CPU 時間は Chrome の約 15%、ピークメモリは約 13% です。測定方法と全データはベンチマークの[リソースカード](https://github.com/lexmount/Lexbench-Headless-Browser/blob/main/docs/reports/resource-card-20260812.md)を参照してください。
+
+### Web Fetch ベンチマーク
+
+[`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) は実サイトに対して 430 タスクを実行するため、成功率にはサイトへのアクセスと正しい本文抽出の両方が含まれます。[WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) は保存済みの HTML 545 ページを使い、実サイトへのアクセスを除いた抽出品質だけを評価します。[ベンチマークの詳細](https://browser.lexmount.com/blog/webfetch-benchmark)。
+
+| 方式 | 成功タスク数 | 成功率 |
+| --- | ---: | ---: |
+| Moli | **386/430** | **89.8%** |
+| Chromium | 234/430 | 54.4% |
+| Lightpanda | 228/430 | 53.0% |
+| Obscura | 223/430 | 51.9% |
+| Kitesurf | 192/430 | 44.7% |
+
+<details>
+<summary><strong>WebMainBench · 保存済み 545 ページの抽出品質</strong></summary>
+
+| 方式 | 本文を生成 | 総合 | 全文 | コード | 数式 | 表の内容 | 表の構造 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Moli | 545/545 | **39.27%** | 40.73% | **91.06%** | 28.20% | 22.62% | 13.75% |
+| Lightpanda | 545/545 | 35.00% | 41.52% | 84.71% | 12.97% | 21.81% | **14.00%** |
+| Obscura | 543/545 | 31.03% | **41.88%** | 81.82% | **31.39%** | 0.03% | 0.00% |
+| Chromium | 545/545 | 27.02% | 39.40% | 35.86% | 21.12% | **25.01%** | 13.73% |
+| Kitesurf | 524/545 | 33.43% | 36.99% | 80.70% | 19.32% | 18.25% | 11.87% |
+
+</details>
 
 ## 対応範囲
 
