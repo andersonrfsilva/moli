@@ -277,13 +277,15 @@ Kitesurf はリモートサービスのため、CPU、メモリ、プロセス�
 
 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) は実サイトに対して 430 タスクを実行するため、成功率にはサイトへのアクセスと正しい本文抽出の両方が含まれます。[WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) は保存済みの HTML 545 ページを使い、実サイトへのアクセスを除いた抽出品質だけを評価します。[ベンチマークの詳細](https://browser.lexmount.com/blog/webfetch-benchmark)。
 
-| 方式 | 成功タスク数 | 成功率 |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89.8%** |
-| Chromium | 234/430 | 54.4% |
-| Lightpanda | 228/430 | 53.0% |
-| Obscura | 223/430 | 51.9% |
-| Kitesurf | 192/430 | 44.7% |
+| 方式 | 総合 | ボット対策 /100 | 人気サイト /100 | 動的サイト /100 |
+| --- | ---: | ---: | ---: | ---: |
+| Moli | **386/430 · 89.8%** | **88** | **91** | **90** |
+| Chromium | 234/430 · 54.4% | 5 | 58 | 58 |
+| Lightpanda | 228/430 · 53.0% | 37 | 38 | 44 |
+| Obscura | 223/430 · 51.9% | 16 | 53 | 43 |
+| Kitesurf | 192/430 · 44.7% | 10 | 40 | 41 |
+
+3 つの分類列は合格タスク数です。リンク先のレポートでは 7 分類すべてを確認できます。
 
 <details>
 <summary><strong>WebMainBench · 保存済み 545 ページの抽出品質</strong></summary>

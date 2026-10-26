@@ -279,13 +279,15 @@ Kitesurf es un servicio remoto, por lo que no se pueden medir su CPU, memoria ni
 
 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) ejecuta 430 tareas en sitios web activos, por lo que la tasa de éxito refleja tanto el acceso al sitio como la extracción correcta del contenido. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) procesa 545 páginas HTML guardadas y puntúa únicamente la calidad de extracción. [Leer el informe del benchmark](https://browser.lexmount.com/blog/webfetch-benchmark).
 
-| Método | Tareas superadas | Tasa de éxito |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89,8 %** |
-| Chromium | 234/430 | 54,4 % |
-| Lightpanda | 228/430 | 53,0 % |
-| Obscura | 223/430 | 51,9 % |
-| Kitesurf | 192/430 | 44,7 % |
+| Método | Global | Antibot /100 | Sitios populares /100 | Sitios dinámicos /100 |
+| --- | ---: | ---: | ---: | ---: |
+| Moli | **386/430 · 89,8 %** | **88** | **91** | **90** |
+| Chromium | 234/430 · 54,4 % | 5 | 58 | 58 |
+| Lightpanda | 228/430 · 53,0 % | 37 | 38 | 44 |
+| Obscura | 223/430 · 51,9 % | 16 | 53 | 43 |
+| Kitesurf | 192/430 · 44,7 % | 10 | 40 | 41 |
+
+Las tres columnas por categoría muestran las tareas superadas. El informe enlazado incluye las siete categorías.
 
 <details>
 <summary><strong>WebMainBench · calidad de extracción en 545 páginas guardadas</strong></summary>

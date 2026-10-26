@@ -357,13 +357,15 @@ Moli는 Chrome CPU 시간의 약 15%, 최대 메모리의 약 13%를 사용했�
 
 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch)는 실제 웹사이트에서 430개 과제를 실행하므로 통과율에는 사이트 접근과 정확한 콘텐츠 추출이 모두 반영됩니다. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main)는 저장된 HTML 페이지 545개를 처리하며 실제 사이트 접근을 제외한 추출 품질만 평가합니다. [벤치마크 보고서 보기](https://browser.lexmount.com/blog/webfetch-benchmark).
 
-| 방법 | 통과 과제 | 통과율 |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89.8%** |
-| Chromium | 234/430 | 54.4% |
-| Lightpanda | 228/430 | 53.0% |
-| Obscura | 223/430 | 51.9% |
-| Kitesurf | 192/430 | 44.7% |
+| 방법 | 종합 | 봇 차단 /100 | 인기 사이트 /100 | 동적 사이트 /100 |
+| --- | ---: | ---: | ---: | ---: |
+| Moli | **386/430 · 89.8%** | **88** | **91** | **90** |
+| Chromium | 234/430 · 54.4% | 5 | 58 | 58 |
+| Lightpanda | 228/430 · 53.0% | 37 | 38 | 44 |
+| Obscura | 223/430 · 51.9% | 16 | 53 | 43 |
+| Kitesurf | 192/430 · 44.7% | 10 | 40 | 41 |
+
+세 범주 열은 통과한 과제 수입니다. 링크된 보고서에서 일곱 범주 결과를 모두 볼 수 있습니다.
 
 <details>
 <summary><strong>WebMainBench · 저장된 545개 페이지의 추출 품질</strong></summary>

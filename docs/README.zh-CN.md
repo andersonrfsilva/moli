@@ -277,13 +277,15 @@ Kitesurf 是远程服务，无法测量 CPU、内存和进程数，因此资源�
 
 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) 直接访问真实网站，共有 430 道任务，因此通过率同时反映网站能否访问，以及返回内容是否正确。[WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) 使用 545 份预先保存的 HTML，只比较正文提取质量，不包含真实网站访问。[查看完整评测报告](https://browser.lexmount.com/blog/webfetch-benchmark)。
 
-| 方法 | 通过任务数 | 通过率 |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89.8%** |
-| Chromium | 234/430 | 54.4% |
-| Lightpanda | 228/430 | 53.0% |
-| Obscura | 223/430 | 51.9% |
-| Kitesurf | 192/430 | 44.7% |
+| 方法 | 总成绩 | 反爬网站 /100 | 热门网站 /100 | 动态网站 /100 |
+| --- | ---: | ---: | ---: | ---: |
+| Moli | **386/430 · 89.8%** | **88** | **91** | **90** |
+| Chromium | 234/430 · 54.4% | 5 | 58 | 58 |
+| Lightpanda | 228/430 · 53.0% | 37 | 38 | 44 |
+| Obscura | 223/430 · 51.9% | 16 | 53 | 43 |
+| Kitesurf | 192/430 · 44.7% | 10 | 40 | 41 |
+
+三个分类列均为通过题数，链接中的完整报告列出了全部七类结果。
 
 <details>
 <summary><strong>WebMainBench · 545 份网页快照的正文提取质量</strong></summary>

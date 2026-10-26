@@ -369,13 +369,15 @@ for the methodology and full data.
 
 [`lexbench-webfetch`](https://github.com/lexmount/lexbench-webfetch) sends 430 tasks to live websites, so its pass rate reflects both site access and correct content extraction. [WebMainBench](https://github.com/lexmount/WebMainBench/tree/lex-main) processes 545 saved HTML pages and scores extraction quality without live-site access. [Read the benchmark report](https://browser.lexmount.com/blog/webfetch-benchmark).
 
-| Method | Tasks passed | Pass rate |
-| --- | ---: | ---: |
-| Moli | **386/430** | **89.8%** |
-| Chromium | 234/430 | 54.4% |
-| Lightpanda | 228/430 | 53.0% |
-| Obscura | 223/430 | 51.9% |
-| Kitesurf | 192/430 | 44.7% |
+| Method | Overall | Anti-bot /100 | Popular /100 | Dynamic /100 |
+| --- | ---: | ---: | ---: | ---: |
+| Moli | **386/430 · 89.8%** | **88** | **91** | **90** |
+| Chromium | 234/430 · 54.4% | 5 | 58 | 58 |
+| Lightpanda | 228/430 · 53.0% | 37 | 38 | 44 |
+| Obscura | 223/430 · 51.9% | 16 | 53 | 43 |
+| Kitesurf | 192/430 · 44.7% | 10 | 40 | 41 |
+
+The three domain columns show tasks passed. The linked report covers all seven task families.
 
 <details>
 <summary><strong>WebMainBench · extraction quality on 545 saved pages</strong></summary>
