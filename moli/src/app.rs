@@ -24,7 +24,7 @@ use moli_core::runtime::{
     Browser, FetchReadinessTimeout, FetchedDocument, NavigationRuntimeConfig,
     RawDocumentFetchPolicy, storage_partition::StoragePartitionState,
 };
-use moli_fetch::{NetworkFetchFailureContext, Request};
+use moli_fetch::{CookieHeaderPolicy, NetworkFetchFailureContext, Request};
 use moli_protocol_server::ProtocolServer;
 
 use self::readiness::ReadinessPlan;
@@ -316,7 +316,9 @@ fn read_script_file_arg(option: &str, path: &Path) -> Result<String> {
 }
 
 fn build_fetch_request(url: &str, config: &AppConfig) -> Result<Request> {
-    let mut request = Request::get(url)?.with_additional_cookies(cookie_header_from_args(config)?);
+    let mut request = Request::get(url)?
+        .with_additional_cookies(cookie_header_from_args(config)?)
+        .with_cookie_header_policy(CookieHeaderPolicy::PreserveExplicit);
     // Keep CLI-provided headers scoped to the initial document navigation.
     request.request_headers = config.fetch.request_headers.clone().into();
     Ok(request)

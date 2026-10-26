@@ -48,6 +48,21 @@ impl CookieFixture {
                     )
                 }),
             )
+            .route(
+                "/headers",
+                get(|headers: HeaderMap| async move {
+                    let cookies = headers
+                        .get_all("cookie")
+                        .iter()
+                        .map(|value| value.to_str().unwrap())
+                        .collect::<Vec<_>>();
+                    Html(format!("<main>{}</main>", cookies.join("|")))
+                }),
+            )
+            .route(
+                "/redirect-headers",
+                get(|| async { Redirect::temporary("/headers") }),
+            )
             .route("/redirect", get(|| async { Redirect::temporary("/echo") }))
             .route(
                 "/cross-host",
@@ -233,6 +248,56 @@ async fn literal_cookies_follow_redirects_without_entering_the_exported_store() 
         assert!(jar.contains("\tsession\tfixture\n"), "{body}");
         assert!(!jar.contains("\tliteral\t"), "{body}");
     }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cookie_store_and_manual_cookie_headers_are_both_sent() -> Result<()> {
+    let fixture = CookieFixture::spawn().await?;
+    let file = super::unique_temp_file_path("cookie-header-combination", "cookies.txt")?;
+    std::fs::write(&file, record())?;
+    for path in ["/headers", "/redirect-headers"] {
+        let body = assert_success(&fixture.run(
+            path,
+            &[
+                "--cookie",
+                &file.to_string_lossy(),
+                "-H",
+                "Cookie: manual=1",
+            ],
+            b"",
+        )?);
+        assert!(body.contains("<main>file=loaded|manual=1</main>"), "{body}");
+    }
+    for source in [None, Some(file.to_string_lossy())] {
+        let mut args = vec!["--cookie", "literal=one", "-H", "Cookie: manual=1"];
+        if let Some(source) = source.as_deref() {
+            args.extend(["--cookie", source]);
+        }
+        let body = assert_success(&fixture.run("/headers", &args, b"")?);
+        let expected = if source.is_some() {
+            "<main>file=loaded|manual=1</main>"
+        } else {
+            "<main>manual=1</main>"
+        };
+        assert!(body.contains(expected), "{body}");
+    }
+    let body = assert_success(&fixture.run(
+        "/headers",
+        &[
+            "--cookie",
+            &file.to_string_lossy(),
+            "-H",
+            "Cookie: manual=1",
+            "-H",
+            "cOoKiE: manual=2",
+        ],
+        b"",
+    )?);
+    assert!(
+        body.contains("<main>file=loaded|manual=1|manual=2</main>"),
+        "{body}"
+    );
     Ok(())
 }
 

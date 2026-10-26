@@ -4,10 +4,10 @@ use moli_cookie_jar::{NetworkCookieRequestContext, new_shared_browser_cookie_sto
 use url::Url;
 
 use crate::{
-    BrowserNavigationRequestKind, BrowserRequestMetadata, FetchConfig, Request, RequestAuth,
-    RequestAuthScheme, RequestAuthTarget, RequestCredentialsMode, RequestMode, RequestResourceType,
-    ScriptFetchRequestMetadata, SubresourceRequestMetadata, cookie_header_for_request,
-    outgoing_request_headers,
+    BrowserNavigationRequestKind, BrowserRequestMetadata, CookieHeaderPolicy, FetchConfig, Request,
+    RequestAuth, RequestAuthScheme, RequestAuthTarget, RequestCredentialsMode, RequestMode,
+    RequestResourceType, ScriptFetchRequestMetadata, SubresourceRequestMetadata,
+    cookie_header_for_request, outgoing_request_headers,
 };
 
 #[test]
@@ -322,6 +322,30 @@ fn outgoing_request_headers_skip_default_cookie_when_store_cookie_exists() {
             ("X-Test".to_owned(), "ok".to_owned()),
         ]
     );
+}
+
+#[test]
+fn outgoing_request_headers_preserve_explicit_cookies_for_curl_policy() {
+    for manual_in_config in [false, true] {
+        let mut config = FetchConfig::default();
+        let headers = if manual_in_config {
+            config.push_default_request_header("Cookie", "manual=1");
+            vec![]
+        } else {
+            vec![("Cookie".to_owned(), "manual=1".to_owned())]
+        };
+        let request = Request::new("GET", "https://example.com/app/panel", None, headers)
+            .unwrap()
+            .with_additional_cookies(Some("literal=one".to_owned()))
+            .with_cookie_header_policy(CookieHeaderPolicy::PreserveExplicit);
+        assert_eq!(
+            outgoing_request_headers(&config, &request, Some("sid=server")),
+            vec![
+                ("Cookie".to_owned(), "sid=server".to_owned()),
+                ("Cookie".to_owned(), "manual=1".to_owned()),
+            ]
+        );
+    }
 }
 
 #[test]

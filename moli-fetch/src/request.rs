@@ -24,6 +24,16 @@ enum RequestContext {
     Browser(WebOrigin),
 }
 
+/// How explicit Cookie headers coexist with cookies selected from the store.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CookieHeaderPolicy {
+    /// Chromium's browser behavior gives a generated Cookie header precedence.
+    #[default]
+    PreferStore,
+    /// curl-style HTTP clients retain both generated and explicit Cookie headers.
+    PreserveExplicit,
+}
+
 #[derive(Debug, Clone)]
 pub struct Request {
     pub url: Url,
@@ -34,6 +44,7 @@ pub struct Request {
     pub request_headers: crate::RequestHeaders,
     redirect_headers: Option<crate::RequestHeaders>,
     additional_cookies: Option<String>,
+    cookie_header_policy: CookieHeaderPolicy,
     cache_mode: RequestCacheMode,
     pub resource_type: RequestResourceType,
     subresource_request_metadata: Option<SubresourceRequestMetadata>,
@@ -464,6 +475,15 @@ impl RequestAuth {
 }
 
 impl Request {
+    pub fn with_cookie_header_policy(mut self, policy: CookieHeaderPolicy) -> Self {
+        self.cookie_header_policy = policy;
+        self
+    }
+
+    pub fn cookie_header_policy(&self) -> CookieHeaderPolicy {
+        self.cookie_header_policy
+    }
+
     /// Literal Cookie option data, kept separate from the browser cookie store.
     /// It follows this HTTP exchange's redirects without entering stored state.
     pub fn with_additional_cookies(mut self, cookies: Option<String>) -> Self {
@@ -487,6 +507,7 @@ impl Request {
             request_headers: crate::RequestHeaders::default(),
             redirect_headers: None,
             additional_cookies: None,
+            cookie_header_policy: CookieHeaderPolicy::default(),
             cache_mode: RequestCacheMode::Default,
             resource_type: RequestResourceType::Raw,
             subresource_request_metadata: None,
@@ -521,6 +542,7 @@ impl Request {
             request_headers: crate::RequestHeaders::default(),
             redirect_headers: None,
             additional_cookies: None,
+            cookie_header_policy: CookieHeaderPolicy::default(),
             cache_mode: RequestCacheMode::Default,
             resource_type: RequestResourceType::Raw,
             subresource_request_metadata: None,
@@ -588,6 +610,7 @@ impl Request {
             request_headers: request_headers.into(),
             redirect_headers: None,
             additional_cookies: None,
+            cookie_header_policy: CookieHeaderPolicy::default(),
             cache_mode: RequestCacheMode::Default,
             resource_type: RequestResourceType::Raw,
             subresource_request_metadata: None,

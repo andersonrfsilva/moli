@@ -38,9 +38,9 @@ pub(crate) use self::collectors::{
 };
 
 use crate::{
-    BrowserRequestMetadata, FetchConfig, NegotiatedHttpVersion, NetworkRequestExtraInfo,
-    RedirectInfo, Request, RequestAuthScheme, RequestAuthTarget, ResponseHead,
-    proxy::HttpProxyRoute,
+    BrowserRequestMetadata, CookieHeaderPolicy, FetchConfig, NegotiatedHttpVersion,
+    NetworkRequestExtraInfo, RedirectInfo, Request, RequestAuthScheme, RequestAuthTarget,
+    ResponseHead, proxy::HttpProxyRoute,
 };
 
 const MAX_REDIRECTS: usize = 10;
@@ -207,14 +207,20 @@ fn outgoing_request_header_bytes_for_url(
     }
 
     for (name, value) in config.default_request_headers() {
-        if cookie_header.is_some() && name.eq_ignore_ascii_case("cookie") {
+        if cookie_header.is_some()
+            && request.cookie_header_policy() == CookieHeaderPolicy::PreferStore
+            && name.eq_ignore_ascii_case("cookie")
+        {
             continue;
         }
         outgoing.push((name.clone(), value.as_bytes().to_vec()));
     }
 
     for (name, value) in request.request_headers.iter() {
-        if cookie_header.is_some() && name.eq_ignore_ascii_case("cookie") {
+        if cookie_header.is_some()
+            && request.cookie_header_policy() == CookieHeaderPolicy::PreferStore
+            && name.eq_ignore_ascii_case("cookie")
+        {
             continue;
         }
         outgoing.push((name.clone(), value.clone()));
