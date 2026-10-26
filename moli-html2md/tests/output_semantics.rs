@@ -621,3 +621,75 @@ fn code_links_preserve_source_text_without_accessible_name_fallbacks() {
         }
     }
 }
+
+#[test]
+fn block_html_fallback_preserves_the_enclosing_author_link() {
+    for block in [
+        "<table><tr><td>Product</td><td>Other</td></tr></table>",
+        "<table><tr><td colspan='2'>Product</td></tr></table>",
+        "<table><tr><th scope='col'>Product<div>Details</div></th></tr></table>",
+        "<table><tr><td colspan='2'>Product<video src='/preview.mp4'></video></td></tr></table>",
+        "<table><tr><td colspan='2'><table><tr><td>Product</td></tr></table></td></tr></table>",
+        "<pre id='source'><code>Product<span> </span>\n\n[](*x*)\n</code></pre>",
+        "<h2><div>Product</div></h2>",
+    ] {
+        for surrounding_text in [false, true] {
+            let (before, after) = if surrounding_text {
+                ("Before", "After")
+            } else {
+                ("", "")
+            };
+            let source = format!(
+                "<a href='/product?q=1&amp;x=2' title='A &quot;product&quot; &amp; more'>{before}{block}{after}</a><a href='/next'>Next</a><a href='#source'>Jump</a>"
+            );
+            let input = Tree::parse(&source);
+            let markdown = convert(&input, input.root);
+            let output = Tree::parse(&rendered_html(&markdown));
+            let links = with_attribute(&output, "href", "/product?q=1&x=2");
+            assert!(!links.is_empty(), "{source}: {markdown}");
+            let linked_text: String = links.iter().map(|&node| text(&output, node)).collect();
+            assert!(linked_text.contains("Product"), "{source}: {markdown}");
+            assert_eq!(
+                linked_text.matches("Before").count(),
+                usize::from(surrounding_text),
+                "{markdown}"
+            );
+            assert_eq!(
+                linked_text.matches("After").count(),
+                usize::from(surrounding_text),
+                "{markdown}"
+            );
+            for &link in &links {
+                assert!(!text(&output, link).trim().is_empty(), "{markdown}");
+                assert_eq!(
+                    output.attribute(link, "title"),
+                    Some("A \"product\" & more"),
+                    "{markdown}"
+                );
+            }
+            assert!(
+                with_attribute(&output, "href", "/preview.mp4").is_empty(),
+                "{markdown}"
+            );
+            let next = with_attribute(&output, "href", "/next");
+            assert_eq!(next.len(), 1, "{markdown}");
+            assert_eq!(text(&output, next[0]), "Next", "{markdown}");
+            if block.starts_with("<pre") {
+                let original = descendants(&input, input.root)
+                    .into_iter()
+                    .find(|&node| input.nodes[node].tag.as_deref() == Some("code"))
+                    .unwrap();
+                let codes: Vec<_> = descendants(&output, output.root)
+                    .into_iter()
+                    .filter(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                    .collect();
+                assert_eq!(codes.len(), 1, "{markdown}");
+                assert_eq!(
+                    text(&output, codes[0]),
+                    text(&input, original),
+                    "{markdown}"
+                );
+            }
+        }
+    }
+}

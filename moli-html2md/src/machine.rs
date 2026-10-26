@@ -214,6 +214,20 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
         writer.finish()
     }
 
+    fn html(&mut self, node: D::NodeId, depth: usize, block: bool) {
+        let in_link = self.writer().in_link();
+        let html = crate::html_fallback::render(
+            self.dom,
+            node,
+            depth,
+            self.options,
+            &self.anchor_targets,
+            &mut self.emitted_anchors,
+            in_link,
+        );
+        self.writer().html(html, block);
+    }
+
     fn children(&mut self, node: D::NodeId, depth: usize) {
         if depth < self.options.max_depth {
             self.tasks
@@ -378,19 +392,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                             &self.anchor_targets,
                         ))
                 {
-                    // Inline HTML remains inside the writer's formatting;
-                    // block HTML is appended outside it.
-                    let in_link = tag == "code" && self.writer().in_link();
-                    let html = crate::html_fallback::render(
-                        self.dom,
-                        node,
-                        depth,
-                        self.options,
-                        &self.anchor_targets,
-                        &mut self.emitted_anchors,
-                        in_link,
-                    );
-                    self.writer().html(html, tag == "pre");
+                    self.html(node, depth, tag == "pre");
                     return;
                 }
                 self.raw.clear();
@@ -419,16 +421,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                     return;
                 }
                 if subtree_has_block(self.dom, node, remaining) {
-                    let html = crate::html_fallback::render(
-                        self.dom,
-                        node,
-                        depth,
-                        self.options,
-                        &self.anchor_targets,
-                        &mut self.emitted_anchors,
-                        false,
-                    );
-                    self.writer().html(html, true);
+                    self.html(node, depth, true);
                     return;
                 }
                 self.capture();
@@ -463,16 +456,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                                 &self.anchor_targets,
                             )))
                 {
-                    let html = crate::html_fallback::render(
-                        self.dom,
-                        node,
-                        depth,
-                        self.options,
-                        &self.anchor_targets,
-                        &mut self.emitted_anchors,
-                        false,
-                    );
-                    self.writer().html(html, true);
+                    self.html(node, depth, true);
                     return;
                 }
                 self.emit_own_targets(node);
@@ -496,16 +480,7 @@ impl<'a, D: Dom + ?Sized> Machine<'a, D> {
                         self.options.max_depth,
                     )
                 {
-                    let html = crate::html_fallback::render(
-                        self.dom,
-                        node,
-                        depth,
-                        self.options,
-                        &self.anchor_targets,
-                        &mut self.emitted_anchors,
-                        false,
-                    );
-                    self.writer().html(html, true);
+                    self.html(node, depth, true);
                     return;
                 }
                 self.writer().boundary(2);

@@ -164,7 +164,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
     let limit = options.max_depth;
     let default_language = options.default_code_language.as_deref();
     let inline_root = matches!(dom.node_kind(root), NodeKind::Element("code"));
-    let keep_source_lines = matches!(dom.node_kind(root), NodeKind::Element("pre"));
+    // Linked blocks receive an outer HTML wrapper. Numeric references preserve
+    // source newlines without blank lines ending that CommonMark HTML block.
+    let keep_source_lines = !in_link && matches!(dom.node_kind(root), NodeKind::Element("pre"));
     let mut output = String::new();
     let mut content = crate::content::Content::default();
     let mut table_modes = Vec::new();
@@ -541,7 +543,7 @@ fn allowed(tag: &str) -> bool {
         )
 }
 
-fn escape(text: &str, output: &mut String) {
+pub(crate) fn escape(text: &str, output: &mut String) {
     for ch in text.chars() {
         match ch {
             '&' => output.push_str("&amp;"),
