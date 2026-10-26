@@ -575,3 +575,49 @@ fn percent_encoded_fragments_replace_invalid_utf8_after_literal_matching() {
         assert!(with_attribute(&output, "id", "�").is_empty(), "{markdown}");
     }
 }
+
+#[test]
+fn code_links_preserve_source_text_without_accessible_name_fallbacks() {
+    for payload in ["", " ", "\t", "&nbsp;", "<span> </span>", "symbol"] {
+        for pre in [false, true] {
+            let code = format!(
+                "<code>x<a href='/symbol' title='Tooltip' aria-label='Symbol'>{payload}</a>y</code>"
+            );
+            let content = if pre {
+                format!("<pre>{code}</pre>")
+            } else {
+                code
+            };
+            for source in containers(&content) {
+                let input = Tree::parse(&source);
+                let original_code = descendants(&input, input.root)
+                    .into_iter()
+                    .find(|&node| input.nodes[node].tag.as_deref() == Some("code"))
+                    .unwrap();
+                for preformatted_code in [false, true] {
+                    let markdown = Converter::new(Options {
+                        preformatted_code,
+                        ..Default::default()
+                    })
+                    .convert(&input, input.root);
+                    let output = Tree::parse(&rendered_html(&markdown));
+                    let codes: Vec<_> = descendants(&output, output.root)
+                        .into_iter()
+                        .filter(|&node| output.nodes[node].tag.as_deref() == Some("code"))
+                        .collect();
+                    assert_eq!(codes.len(), 1, "{source}: {markdown}");
+                    assert_eq!(
+                        text(&output, codes[0]),
+                        text(&input, original_code),
+                        "preformatted_code={preformatted_code}: {source}: {markdown}"
+                    );
+                    assert_eq!(
+                        with_attribute(&output, "href", "/symbol").len(),
+                        1,
+                        "{markdown}"
+                    );
+                }
+            }
+        }
+    }
+}

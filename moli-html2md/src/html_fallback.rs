@@ -494,8 +494,9 @@ pub(crate) fn render<D: Dom + ?Sized>(
                             }
                             tasks.push(Task::MathSiblings(dom.first_child(node), depth + 1, mode));
                         } else {
-                            if let Some(label) =
-                                crate::content::fallback_text(dom, node, limit - depth)
+                            if matches!(mode, TextMode::Normal)
+                                && let Some(label) =
+                                    crate::content::fallback_text(dom, node, limit - depth)
                             {
                                 tasks.push(Task::Fallback(label, content.mark()));
                             }
