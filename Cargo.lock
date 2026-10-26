@@ -2300,7 +2300,7 @@ dependencies = [
 [[package]]
 name = "krilla"
 version = "0.8.2"
-source = "git+https://github.com/LaurenzV/krilla?rev=5eb4e1fb24a24ce78b533c23b080969917530c32#5eb4e1fb24a24ce78b533c23b080969917530c32"
+source = "git+https://github.com/lexmount/krilla?rev=5fc1897e13320059ae6eb5b653af1c58a9a73c73#5fc1897e13320059ae6eb5b653af1c58a9a73c73"
 dependencies = [
  "base64 0.22.1",
  "bumpalo",
@@ -2311,6 +2311,7 @@ dependencies = [
  "image-webp",
  "imagesize 0.14.0",
  "indexmap",
+ "kurbo",
  "pdf-writer",
  "png",
  "rustc-hash 2.1.1",

@@ -2,7 +2,8 @@
 
 `raster_snapshot` produces RGBA pixels through AnyRender/Vello CPU.
 `pdf::pdf_snapshot` consumes the same owned snapshot and writes PDF through
-upstream [Krilla at `5eb4e1f`](https://github.com/LaurenzV/krilla/commit/5eb4e1fb24a24ce78b533c23b080969917530c32).
+[Krilla with expanded-glyph support at `5fc1897`](https://github.com/lexmount/krilla/commit/5fc1897e13320059ae6eb5b653af1c58a9a73c73),
+based on upstream `5eb4e1f`.
 CDP `Page.printToPDF` and CLI `--dump pdf` use the PDF backend.
 CLI PDF exports include CSS backgrounds, preserving colored controls and white
 text on colored backgrounds. CDP continues to use its `printBackground` option,
@@ -61,7 +62,10 @@ The PDF adapter embeds and subsets fonts, using Parley's existing glyph position
 and the snapshot's shared logical text/UTF-8 cluster ranges. These mappings are
 collected only for print demands, keeping them out of the screenshot hot path.
 Ligature ranges are joined in logical order before arranging RTL clusters visually. Synthetic italic
-uses a glyph-local shear. Opaque, uniform synthetic weight keeps native PDF
+uses a glyph-local shear. Krilla's expanded-glyph API owns contour expansion,
+paint order, document-wide contour/graphic caches and searchable text. Moli
+passes the snapshot's local CSS-pixel amounts after page and cluster clipping.
+Opaque, uniform synthetic weight keeps native PDF
 fill-and-stroke text; unequal X/Y expansion or translucent fills use the expanded
 contour so each axis and the fill opacity are preserved. Authored text stroke
 follows that contour with its original width. Contours are prepared only after

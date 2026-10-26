@@ -617,7 +617,7 @@ fn repeated_uniform_synthetic_text_keeps_native_fill_and_reuses_stroke_graphics(
 }
 
 #[test]
-fn expanded_pdf_outlines_are_prepared_only_for_visible_unique_glyphs() {
+fn expanded_pdf_only_embeds_glyphs_visible_on_the_selected_page() {
     let mut snapshot = snapshot();
     let mut run = synthetic_stroke_run(
         &mut snapshot,
@@ -627,37 +627,24 @@ fn expanded_pdf_outlines_are_prepared_only_for_visible_unique_glyphs() {
     );
     run.glyphs[2].y = 400.0;
     run.glyphs[3].x = 400.0;
-    for (page_index, invisible) in [(0, false), (1, false), (0, true)] {
-        let mut fonts = text::FontCache::default();
-        let mut pdf = Document::new();
-        let mut page = pdf.start_page_with(PageSettings::from_wh(300.0, 300.0).unwrap());
-        let mut surface = page.surface();
-        let top = page_index as f64 * 300.0;
-        text::draw(
-            &mut surface,
+    snapshot.push_fragment(PaintFragment::GlyphRun(run));
+    for page_index in [0, 1] {
+        let doc = document(
             &snapshot,
-            &run,
-            &mut fonts,
-            Rect::new(0.0, 0.0, 300.0, 600.0),
-            Rect::new(0.0, top, 300.0, top + 300.0),
-            &[],
-            300.0,
-            page_index,
-            invisible,
-        )
-        .unwrap();
-        let expected = if invisible {
-            Vec::new()
-        } else {
-            vec![run.glyphs[if page_index == 0 { 0 } else { 2 }].id]
-        };
-        assert_eq!(
-            fonts.expanded_glyphs, expected,
-            "page_index={page_index}, invisible={invisible}"
+            &PdfOptions {
+                page_ranges: vec![page_index..=page_index],
+                ..options()
+            },
         );
-        surface.finish();
-        page.finish();
-        pdf.finish().unwrap();
+        assert_eq!(
+            extracted(&doc, &[1]),
+            if page_index == 0 { "RR" } else { "A" }
+        );
+        assert_eq!(
+            form_contents(&doc).len(),
+            2,
+            "only the visible glyph's fill and stroke should be embedded"
+        );
     }
 }
 
