@@ -237,6 +237,54 @@ async fn literal_cookies_follow_redirects_without_entering_the_exported_store() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cookie_inputs_accept_set_cookie_headers_from_files_and_stdin() -> Result<()> {
+    let fixture = CookieFixture::spawn().await?;
+    let header = "HTTP/1.1 200 OK\r\n\
+Set-Cookie: header=loaded; Domain=127.0.0.1; Path=/; HttpOnly\r\n";
+    let file = super::unique_temp_file_path("cookie-header-input", "headers.txt")?;
+    std::fs::write(&file, header)?;
+    for flag in ["--cookie", "--cookie-file"] {
+        for source in [file.to_string_lossy().as_ref(), "-"] {
+            let output = fixture.run(
+                "/echo",
+                &[flag, source, "--cookie-jar", "-"],
+                header.as_bytes(),
+            )?;
+            let body = assert_success(&output);
+            assert!(body.contains("<main>header=loaded</main>"), "{body}");
+            let (_, jar) = body.split_once("# Netscape HTTP Cookie File").unwrap();
+            assert!(jar.contains("\theader\tloaded\n"), "{jar}");
+            assert!(jar.contains("#HttpOnly_"), "{jar}");
+        }
+    }
+    std::fs::write(&file, format!("{header}{}", record()))?;
+    let body =
+        assert_success(&fixture.run("/echo", &["--cookie", &file.to_string_lossy()], b"")?);
+    assert!(
+        body.contains("<main>header=loaded; file=loaded</main>"),
+        "{body}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cookie_header_file_import_respects_domain_path_and_expiry() -> Result<()> {
+    let fixture = CookieFixture::spawn().await?;
+    let file = super::unique_temp_file_path("cookie-header-scope", "headers.txt")?;
+    std::fs::write(
+        &file,
+        "Set-Cookie: path=matching; Domain=127.0.0.1; Path=/echo\n\
+Set-Cookie: domain=hidden; Domain=example.test; Path=/\n\
+Set-Cookie: path=hidden; Domain=127.0.0.1; Path=/other\n\
+Set-Cookie: expired=gone; Domain=127.0.0.1; Path=/; Max-Age=0\n",
+    )?;
+    let body =
+        assert_success(&fixture.run("/echo", &["--cookie", &file.to_string_lossy()], b"")?);
+    assert!(body.contains("<main>path=matching</main>"), "{body}");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn literal_cookies_do_not_reuse_another_requests_http_cache() -> Result<()> {
     let fixture = CookieFixture::spawn().await?;
     let cache = super::unique_temp_dir("literal-cookie-cache")?;

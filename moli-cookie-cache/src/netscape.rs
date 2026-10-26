@@ -155,7 +155,7 @@ pub(crate) fn parse_netscape_cookie_file(
     Ok(cookies)
 }
 
-fn stored_cookie_from_netscape_cookie(
+pub(crate) fn stored_cookie_from_netscape_cookie(
     cookie: netscape_cookie_file_parser::Cookie,
     creation_index: u64,
 ) -> Result<StoredCookie> {

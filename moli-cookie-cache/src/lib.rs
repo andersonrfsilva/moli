@@ -6,9 +6,11 @@
 
 mod atomic_file;
 mod cache;
+mod input;
 mod netscape;
 
 pub use cache::{load_cookie_cache, save_cookie_cache};
+pub use input::read_cookie_input_lossy;
 pub use netscape::{
     CookieFileSaveReport, load_cookie_file, read_cookie_file, read_cookie_file_lossy,
     save_cookie_file, write_cookie_file,

@@ -475,7 +475,7 @@ example.com\tFALSE\t/\tFALSE\t1\texpired\tgone\n\
 }
 
 #[test]
-fn netscape_cookie_lossy_reader_propagates_io_errors() {
+fn cookie_file_lossy_readers_propagate_io_errors() {
     struct FailedCookieInput;
     impl std::io::Read for FailedCookieInput {
         fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
@@ -483,13 +483,59 @@ fn netscape_cookie_lossy_reader_propagates_io_errors() {
         }
     }
 
-    let error = read_cookie_file_lossy(std::io::BufReader::new(FailedCookieInput))
-        .expect_err("I/O failures must not be treated as malformed cookie records");
-    assert!(error.root_cause().is::<std::io::Error>());
-    assert_eq!(
-        error.root_cause().to_string(),
-        "cookie fixture read failure"
-    );
+    for error in [
+        read_cookie_file_lossy(std::io::BufReader::new(FailedCookieInput)),
+        read_cookie_input_lossy(std::io::BufReader::new(FailedCookieInput)),
+    ] {
+        let error = error.expect_err("I/O failures must not be treated as malformed records");
+        assert!(error.root_cause().is::<std::io::Error>());
+        assert_eq!(
+            error.root_cause().to_string(),
+            "cookie fixture read failure"
+        );
+    }
+}
+
+#[test]
+fn cookie_input_reader_accepts_mixed_http_headers_and_netscape_records() -> Result<()> {
+    let input = b"HTTP/1.1 200 OK\r\n\
+Set-Cookie: session=abc; Domain=.Example.Test; Path=/account; Secure; HttpOnly; Expires=Tue, 19 Jan 2038 03:14:07 GMT\r\n\
+malformed record\n\
+example.test\tTRUE\t/\tFALSE\t0\tstored\tjar\n\
+sEt-CoOkIe: expired=gone; Domain=example.test; Path=/; Max-Age=0\n";
+    let cookies = read_cookie_input_lossy(std::io::Cursor::new(input))?;
+    assert_eq!(cookies.len(), 2);
+    let header = &cookies[0];
+    assert_eq!(header.name, "session");
+    assert_eq!(header.value, "abc");
+    assert_eq!(header.domain, "example.test");
+    assert_eq!(header.path, "/account");
+    assert!(!header.host_only);
+    assert!(header.secure);
+    assert!(header.http_only);
+    assert_eq!(header.expires.unwrap().unix_timestamp(), 2147483647);
+    assert_eq!(header.same_site, StoredCookieSameSite::Unspecified);
+    assert_eq!(header.creation_index, 0);
+    assert_eq!(cookies[1].name, "stored");
+    assert_eq!(cookies[1].value, "jar");
+    assert_eq!(cookies[1].creation_index, 1);
+    Ok(())
+}
+
+#[test]
+fn cookie_input_http_headers_default_the_path_and_honor_max_age() -> Result<()> {
+    let input = "Set-Cookie: default=one; Domain=example.test\n\
+Set-Cookie: relative=two; Domain=example.test; Path=relative\n\
+Set-Cookie: expired=gone; Domain=example.test; Max-Age=-1\n\
+Set-Cookie: recent=three; Domain=example.test; Max-Age=3600; Expires=Thu, 01 Jan 1970 00:00:01 GMT\n";
+    let cookies = read_cookie_input_lossy(std::io::Cursor::new(input))?;
+    assert_eq!(cookies.len(), 3);
+    assert!(cookies.iter().all(|cookie| cookie.path == "/"));
+    assert_eq!(cookies[0].name, "default");
+    assert_eq!(cookies[1].name, "relative");
+    assert_eq!(cookies[2].name, "recent");
+    assert!(cookies[2].expires.unwrap() > OffsetDateTime::now_utc());
+    Ok(())
 }
 
 fn stored_cookie(name: &str, value: &str) -> StoredCookie {

@@ -475,14 +475,14 @@ fn load_cookie_state_cookies(config: &AppConfig) -> Result<Vec<moli_cookie_jar::
         }
         if path == "-" {
             cookies.extend(
-                moli_cookie_cache::read_cookie_file_lossy(std::io::stdin().lock())
+                moli_cookie_cache::read_cookie_input_lossy(std::io::stdin().lock())
                     .context("failed to read --cookie from stdin")?,
             );
             continue;
         }
         match std::fs::File::open(path) {
             Ok(file) if file.metadata().is_ok_and(|metadata| metadata.is_file()) => {
-                match moli_cookie_cache::read_cookie_file_lossy(BufReader::new(file)) {
+                match moli_cookie_cache::read_cookie_input_lossy(BufReader::new(file)) {
                     Ok(loaded) => cookies.extend(loaded),
                     Err(error) => tracing::debug!(error = %error, "could not read cookie input"),
                 }
