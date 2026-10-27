@@ -93,6 +93,7 @@ async fn automation_command_executes_storage_cookie_commands_for_webdriver_conte
                 name: Some("sid".to_owned()),
                 url: Some(cookie_url.clone()),
                 domain: None,
+                domain_match: moli_cookie_jar::StoredCookieDomainMatch::Canonical,
                 path: None,
                 partition_filter: moli_cookie_jar::StoredCookiePartitionFilter::All,
                 filter: None,

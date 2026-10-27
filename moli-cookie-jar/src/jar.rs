@@ -17,13 +17,13 @@ use url::Url;
 use super::model::{
     BrowserCookieFacadeContext, CookieSource, NetworkCookieRequestContext,
     NetworkCookieRequestType, NetworkSameSiteContext, NetworkSameSiteHttpMethod,
-    NetworkSameSiteRedirectType, StoredCookie, StoredCookiePartitionFilter,
-    StoredCookieQueryReport, StoredCookieSameSite, StoredCookieSetRejectionReason,
-    StoredCookieSetReport, StoredCookieSetStatus, StoredCookieSourceScheme,
-    core_browser_site_context_from_facade, core_cookie_partition_key_for_url,
-    core_partition_key_from_stored, core_same_site_context_metadata_from_stored,
-    core_source_scheme_from_stored, has_invalid_cookie_octets, stored_query_report_from_core,
-    stored_set_report_from_core,
+    NetworkSameSiteRedirectType, StoredCookie, StoredCookieDomainMatch,
+    StoredCookiePartitionFilter, StoredCookieQueryReport, StoredCookieSameSite,
+    StoredCookieSetRejectionReason, StoredCookieSetReport, StoredCookieSetStatus,
+    StoredCookieSourceScheme, core_browser_site_context_from_facade,
+    core_cookie_partition_key_for_url, core_partition_key_from_stored,
+    core_same_site_context_metadata_from_stored, core_source_scheme_from_stored,
+    has_invalid_cookie_octets, stored_query_report_from_core, stored_set_report_from_core,
 };
 
 /// Thread-shareable cookie store used by browser/runtime components.
@@ -389,29 +389,49 @@ impl BrowserCookieStore {
             StoredCookiePartitionFilter::All,
             StoredCookiePartitionFilter::Partition,
         );
-        self.delete_cookies_with_partition_filter(name, domain, path, url_host, &partition_filter)
+        self.delete_cookies_with_filters(
+            name,
+            domain,
+            path,
+            url_host,
+            &partition_filter,
+            StoredCookieDomainMatch::Canonical,
+        )
     }
 
-    /// Deletes matching cookies in all partitions, only the unpartitioned
-    /// store, or one exact CHIPS partition.
-    pub fn delete_cookies_with_partition_filter(
+    /// Deletes cookies using explicit partition scope and canonical or
+    /// serialized domain matching.
+    pub fn delete_cookies_with_filters(
         &mut self,
         name: Option<&str>,
         domain: Option<&str>,
         path: Option<&str>,
         url_host: Option<&str>,
         partition_filter: &StoredCookiePartitionFilter,
+        domain_match: StoredCookieDomainMatch,
     ) -> usize {
         self.purge_expired();
         let partition_key = match partition_filter {
             StoredCookiePartitionFilter::Partition(key) => {
                 Some(core_partition_key_from_stored(key))
             }
+            StoredCookiePartitionFilter::Serialized {
+                top_level_site,
+                has_cross_site_ancestor,
+            } => Some(cookie_store::CookiePartitionKey::site(
+                top_level_site.clone(),
+                *has_cross_site_ancestor,
+            )),
             _ => None,
+        };
+        let (domain, serialized_domain) = match domain_match {
+            StoredCookieDomainMatch::Canonical => (domain, None),
+            StoredCookieDomainMatch::Serialized => (None, domain),
         };
         let removed = self.full_core.delete_matching(&CookieDeleteFilter {
             name,
             domain,
+            serialized_domain,
             path,
             url_host,
             partition_key: partition_key.as_ref(),

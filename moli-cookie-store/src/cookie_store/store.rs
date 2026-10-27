@@ -62,6 +62,9 @@ pub struct CookieDeleteFilter<'a> {
     pub name: Option<&'a str>,
     /// Match only cookies whose canonical domain equals this value.
     pub domain: Option<&'a str>,
+    /// Match the domain serialization verbatim, including the leading dot of
+    /// domain cookies. This constraint is independent of canonical matching.
+    pub serialized_domain: Option<&'a str>,
     /// Match only cookies whose canonical path equals this value.
     pub path: Option<&'a str>,
     /// Further constrain matches using browser host-only semantics for this

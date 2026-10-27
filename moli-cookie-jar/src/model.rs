@@ -39,8 +39,8 @@ pub use site_data::{
     CookieStorageClearPreviewReport,
 };
 pub use stored_cookie::{
-    StoredCookie, StoredCookiePartitionFilter, StoredCookiePartitionKey, StoredCookieSameSite,
-    StoredCookieSourceScheme,
+    StoredCookie, StoredCookieDomainMatch, StoredCookiePartitionFilter, StoredCookiePartitionKey,
+    StoredCookieSameSite, StoredCookieSourceScheme,
 };
 
 #[cfg(any(test, feature = "test-support"))]

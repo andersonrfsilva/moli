@@ -72,7 +72,36 @@ async fn cookie_deletion_preserves_the_requested_partition_scope() {
         ),
         ("Network.clearBrowserCookies", json!({}), vec![]),
         ("Storage.clearCookies", json!({}), vec![]),
-    ] {
+    ]
+    .into_iter()
+    .chain(
+        [
+            "https://sub.site-a.com",
+            "https://site-a.com/",
+            "https://site-a.com/path",
+            "https://site-a.com:443",
+            "https://SITE-A.com",
+            " https://site-a.com",
+            "",
+        ]
+        .into_iter()
+        .map(|top_level_site| {
+            (
+                "Network.deleteCookies",
+                json!({
+                    "name": "sid", "url": "https://example.com/",
+                    "partitionKey": { "topLevelSite": top_level_site, "hasCrossSiteAncestor": true }
+                }),
+                vec![
+                    "cross-site",
+                    "other-site",
+                    "same-site",
+                    "unpartitioned",
+                    "unrelated",
+                ],
+            )
+        }),
+    ) {
         let mut ctx = TestContext::new();
         ctx.conn.browser_context = Some(BrowserContext::new("BID-cookie-partitions".into()));
         ctx.process_async(json!({
@@ -123,6 +152,178 @@ async fn cookie_deletion_preserves_the_requested_partition_scope() {
         values.sort_unstable();
         expected_values.sort_unstable();
         assert_eq!(values, expected_values, "{method}: {params}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_delete_cookies_invalid_params_leave_stored_cookies_untouched() {
+    let mut ctx = TestContext::new();
+    ctx.conn.browser_context = Some(BrowserContext::new("BID-invalid-delete".into()));
+    ctx.process_async(json!({
+        "id": 1, "method": "Network.setCookies",
+        "params": { "cookies": [{ "name": "sid", "value": "keep", "url": "https://example.com/" }] }
+    }))
+    .await;
+    ctx.expect_result(1, json!({ "success": true }), None);
+
+    for params in [
+        json!({}),
+        json!({ "url": "https://example.com/" }),
+        json!({ "name": null, "url": "https://example.com/" }),
+        json!({ "name": 42, "url": "https://example.com/" }),
+        json!({ "name": "sid" }),
+        json!({ "name": "sid", "domain": "" }),
+        json!({ "name": "sid", "url": "not a URL" }),
+        json!({ "name": "sid", "url": "file:///example.com/" }),
+        json!({ "name": "sid", "url": null, "domain": "example.com" }),
+        json!({ "name": "sid", "url": "https://example.com/", "path": 42 }),
+        json!({ "name": "sid", "url": "https://example.com/", "partitionKey": null }),
+        json!({ "name": "sid", "url": "https://example.com/", "partitionKey": { "topLevelSite": "https//site-a.com" } }),
+        json!({ "url": "https://example.com/", "partitionKey": { "topLevelSite": "https//site-a.com", "hasCrossSiteAncestor": false } }),
+        json!({ "name": "sid", "partitionKey": { "topLevelSite": "https//site-a.com", "hasCrossSiteAncestor": false } }),
+        json!({ "name": "sid", "url": "not a URL", "partitionKey": { "topLevelSite": "https//site-a.com", "hasCrossSiteAncestor": false } }),
+    ] {
+        ctx.process_async(json!({ "id": 2, "method": "Network.deleteCookies", "params": params }))
+            .await;
+        ctx.expect_error(2, -32602, "InvalidParams");
+        ctx.process_async(json!({ "id": 3, "method": "Network.getAllCookies" }))
+            .await;
+        let response = ctx.take_response_by_id(3);
+        let cookies = response["result"]["cookies"]
+            .as_array()
+            .expect("stored cookies");
+        assert_eq!(cookies.len(), 1, "{params}");
+        assert_eq!(cookies[0]["value"], json!("keep"), "{params}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_delete_cookies_requires_context_even_for_unmatched_partition_keys() {
+    for partition_key in [
+        None,
+        Some("https//example.com"),
+        Some("https://sub.example.com"),
+        Some("https://example.com"),
+    ] {
+        let mut ctx = TestContext::new();
+        let mut params = json!({ "name": "sid", "url": "https://example.com/" });
+        if let Some(site) = partition_key {
+            params["partitionKey"] = json!({ "topLevelSite": site, "hasCrossSiteAncestor": false });
+        }
+        ctx.process_async(json!({ "id": 1, "method": "Network.deleteCookies", "params": params }))
+            .await;
+        ctx.expect_error(1, -31998, "BrowserContextNotLoaded");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_delete_cookies_uses_domain_before_url_and_matches_serialized_domains() {
+    for (params, mut expected) in [
+        (
+            json!({ "name": "sid", "domain": "other.com", "url": "https://example.com/" }),
+            vec!["domain", "example"],
+        ),
+        (
+            json!({ "name": "sid", "domain": ".other.com", "url": "https://example.com/" }),
+            vec!["app", "example", "root"],
+        ),
+        (
+            json!({ "name": "sid", "domain": "", "url": "https://other.com/" }),
+            vec!["domain", "example"],
+        ),
+        (
+            json!({ "name": "sid", "domain": "other.com", "url": "not a URL" }),
+            vec!["domain", "example"],
+        ),
+        (
+            json!({ "name": "sid", "domain": "other.com", "path": "" }),
+            vec!["domain", "example"],
+        ),
+        (
+            json!({ "name": "sid", "domain": "other.com", "path": "/app" }),
+            vec!["domain", "example", "root"],
+        ),
+        (
+            json!({ "name": "sid", "url": "https://sub.other.com/" }),
+            vec!["app", "domain", "example", "root"],
+        ),
+        (
+            json!({ "name": "sid", "domain": "OTHER.COM", "url": "https://other.com/" }),
+            vec!["app", "domain", "example", "root"],
+        ),
+    ] {
+        let mut ctx = TestContext::new();
+        ctx.conn.browser_context = Some(BrowserContext::new("BID-delete-domain".into()));
+        ctx.process_async(json!({
+            "id": 1, "method": "Network.setCookies",
+            "params": { "cookies": [
+                { "name": "sid", "value": "example", "url": "https://example.com/" },
+                { "name": "sid", "value": "root", "url": "https://other.com/" },
+                { "name": "sid", "value": "app", "url": "https://other.com/", "path": "/app" },
+                { "name": "sid", "value": "domain", "url": "https://other.com/", "domain": ".other.com", "path": "/domain" }
+            ] }
+        })).await;
+        ctx.expect_result(1, json!({ "success": true }), None);
+        ctx.process_async(json!({ "id": 2, "method": "Network.deleteCookies", "params": params }))
+            .await;
+        ctx.expect_result(2, json!({}), None);
+        ctx.process_async(json!({ "id": 3, "method": "Network.getAllCookies" }))
+            .await;
+        let response = ctx.take_response_by_id(3);
+        let mut values = response["result"]["cookies"]
+            .as_array()
+            .expect("stored cookies")
+            .iter()
+            .map(|cookie| cookie["value"].as_str().expect("cookie value"))
+            .collect::<Vec<_>>();
+        values.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(values, expected, "{params}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_delete_cookies_cannot_override_the_session_browser_context() {
+    let mut ctx = TestContext::new();
+    let mut active =
+        BrowserContext::new_with_page_for_test("BID-cookie-active", "TID-cookie-active");
+    active.attach_active_session("SID-cookie-active");
+    let mut inactive =
+        BrowserContext::new_with_page_for_test("BID-cookie-inactive", "TID-cookie-inactive");
+    inactive.attach_active_session("SID-cookie-inactive");
+    ctx.conn.install_browser_context_fixture_for_test(active);
+    ctx.conn
+        .push_inactive_browser_context_fixture_for_test(inactive);
+
+    for (id, browser_context_id, value) in [
+        (1, "BID-cookie-active", "active"),
+        (2, "BID-cookie-inactive", "inactive"),
+    ] {
+        ctx.process_async(json!({
+            "id": id, "method": "Storage.setCookies",
+            "params": { "browserContextId": browser_context_id, "cookies": [{ "name": "sid", "value": value, "url": "https://example.com/" }] }
+        })).await;
+        ctx.expect_result(id, json!({ "success": true }), None);
+    }
+    ctx.process_async(json!({
+        "id": 3, "sessionId": "SID-cookie-inactive", "method": "Network.deleteCookies",
+        "params": { "name": "sid", "url": "https://example.com/", "browserContextId": "BID-cookie-active" }
+    })).await;
+    ctx.expect_result(3, json!({}), Some("SID-cookie-inactive"));
+
+    for (id, browser_context_id, expected) in [
+        (4, "BID-cookie-active", vec!["active"]),
+        (5, "BID-cookie-inactive", vec![]),
+    ] {
+        ctx.process_async(json!({ "id": id, "method": "Storage.getCookies", "params": { "browserContextId": browser_context_id } })).await;
+        let response = ctx.take_response_by_id(id);
+        let values = response["result"]["cookies"]
+            .as_array()
+            .expect("context cookies")
+            .iter()
+            .map(|cookie| cookie["value"].as_str().expect("cookie value"))
+            .collect::<Vec<_>>();
+        assert_eq!(values, expected, "{browser_context_id}");
     }
 }
 

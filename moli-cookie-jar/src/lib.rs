@@ -14,7 +14,7 @@ pub use model::{
     BrowserCookieStorageAccessStatus, CookieSiteDataClearReport, CookieSiteDataClearScope,
     CookieSiteDataScope, CookieSiteDataSummary, CookieSource, CookieStorageClearReport,
     CookieStorageClearTarget, CookieStorageStateDiff, CookieStorageStateSnapshot,
-    NetworkCookieRequestContext, NetworkStorageAccessStatus, StoredCookie,
+    NetworkCookieRequestContext, NetworkStorageAccessStatus, StoredCookie, StoredCookieDomainMatch,
     StoredCookieEffectiveSameSite, StoredCookiePartitionFilter, StoredCookiePartitionKey,
     StoredCookieSameSite, StoredCookieSetRejectionReason, StoredCookieSetReport,
     StoredCookieSetStatus, StoredCookieSetWarningReason, StoredCookieSourceScheme,

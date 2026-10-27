@@ -220,6 +220,7 @@ pub(crate) fn build_cdp_storage_clear_cookies_command(
         name: None,
         url: None,
         domain: None,
+        domain_match: moli_cookie_jar::StoredCookieDomainMatch::Canonical,
         path: None,
         partition_filter: moli_cookie_jar::StoredCookiePartitionFilter::All,
         filter: None,
@@ -279,6 +280,7 @@ pub(crate) fn build_cdp_storage_delete_cookies_command(
         name: params.name,
         url: params.url,
         domain: params.domain,
+        domain_match: moli_cookie_jar::StoredCookieDomainMatch::Canonical,
         path: params.path,
         partition_filter: partition_key.map_or(
             moli_cookie_jar::StoredCookiePartitionFilter::All,
@@ -1111,6 +1113,7 @@ pub(crate) fn complete_devtools_delete_cookies_result(
                 browser_context_id,
             },
             command.partition_filter,
+            command.domain_match,
         )
     };
     match result {
@@ -1422,13 +1425,19 @@ pub(crate) fn delete_cookies_for_browser_context(
         moli_cookie_jar::StoredCookiePartitionFilter::All,
         moli_cookie_jar::StoredCookiePartitionFilter::Partition,
     );
-    delete_cookies_for_browser_context_with_partition_filter(conn, params, partition_filter)
+    delete_cookies_for_browser_context_with_partition_filter(
+        conn,
+        params,
+        partition_filter,
+        moli_cookie_jar::StoredCookieDomainMatch::Canonical,
+    )
 }
 
 fn delete_cookies_for_browser_context_with_partition_filter(
     conn: &mut CdpConnection,
     params: DeleteCookiesParams,
     partition_filter: moli_cookie_jar::StoredCookiePartitionFilter,
+    domain_match: moli_cookie_jar::StoredCookieDomainMatch,
 ) -> Result<(), (i32, &'static str)> {
     let bc = match params.browser_context_id.as_deref() {
         Some(wanted_id) => conn
@@ -1440,22 +1449,25 @@ fn delete_cookies_for_browser_context_with_partition_filter(
             .ok_or((-31998, "BrowserContextNotLoaded"))?,
     };
 
-    let normalized_domain = params
-        .domain
-        .as_deref()
-        .map(|domain| domain.trim().trim_start_matches('.').to_ascii_lowercase());
+    let normalized_domain = params.domain.as_deref().map(|domain| match domain_match {
+        moli_cookie_jar::StoredCookieDomainMatch::Canonical => {
+            domain.trim().trim_start_matches('.').to_ascii_lowercase()
+        }
+        moli_cookie_jar::StoredCookieDomainMatch::Serialized => domain.to_owned(),
+    });
     let normalized_url_host = params.url.as_deref().and_then(|url| {
         Url::parse(url)
             .ok()
             .and_then(|parsed| parsed.host_str().map(str::to_ascii_lowercase))
     });
 
-    bc.delete_cookies_with_partition_filter(
+    bc.delete_cookies_with_filters(
         params.name.as_deref(),
         normalized_domain.as_deref(),
         params.path.as_deref(),
         normalized_url_host.as_deref(),
         &partition_filter,
+        domain_match,
     );
 
     Ok(())

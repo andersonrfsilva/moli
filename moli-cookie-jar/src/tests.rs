@@ -4,7 +4,7 @@ use super::test_support::{
 };
 use super::{
     CookiePriority, CookieSource, NetworkCookieRequestContext, NetworkSiteContextMetadata,
-    NetworkStorageAccessStatus, StoredCookie, StoredCookieAccessSemantics,
+    NetworkStorageAccessStatus, StoredCookie, StoredCookieAccessSemantics, StoredCookieDomainMatch,
     StoredCookieEffectiveSameSite, StoredCookieExclusionReason, StoredCookiePartitionFilter,
     StoredCookiePartitionKey, StoredCookieQueryReport, StoredCookieRequestSameSiteContext,
     StoredCookieSameSite, StoredCookieSameSiteContextDowngradeType, StoredCookieSameSiteHttpMethod,
@@ -4394,12 +4394,13 @@ fn cookie_deletion_distinguishes_partition_scopes() {
     );
 
     assert_eq!(
-        store.delete_cookies_with_partition_filter(
+        store.delete_cookies_with_filters(
             Some("chip"),
             Some("widget.example"),
             Some("/"),
             None,
             &StoredCookiePartitionFilter::Unpartitioned,
+            StoredCookieDomainMatch::Canonical,
         ),
         1
     );

@@ -6,7 +6,7 @@ use crate::automation::{
 use crate::conn::{CdpConnection, Cmd, CommandOwnerScope};
 
 use super::storage::{
-    CdpCookieParam, DeleteCookiesParams, associated_cookies_to_json, cookie_query_report_to_json,
+    CdpCookieParam, associated_cookies_to_json, cookie_query_report_to_json,
     cookie_set_report_to_json,
 };
 

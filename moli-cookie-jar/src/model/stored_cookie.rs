@@ -26,6 +26,19 @@ pub enum StoredCookiePartitionFilter {
     All,
     Unpartitioned,
     Partition(StoredCookiePartitionKey),
+    /// Compare the stored site's serialization verbatim, without URL parsing.
+    Serialized {
+        top_level_site: String,
+        has_cross_site_ancestor: bool,
+    },
+}
+
+/// Domain representation used by a cookie deletion filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoredCookieDomainMatch {
+    Canonical,
+    /// Match the serialized domain, including a domain cookie's leading dot.
+    Serialized,
 }
 
 impl StoredCookiePartitionKey {

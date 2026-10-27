@@ -541,6 +541,7 @@ fn partitioned_cookies_coexist_and_query_by_exact_partition_key() {
         store.delete_matching(&CookieDeleteFilter {
             name: Some("sid"),
             domain: Some("cdn.example"),
+            serialized_domain: None,
             path: Some("/foo"),
             url_host: None,
             partition_key: Some(&key_a),

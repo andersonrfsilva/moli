@@ -1,4 +1,4 @@
-use moli_cookie_jar::StoredCookiePartitionFilter;
+use moli_cookie_jar::{StoredCookieDomainMatch, StoredCookiePartitionFilter};
 use serde::Deserialize;
 use serde_json::Value;
 use url::Url;
@@ -8,10 +8,7 @@ use crate::automation::{
     AutomationCommand, DevToolsBrowserContextId, DevToolsDeleteCookiesCommand,
     DevToolsGetCookiesCommand, DevToolsSetCookiesCommand,
 };
-use crate::domains::storage::{
-    PartitionKeyError, StorageCommandTaskStep, normalize_partition_key,
-    start_devtools_storage_command,
-};
+use crate::domains::storage::{StorageCommandTaskStep, start_devtools_storage_command};
 
 pub(super) fn start_get_cookies_command(
     conn: &mut CdpConnection,
@@ -100,6 +97,7 @@ pub(super) fn start_clear_browser_cookies_command(
         name: None,
         url: None,
         domain: None,
+        domain_match: StoredCookieDomainMatch::Canonical,
         path: None,
         partition_filter: StoredCookiePartitionFilter::All,
         filter: None,
@@ -107,43 +105,83 @@ pub(super) fn start_clear_browser_cookies_command(
     start_devtools_storage_command(conn, cmd.id, AutomationCommand::DeleteCookies(command))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkDeleteCookiesParams {
+    name: String,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    url: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    domain: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    path: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present")]
+    partition_key: Option<NetworkCookiePartitionKey>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkCookiePartitionKey {
+    top_level_site: String,
+    has_cross_site_ancestor: bool,
+}
+
+// Optional CDP fields may be absent, but explicit null still has to satisfy
+// the field's type, just like other malformed JSON values.
+fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
 fn build_cdp_network_delete_cookies_command(
     conn: &CdpConnection,
     cmd: &Cmd<'_>,
 ) -> Result<DevToolsDeleteCookiesCommand, CommandOutputPlan> {
-    let params: DeleteCookiesParams = match cmd.get_params() {
+    let params: NetworkDeleteCookiesParams = match cmd.get_params() {
         Ok(Some(params)) => params,
         _ => return Err(CommandOutputPlan::error(-32602, "InvalidParams")),
     };
-    // Chromium answers a partitionKey it cannot parse with success and deletes
-    // nothing, since no stored cookie can be in that partition. Puppeteer relies
-    // on this: page.setCookie()/deleteCookie() send a malformed topLevelSite
-    // (`https//example.com`) and fail outright if the command is rejected.
-    // Read the raw field so an explicit null remains a structural error rather
-    // than being deserialized as an omitted Option.
-    let partition_key = cmd.params.and_then(|params| params.get("partitionKey"));
-    let partition_filter = match normalize_partition_key(partition_key, false) {
-        Ok(Some(key)) => StoredCookiePartitionFilter::Partition(key),
-        Ok(None) => StoredCookiePartitionFilter::Unpartitioned,
-        Err(PartitionKeyError::InvalidSite) => return Err(CommandOutputPlan::success()),
-        Err(PartitionKeyError::InvalidStructure) => {
-            return Err(CommandOutputPlan::error(-32602, "InvalidParams"));
+    // Chromium uses a nonempty domain verbatim and only falls back to the URL
+    // hostname when the domain is absent or empty.
+    let domain = match params.domain.filter(|domain| !domain.is_empty()) {
+        Some(domain) => domain,
+        None => {
+            let url = params.url.as_deref().and_then(|url| Url::parse(url).ok());
+            let Some(url) = url.filter(|url| matches!(url.scheme(), "http" | "https")) else {
+                return Err(CommandOutputPlan::error(-32602, "InvalidParams"));
+            };
+            let Some(host) = url.host_str() else {
+                return Err(CommandOutputPlan::error(-32602, "InvalidParams"));
+            };
+            host.to_owned()
         }
     };
+    // Match the stored serialization without parsing or canonicalizing the
+    // client's string. A malformed or noncanonical site naturally matches none.
+    let partition_filter =
+        params
+            .partition_key
+            .map_or(StoredCookiePartitionFilter::Unpartitioned, |key| {
+                StoredCookiePartitionFilter::Serialized {
+                    top_level_site: key.top_level_site,
+                    has_cross_site_ancestor: key.has_cross_site_ancestor,
+                }
+            });
     let (_, target_id) = conn
         .target_owner_identity_for_session(cmd.session_id)
         .map(|(_, target_id)| ((), target_id))
         .unwrap_or(((), None));
-    let browser_context_id = params
-        .browser_context_id
-        .map(DevToolsBrowserContextId::from);
     Ok(DevToolsDeleteCookiesCommand {
-        context: cmd.automation_context(target_id.as_deref(), browser_context_id.clone()),
-        browser_context_id,
-        name: params.name,
-        url: params.url,
-        domain: params.domain,
-        path: params.path,
+        context: cmd.automation_context(target_id.as_deref(), Option::<&str>::None),
+        browser_context_id: None,
+        name: Some(params.name),
+        url: None,
+        domain: Some(domain),
+        domain_match: StoredCookieDomainMatch::Serialized,
+        path: params.path.filter(|path| !path.is_empty()),
         partition_filter,
         filter: None,
     })
@@ -341,24 +379,27 @@ mod protocol_neutral_tests {
             Some("SID-network")
         );
         assert_eq!(command.name.as_deref(), Some("sid"));
-        assert_eq!(command.url.as_deref(), Some("https://example.com/"));
+        assert_eq!(command.url, None);
         assert_eq!(command.domain.as_deref(), Some("example.com"));
+        assert_eq!(
+            command.domain_match,
+            super::StoredCookieDomainMatch::Serialized
+        );
+        assert_eq!(command.browser_context_id, None);
         assert_eq!(command.path.as_deref(), Some("/"));
         assert_eq!(
             command.partition_filter,
-            moli_cookie_jar::StoredCookiePartitionFilter::Partition(
-                moli_cookie_jar::StoredCookiePartitionKey::site(
-                    "https://top.example".to_owned(),
-                    true,
-                )
-            )
+            moli_cookie_jar::StoredCookiePartitionFilter::Serialized {
+                top_level_site: "https://top.example".to_owned(),
+                has_cross_site_ancestor: true,
+            }
         );
     }
 
     #[test]
     fn network_delete_cookies_routes_to_shared_storage_entry() {
         let mut conn = CdpConnection::new();
-        let params = json!({ "name": "sid" });
+        let params = json!({ "name": "sid", "url": "https://example.com/" });
         let cmd = Cmd::for_test(
             Some(148),
             "Network.deleteCookies",
@@ -380,8 +421,8 @@ mod protocol_neutral_tests {
     }
 
     #[test]
-    fn cdp_network_delete_cookies_with_unparseable_partition_key_succeeds_without_deleting() {
-        let mut conn = CdpConnection::new();
+    fn cdp_network_delete_cookies_preserves_unparseable_partition_key_for_storage_matching() {
+        let conn = CdpConnection::new();
         // Shape sent by Puppeteer's page.setCookie()/deleteCookie().
         let params = json!({
             "name": "sid",
@@ -399,15 +440,16 @@ mod protocol_neutral_tests {
             r#"{"id":149,"method":"Network.deleteCookies"}"#,
         );
 
-        let step = start_delete_cookies_command(&mut conn, &cmd);
-
-        // Completes on the spot: no delete reaches the cookie store.
-        let StorageCommandTaskStep::Complete(plan) = step else {
-            panic!("an unparseable partitionKey should complete without a storage command");
+        let Ok(command) = build_cdp_network_delete_cookies_command(&conn, &cmd) else {
+            panic!("a structurally valid partitionKey should reach storage matching");
         };
-        let mut out = Vec::new();
-        plan.emit_into(&mut out, cmd.id, cmd.session_id);
-        assert_eq!(out, vec![json!({ "id": 149, "result": {} })]);
+        assert_eq!(
+            command.partition_filter,
+            moli_cookie_jar::StoredCookiePartitionFilter::Serialized {
+                top_level_site: "https//example.com".to_owned(),
+                has_cross_site_ancestor: false,
+            }
+        );
     }
 
     #[test]

@@ -75,6 +75,16 @@ pub(super) fn cookie_matches_delete_filter(
     if filter.domain.is_some_and(|wanted| cookie_domain != wanted) {
         return false;
     }
+    if let Some(wanted) = filter.serialized_domain {
+        let matches = if matches!(cookie.domain, crate::CookieDomain::Suffix(_)) {
+            wanted.strip_prefix('.') == Some(cookie_domain.as_str())
+        } else {
+            wanted == cookie_domain
+        };
+        if !matches {
+            return false;
+        }
+    }
 
     if filter
         .path
