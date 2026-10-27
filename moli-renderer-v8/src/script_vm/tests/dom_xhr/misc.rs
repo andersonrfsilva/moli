@@ -2338,3 +2338,32 @@ fn window_closed_reflects_removed_iframe_state() {
         .expect("closed should reflect iframe removal through the native getter");
     assert_eq!(result, "[false,false,true,true]");
 }
+
+#[test]
+fn media_volume_rejects_out_of_range_values_without_mutating_state() {
+    let mut vm = new_storage_test_vm("https://media-volume.test/");
+    assert_eq!(
+        vm.eval(
+            r#"(() => {
+        const media = document.createElement('audio');
+        media.volume = 0.25;
+        for (const [value, name] of [[-1, 'IndexSizeError'], [1.01, 'IndexSizeError'],
+            [NaN, 'TypeError'], [Infinity, 'TypeError'], [Symbol(), 'TypeError']]) {
+            let error;
+            try { media.volume = value; } catch (caught) { error = caught; }
+            if (error?.name !== name || media.volume !== 0.25) throw Error('volume validation');
+        }
+        const sentinel = {};
+        let error;
+        try { media.volume = { valueOf() { throw sentinel; } }; } catch (caught) { error = caught; }
+        if (error !== sentinel || media.volume !== 0.25) throw Error('conversion exception');
+        media.volume = 0;
+        if (media.volume !== 0) throw Error('zero boundary');
+        media.volume = 1;
+        return media.volume === 1;
+    })()"#
+        )
+        .unwrap(),
+        "true"
+    );
+}

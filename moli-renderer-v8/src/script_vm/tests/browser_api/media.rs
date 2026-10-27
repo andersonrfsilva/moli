@@ -467,10 +467,9 @@ fn media_numeric_setters_parse_webidl_values() {
     }
   };
   const volumeObject = `${video.volume}:${volumeCalls}`;
-  video.volume = 2;
-  const volumeUpperClamp = video.volume;
-  video.volume = -1;
-  const volumeLowerClamp = video.volume;
+  const volumeUpperRange = probe(() => { video.volume = 2; });
+  const volumeLowerRange = probe(() => { video.volume = -1; });
+  const volumeAfterInvalid = video.volume;
   const volumeInfinity = probe(() => { video.volume = Infinity; });
   const volumeSymbol = probe(() => { video.volume = Symbol('volume'); });
 
@@ -504,8 +503,9 @@ fn media_numeric_setters_parse_webidl_values() {
 
   return [
     volumeObject,
-    volumeUpperClamp,
-    volumeLowerClamp,
+    volumeUpperRange,
+    volumeLowerRange,
+    volumeAfterInvalid,
     volumeInfinity,
     volumeSymbol,
     playbackRateObject,
@@ -523,7 +523,7 @@ fn media_numeric_setters_parse_webidl_values() {
 
     assert_eq!(
         result,
-        "0.25:1|1|0|throw:TypeError|throw:TypeError|1.5:1|throw:RangeError|throw:TypeError|3.5:1|0|throw:TypeError|throw:TypeError"
+        "0.25:1|throw:IndexSizeError|throw:IndexSizeError|0.25|throw:TypeError|throw:TypeError|1.5:1|throw:RangeError|throw:TypeError|3.5:1|0|throw:TypeError|throw:TypeError"
     );
 }
 
@@ -569,6 +569,8 @@ async fn media_pseudo_classes_update_has_ancestor_styles() {
   subject.appendChild(video);
   document.body.appendChild(subject);
 
+  let volumeEvents = 0;
+  video.addEventListener("volumechange", () => { volumeEvents += 1; });
   let seekingEvents = 0;
   let seekedEvents = 0;
   video.addEventListener("seeking", () => {
@@ -577,7 +579,7 @@ async fn media_pseudo_classes_update_has_ancestor_styles() {
   video.addEventListener("seeked", () => {
     seekedEvents += 1;
   });
-  globalThis.__lmMediaPseudo = { video, subject, counts: { get seekingEvents() { return seekingEvents; }, get seekedEvents() { return seekedEvents; } } };
+  globalThis.__lmMediaPseudo = { video, subject, counts: { get volumeEvents() { return volumeEvents; }, get seekingEvents() { return seekingEvents; }, get seekedEvents() { return seekedEvents; } } };
 
   const snapshot = () => [
     video.matches(":muted"),
@@ -623,6 +625,13 @@ async fn media_pseudo_classes_update_has_ancestor_styles() {
     assert!(
         !vm.has_ready_timeout(),
         "media seeking events must not create Page timer descriptors"
+    );
+
+    run_next_page_media_element_event_for_test(&mut vm, &loader, "media volumechange event turn")
+        .await;
+    assert_eq!(
+        vm.eval("[__lmMediaPseudo.counts.volumeEvents, __lmMediaPseudo.counts.seekingEvents, __lmMediaPseudo.counts.seekedEvents].join(',')").unwrap(),
+        "1,0,0",
     );
 
     run_next_page_media_element_event_for_test(&mut vm, &loader, "media seeking event turn").await;
