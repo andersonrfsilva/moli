@@ -123,6 +123,101 @@ async fn search_flow_with_real_dom() {
     ctx.expect_error(6, -32000, "No search session with given id found");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn search_results_publish_node_paths_before_reply_for_each_session() {
+    fn remember_nodes(node: &Value, known: &mut std::collections::BTreeSet<u64>) {
+        known.insert(node["nodeId"].as_u64().expect("frontend node id"));
+        if let Some(children) = node["children"].as_array() {
+            for child in children {
+                remember_nodes(child, known);
+            }
+        }
+    }
+
+    let mut ctx = TestContext::new();
+    load_bc(&mut ctx, "BID-A");
+    ctx.conn
+        .browser_context
+        .as_mut()
+        .expect("browser context")
+        .attach_active_session("SID-search");
+    navigate_to_data_html_async(
+        &mut ctx,
+        1,
+        "<!doctype html><html><body><main><section><ul><li><a href='/one'>one</a></li><li><a href='/two'>two</a></li></ul></section><aside><b>unrelated</b></aside></main></body></html>",
+    )
+    .await;
+    ctx.process_async(json!({
+        "id": 2,
+        "method": "Target.attachToTarget",
+        "params": { "targetId": "TID-1" }
+    }))
+    .await;
+    let second_session = take_response_by_id(&mut ctx, 2)["result"]["sessionId"]
+        .as_str()
+        .expect("second session")
+        .to_owned();
+    ctx.sent.clear();
+
+    for session_id in ["SID-search", second_session.as_str()] {
+        ctx.process_async(json!({
+            "id": 3, "sessionId": session_id, "method": "DOM.getDocument",
+            "params": { "depth": 1 }
+        }))
+        .await;
+        let document = take_response_by_id(&mut ctx, 3);
+        let mut known = std::collections::BTreeSet::new();
+        remember_nodes(&document["result"]["root"], &mut known);
+        ctx.sent.clear();
+
+        ctx.process_async(json!({
+            "id": 4, "sessionId": session_id, "method": "DOM.performSearch",
+            "params": { "query": "a[href]" }
+        }))
+        .await;
+        let search = ctx.take_all();
+        assert_eq!(search.len(), 1, "performSearch must not publish nodes");
+        assert_eq!(search[0]["result"]["resultCount"], 2);
+        let search_id = &search[0]["result"]["searchId"];
+
+        ctx.process_async(json!({
+            "id": 5, "sessionId": session_id, "method": "DOM.getSearchResults",
+            "params": { "searchId": search_id, "fromIndex": 0, "toIndex": 2 }
+        }))
+        .await;
+        let messages = ctx.take_all();
+        assert!(
+            messages.len() > 1,
+            "the unrequested paths must be published"
+        );
+        let (reply, events) = messages.split_last().expect("search results reply");
+        assert_eq!(reply["id"], 5);
+        for event in events {
+            assert_eq!(event["sessionId"], session_id);
+            assert_eq!(event["method"], "DOM.setChildNodes");
+            let parent = event["params"]["parentId"].as_u64().expect("parent id");
+            assert!(known.contains(&parent), "ancestors must precede children");
+            for node in event["params"]["nodes"].as_array().expect("child nodes") {
+                assert_ne!(node["nodeName"], "B", "do not expand unrelated subtrees");
+                remember_nodes(node, &mut known);
+            }
+        }
+        let node_ids = reply["result"]["nodeIds"].as_array().expect("search IDs");
+        assert_eq!(node_ids.len(), 2);
+        for node_id in node_ids {
+            assert!(known.contains(&node_id.as_u64().expect("result node id")));
+        }
+
+        ctx.process_async(json!({
+            "id": 6, "sessionId": session_id, "method": "DOM.getSearchResults",
+            "params": { "searchId": search_id, "fromIndex": 1, "toIndex": 2 }
+        }))
+        .await;
+        ctx.expect_result(6, json!({ "nodeIds": [node_ids[1]] }), Some(session_id));
+        assert!(ctx.take_all().is_empty(), "do not republish known paths");
+    }
+}
+
 async fn perform_search_and_get_all_results(
     ctx: &mut TestContext,
     command_id: u64,
@@ -1385,8 +1480,11 @@ async fn query_selector_nodes_found_emits_set_child_nodes_once_like_chromium() {
         "params": { "searchId": "0", "fromIndex": 0, "toIndex": 1 }
     }))
     .await;
-    let div_node_id = ctx.take_one()["result"]["nodeIds"][0].as_u64().unwrap_or(0);
+    let div_node_id = take_response_by_id(&mut ctx, 3)["result"]["nodeIds"][0]
+        .as_u64()
+        .unwrap_or(0);
     assert!(div_node_id > 0);
+    ctx.sent.clear();
 
     ctx.process_async(json!({
         "id": 4,

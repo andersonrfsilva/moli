@@ -6053,7 +6053,10 @@ pub enum RendererPageReply {
         RendererDocumentQuerySelectorWithChildNodeSnapshotEvents,
     ),
     DocumentPerformSearch(RendererDomSearchRegistration),
-    DocumentSearchResults(RendererDomSearchResultsResolution),
+    DocumentSearchResults {
+        resolution: RendererDomSearchResultsResolution,
+        child_node_snapshot_events: Option<RendererDocumentChildNodeSnapshotEvents>,
+    },
     DocumentSearchResultsDiscarded,
     DocumentNodeStackTracesEnabled,
     DocumentNodeStackTrace(RendererDomNodeStackTraceResolution),

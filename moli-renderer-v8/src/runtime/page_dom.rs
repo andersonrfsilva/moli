@@ -2201,7 +2201,7 @@ impl PageVm {
         )
     }
 
-    fn document_query_selector_node_path_snapshot_events(
+    fn document_node_path_snapshot_events(
         &mut self,
         inspector_session_id: Option<&str>,
         root: DomHandle,
@@ -2430,15 +2430,52 @@ impl PageVm {
             RendererDocumentQuerySelectorResolution::MissingRoot
             | RendererDocumentQuerySelectorResolution::InvalidSelector(_) => Vec::new(),
         };
-        let child_node_snapshot_events = self.document_query_selector_node_path_snapshot_events(
-            inspector_session_id,
-            root,
-            &result_handles,
-        );
+        let child_node_snapshot_events =
+            self.document_node_path_snapshot_events(inspector_session_id, root, &result_handles);
         RendererDocumentQuerySelectorWithChildNodeSnapshotEvents {
             child_node_snapshot_events,
             query_selector_resolution,
         }
+    }
+
+    pub(crate) fn document_search_results_with_child_node_snapshot_events(
+        &mut self,
+        inspector_session_id: Option<&str>,
+        search_id: &str,
+        from_index: usize,
+        to_index: usize,
+    ) -> (
+        crate::RendererDomSearchResultsResolution,
+        Option<RendererDocumentChildNodeSnapshotEvents>,
+    ) {
+        let resolution =
+            self.document_search_results(inspector_session_id, search_id, from_index, to_index);
+        let mut snapshot_events: Option<RendererDocumentChildNodeSnapshotEvents> = None;
+        if let crate::RendererDomSearchResultsResolution::Found(nodes) = &resolution {
+            let root = self
+                .vm()
+                .document_runtime
+                .dom_host()
+                .dom()
+                .document_node_id();
+            for node in nodes.iter().filter(|node| node.frontend_node_id != 0) {
+                let Some(handle) =
+                    self.live_handle_for_renderer_backend_node_id(node.backend_node_id)
+                else {
+                    continue;
+                };
+                if let Some(mut events) =
+                    self.document_node_path_snapshot_events(inspector_session_id, root, &[handle])
+                {
+                    if let Some(existing) = &mut snapshot_events {
+                        existing.events.append(&mut events.events);
+                    } else {
+                        snapshot_events = Some(events);
+                    }
+                }
+            }
+        }
+        (resolution, snapshot_events)
     }
 
     pub(crate) fn document_query_selector_with_child_node_snapshot_events_for_node(

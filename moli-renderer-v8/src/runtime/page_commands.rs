@@ -647,14 +647,19 @@ impl PageVm {
                 search_id,
                 from_index,
                 to_index,
-            } => Ok(RendererPageReply::DocumentSearchResults(
-                self.document_search_results(
+            } => {
+                let (resolution, child_node_snapshot_events) = self
+                    .document_search_results_with_child_node_snapshot_events(
                     inspector_session_id.as_deref(),
                     &search_id,
                     from_index,
                     to_index,
-                ),
-            )),
+                );
+                Ok(RendererPageReply::DocumentSearchResults {
+                    resolution,
+                    child_node_snapshot_events,
+                })
+            }
             RendererPageCommand::DocumentDiscardSearchResults {
                 inspector_session_id,
                 search_id,

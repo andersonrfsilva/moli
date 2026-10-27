@@ -1296,13 +1296,18 @@ impl Page {
     pub fn finish_document_search_results(
         &mut self,
         completion: CompletedPageCommand,
-    ) -> Result<RendererDomSearchResultsResolution> {
+    ) -> Result<(
+        RendererDomSearchResultsResolution,
+        Option<RendererDocumentChildNodeSnapshotEvents>,
+    )> {
         let reply = self.finish_page_command(completion);
         expect_page_reply!(
             reply,
             "document search results page command",
             "a document search results resolution",
-            RendererPageReply::DocumentSearchResults(result) => Ok(result),
+            RendererPageReply::DocumentSearchResults { resolution, child_node_snapshot_events } => {
+                Ok((resolution, child_node_snapshot_events))
+            },
         )
     }
 

@@ -336,7 +336,7 @@ impl Page {
             RendererPageReply::DocumentPerformSearch(_) => {
                 "a document perform search registration reply"
             }
-            RendererPageReply::DocumentSearchResults(_) => "a document search results reply",
+            RendererPageReply::DocumentSearchResults { .. } => "a document search results reply",
             RendererPageReply::DocumentSearchResultsDiscarded => {
                 "a document search results discarded reply"
             }

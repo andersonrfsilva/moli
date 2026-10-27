@@ -442,17 +442,25 @@ fn prepare(
                     from_index: params.from_index,
                     to_index: params.to_index,
                 },
-                |reply| match reply {
-                    Ok(Reply::DocumentSearchResults(
-                        RendererDomSearchResultsResolution::Found(nodes),
-                    )) => Response::success(
-                        json!({"nodeIds": nodes.into_iter().map(|node| node.frontend_node_id).collect::<Vec<_>>()}),
-                    ),
-                    Ok(Reply::DocumentSearchResults(
-                        RendererDomSearchResultsResolution::SearchResultNotFound,
-                    )) => Response::error(-32000, "No search session with given id found"),
-                    Ok(Reply::DocumentSearchResults(_)) => {
-                        Response::error(-32000, "Invalid search result range")
+                move |reply| match reply {
+                    Ok(Reply::DocumentSearchResults {
+                        resolution,
+                        child_node_snapshot_events,
+                    }) => {
+                        let mut response = match resolution {
+                            RendererDomSearchResultsResolution::Found(nodes) => Response::success(
+                                json!({"nodeIds": nodes.into_iter().map(|node| node.frontend_node_id).collect::<Vec<_>>()}),
+                            ),
+                            RendererDomSearchResultsResolution::SearchResultNotFound => {
+                                Response::error(-32000, "No search session with given id found")
+                            }
+                            _ => Response::error(-32000, "Invalid search result range"),
+                        };
+                        if let Some(snapshots) = child_node_snapshot_events {
+                            response.notifications =
+                                child_notifications(snapshots, top_frame.as_deref());
+                        }
+                        response
                     }
                     Err(error) => Response::error(
                         -32000,
