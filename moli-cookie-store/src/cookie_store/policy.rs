@@ -103,18 +103,11 @@ pub(super) fn cookie_matches_delete_filter(
         return false;
     }
 
-    if filter.unpartitioned_only && cookie.partition_key().is_some() {
-        return false;
+    match filter.partition {
+        CookiePartitionMatch::Any => true,
+        CookiePartitionMatch::Unpartitioned => cookie.partition_key().is_none(),
+        CookiePartitionMatch::Exact(wanted) => cookie.partition_key() == Some(wanted),
     }
-
-    if filter
-        .partition_key
-        .is_some_and(|wanted| cookie.partition_key() != Some(wanted))
-    {
-        return false;
-    }
-
-    true
 }
 
 pub(super) fn delete_filter_domain_matches_host(

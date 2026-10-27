@@ -6,8 +6,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use cookie_store::{
-    CanonicalCookieInput, CookieDeleteFilter, CookieExpiration, CookieStore, CookieStoreLimits,
-    HttpRequestType, InsertContext, QueryContext, SameSite, SameSiteContext,
+    CanonicalCookieInput, CookieDeleteFilter, CookieExpiration, CookiePartitionMatch, CookieStore,
+    CookieStoreLimits, HttpRequestType, InsertContext, QueryContext, SameSite, SameSiteContext,
     SameSiteRequestContext,
 };
 use moli_site::{public_suffix_list, same_site_urls};
@@ -428,17 +428,20 @@ impl BrowserCookieStore {
             StoredCookieDomainMatch::Canonical => (domain, None),
             StoredCookieDomainMatch::Serialized => (None, domain),
         };
+        let partition = match partition_key.as_ref() {
+            Some(key) => CookiePartitionMatch::Exact(key),
+            None if matches!(partition_filter, StoredCookiePartitionFilter::Unpartitioned) => {
+                CookiePartitionMatch::Unpartitioned
+            }
+            None => CookiePartitionMatch::Any,
+        };
         let removed = self.full_core.delete_matching(&CookieDeleteFilter {
             name,
             domain,
             serialized_domain,
             path,
             url_host,
-            partition_key: partition_key.as_ref(),
-            unpartitioned_only: matches!(
-                partition_filter,
-                StoredCookiePartitionFilter::Unpartitioned
-            ),
+            partition,
         });
         if removed > 0 {
             self.bump_document_cookie_generation();

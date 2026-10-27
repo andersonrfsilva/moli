@@ -51,6 +51,18 @@ pub enum StoreAction {
 pub type StoreResult<T> = Result<T, crate::Error>;
 pub type InsertResult = Result<StoreAction, CookieError>;
 
+/// Partition scope for cookie deletion.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CookiePartitionMatch<'a> {
+    /// Match cookies in every partition, including unpartitioned cookies.
+    #[default]
+    Any,
+    /// Match only cookies without a partition key.
+    Unpartitioned,
+    /// Match cookies in one exact partition, including opaque partitions.
+    Exact(&'a crate::CookiePartitionKey),
+}
+
 /// Filter used for deleting matching cookies from the store.
 ///
 /// This is intentionally close to the browser-facing filters used by CDP and
@@ -70,12 +82,8 @@ pub struct CookieDeleteFilter<'a> {
     /// Further constrain matches using browser host-only semantics for this
     /// request host.
     pub url_host: Option<&'a str>,
-    /// When present, delete only cookies in this exact partition. `None` keeps
-    /// the compatibility behavior of deleting all matching partitions.
-    pub partition_key: Option<&'a crate::CookiePartitionKey>,
-    /// Exclude partitioned cookies. Defaults to false so an omitted partition
-    /// key continues to match all partitions unless explicitly constrained.
-    pub unpartitioned_only: bool,
+    /// Match all partitions by default, or explicitly constrain their scope.
+    pub partition: CookiePartitionMatch<'a>,
 }
 
 /// Browser-oriented cookie store limits.
