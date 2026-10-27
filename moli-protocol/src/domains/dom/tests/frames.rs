@@ -4834,8 +4834,9 @@ async fn get_document_surfaces_child_frame_id_for_iframe_node() {
 
     assert_eq!(iframe["frameId"], json!(child_frame_id));
     assert!(
-        iframe.get("contentDocument").is_none(),
-        "contentDocument requires pierce=true: {iframe}"
+        iframe["contentDocument"]["nodeType"] == json!(9)
+            && iframe["contentDocument"].get("children").is_none(),
+        "without pierce the frame owner exposes only its shallow Document: {iframe}"
     );
     assert!(peer_div.get("frameId").is_none());
 }

@@ -35,10 +35,9 @@ impl PageVm {
                 .document_node_id(),
         ];
         documents.extend(
-            self.vm()
-                .live_child_document_handles_in_snapshot_order()
+            self.inspector_child_document_handles()
                 .into_iter()
-                .map(|(_, _, document)| document),
+                .map(|(_, document)| document),
         );
         let matches = search_document_matches(
             self.vm().document_runtime.dom_host(),

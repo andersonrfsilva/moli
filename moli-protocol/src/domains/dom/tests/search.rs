@@ -1,5 +1,152 @@
 use super::*;
 
+fn remember_search_frontend_nodes(node: &Value, known: &mut std::collections::BTreeSet<u64>) {
+    known.insert(node["nodeId"].as_u64().expect("frontend node id"));
+    for field in ["children", "shadowRoots", "pseudoElements"] {
+        if let Some(children) = node[field].as_array() {
+            for child in children {
+                remember_search_frontend_nodes(child, known);
+            }
+        }
+    }
+    for field in ["contentDocument", "templateContent"] {
+        if node[field].is_object() {
+            remember_search_frontend_nodes(&node[field], known);
+        }
+    }
+}
+
+fn assert_search_frontend_publication(
+    messages: &[Value],
+    command_id: u64,
+    known: &mut std::collections::BTreeSet<u64>,
+) -> Vec<Value> {
+    let (reply, events) = messages.split_last().expect("search reply");
+    assert_eq!(reply["id"], command_id);
+    for event in events {
+        assert_eq!(event["method"], "DOM.setChildNodes");
+        let parent = event["params"]["parentId"].as_u64().expect("parent id");
+        assert!(
+            parent == 0 || known.contains(&parent),
+            "unknown parent: {event}"
+        );
+        for node in event["params"]["nodes"].as_array().expect("nodes") {
+            remember_search_frontend_nodes(node, known);
+        }
+    }
+    let ids = reply["result"]["nodeIds"].as_array().expect("search IDs");
+    for id in ids {
+        let id = id.as_u64().expect("node id");
+        assert!(
+            id != 0 && known.contains(&id),
+            "unpublished result: {reply}; events={events:?}"
+        );
+    }
+    ids.clone()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn search_publishes_mixed_light_shadow_frame_and_generated_paths_from_shallow_documents() {
+    for depth in [1, 4, -1] {
+        let mut ctx = TestContext::new();
+        load_bc(&mut ctx, "BID-A");
+        navigate_to_data_html_async(&mut ctx, 1,
+            "<!doctype html><html><body><main><p class='hit'>light</p><div id='host'></div><iframe srcdoc=\"<main><p class='hit'>frame</p></main>\"></iframe><input type='search' value='needle'></main><script>document.getElementById('host').attachShadow({mode:'closed'}).innerHTML='<section><p class=hit>shadow</p></section>'</script></body></html>",
+        ).await;
+        ctx.process_async(
+            json!({"id":2,"method":"DOM.getDocument","params":{"depth":depth,"pierce":false}}),
+        )
+        .await;
+        let document = take_response_by_id(&mut ctx, 2);
+        let mut known = std::collections::BTreeSet::new();
+        remember_search_frontend_nodes(&document["result"]["root"], &mut known);
+        ctx.sent.clear();
+        for (id, query, ua, count) in [(3, ".hit", false, 3), (6, "#editing-view-port", true, 1)] {
+            ctx.process_async(json!({"id":id,"method":"DOM.performSearch","params":{"query":query,"includeUserAgentShadowDOM":ua}})).await;
+            let search = ctx.take_all();
+            assert_eq!(search.len(), 1, "performSearch must not publish nodes");
+            assert_eq!(search[0]["result"]["resultCount"], count);
+            let search_id = &search[0]["result"]["searchId"];
+            ctx.process_async(json!({"id":id+1,"method":"DOM.getSearchResults","params":{"searchId":search_id,"fromIndex":0,"toIndex":count}})).await;
+            let ids = assert_search_frontend_publication(&ctx.take_all(), id + 1, &mut known);
+            assert_eq!(ids.len(), count as usize);
+            ctx.process_async(json!({"id":id+2,"method":"DOM.getSearchResults","params":{"searchId":search_id,"fromIndex":0,"toIndex":count}})).await;
+            assert_eq!(
+                ctx.take_all(),
+                vec![json!({"id":id+2,"result":{"nodeIds":ids}})],
+                "published Inspector paths must be reused"
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn search_only_publishes_paths_for_the_requested_range() {
+    let mut ctx = TestContext::new();
+    load_bc(&mut ctx, "BID-A");
+    navigate_to_data_html_async(&mut ctx, 1,
+        "<!doctype html><html><body><main><section><div><a class='hit' id='left'>left</a></div></section><section><div><a class='hit' id='right'>right</a></div></section></main></body></html>",
+    ).await;
+    ctx.process_async(json!({"id":2,"method":"DOM.getDocument","params":{"depth":1}}))
+        .await;
+    let document = take_response_by_id(&mut ctx, 2);
+    let mut known = std::collections::BTreeSet::new();
+    remember_search_frontend_nodes(&document["result"]["root"], &mut known);
+    ctx.process_async(json!({"id":3,"method":"DOM.performSearch","params":{"query":".hit"}}))
+        .await;
+    let search = take_response_by_id(&mut ctx, 3);
+    assert_eq!(search["result"]["resultCount"], 2);
+    for (id, from, to, expected, absent) in [(4, 1, 2, "right", "left"), (5, 0, 1, "left", "right")]
+    {
+        ctx.sent.clear();
+        ctx.process_async(json!({"id":id,"method":"DOM.getSearchResults","params":{"searchId":search["result"]["searchId"],"fromIndex":from,"toIndex":to}})).await;
+        let messages = ctx.take_all();
+        assert_search_frontend_publication(&messages, id, &mut known);
+        let events = &messages[..messages.len() - 1];
+        let publishes = |id: &str| {
+            events
+                .iter()
+                .flat_map(|event| event["params"]["nodes"].as_array().expect("nodes"))
+                .any(|node| find_dom_node_by_attribute(node, "id", id).is_some())
+        };
+        assert!(
+            publishes(expected),
+            "the requested branch must be published: {messages:?}"
+        );
+        assert!(
+            !publishes(absent),
+            "the other branch must not be traversed: {messages:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn search_publishes_retained_removed_nodes_under_a_detached_root() {
+    for removed in ["target", "container"] {
+        let mut ctx = TestContext::new();
+        load_bc(&mut ctx, "BID-A");
+        navigate_to_data_html_async(&mut ctx,1,"<!doctype html><html><body><div id='container'><section><b id='target'>retained</b></section></div></body></html>").await;
+        ctx.process_async(json!({"id":2,"method":"DOM.getDocument","params":{"depth":1}}))
+            .await;
+        let document = take_response_by_id(&mut ctx, 2);
+        let mut known = std::collections::BTreeSet::new();
+        remember_search_frontend_nodes(&document["result"]["root"], &mut known);
+        ctx.process_async(
+            json!({"id":3,"method":"DOM.performSearch","params":{"query":"#target"}}),
+        )
+        .await;
+        let search = take_response_by_id(&mut ctx, 3);
+        assert_eq!(search["result"]["resultCount"], 1);
+        ctx.process_async(json!({"id":4,"method":"Runtime.evaluate","params":{"expression":format!("window.held=document.getElementById('{removed}');held.remove()")}})).await;
+        let _ = take_response_by_id(&mut ctx, 4);
+        ctx.sent.clear();
+        ctx.process_async(json!({"id":5,"method":"DOM.getSearchResults","params":{"searchId":search["result"]["searchId"],"fromIndex":0,"toIndex":1}})).await;
+        let messages = ctx.take_all();
+        assert_eq!(messages[0]["params"]["parentId"], 0);
+        assert_search_frontend_publication(&messages, 5, &mut known);
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn get_search_results_no_bc_error() {
     let mut ctx = TestContext::new();

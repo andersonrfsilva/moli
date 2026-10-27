@@ -91,6 +91,11 @@ func TestDOMSearchPublishesNodePaths(t *testing.T) {
 			}
 		}
 		fmt.Fprint(w, "</ul></section></main>")
+		if r.URL.Path == "/trees" {
+			fmt.Fprint(w, `<main><section><a href="/light">light</a></section></main>
+<div id="host"></div><iframe srcdoc="<main><a href='/frame'>frame</a></main>"></iframe>
+<script>document.getElementById('host').attachShadow({mode:'closed'}).innerHTML='<section><a href="/shadow">shadow</a></section>';</script>`)
+		}
 		if r.URL.Path == "/script" {
 			fmt.Fprint(w, `<script>
 for (let i = 0; i < 12; i++) {
@@ -110,9 +115,20 @@ for (let i = 0; i < 12; i++) {
 	defer cancelAllocator()
 	browser, cancelBrowser := chromedp.NewContext(allocator, chromedp.WithDebugf(t.Logf))
 	defer cancelBrowser()
-	for _, path := range []string{"/static", "/script"} {
-		t.Run(path, func(t *testing.T) {
-			if err := chromedp.Run(browser, chromedp.Navigate(fixture.URL+path)); err != nil {
+	var links []string
+	for i := range 12 {
+		links = append(links, fmt.Sprintf("/next/%d", i))
+	}
+	for _, fixtureCase := range []struct {
+		path  string
+		hrefs []string
+	}{
+		{"/static", links},
+		{"/script", links},
+		{"/trees", []string{"/light", "/shadow", "/frame"}},
+	} {
+		t.Run(fixtureCase.path, func(t *testing.T) {
+			if err := chromedp.Run(browser, chromedp.Navigate(fixture.URL+fixtureCase.path)); err != nil {
 				t.Fatal(err)
 			}
 			for range 2 {
@@ -122,11 +138,11 @@ for (let i = 0; i < 12; i++) {
 				if err := chromedp.Run(browser, chromedp.Nodes("a[href]", &nodes, chromedp.AtLeast(1))); err != nil {
 					t.Fatalf("get links: %v", err)
 				}
-				if len(nodes) != 12 {
-					t.Fatalf("got %d links, want 12", len(nodes))
+				if len(nodes) != len(fixtureCase.hrefs) {
+					t.Fatalf("got %d links, want %d", len(nodes), len(fixtureCase.hrefs))
 				}
 				for i, node := range nodes {
-					if got, want := node.AttributeValue("href"), fmt.Sprintf("/next/%d", i); got != want {
+					if got, want := node.AttributeValue("href"), fixtureCase.hrefs[i]; got != want {
 						t.Fatalf("link %d: href=%q, want %q", i, got, want)
 					}
 				}

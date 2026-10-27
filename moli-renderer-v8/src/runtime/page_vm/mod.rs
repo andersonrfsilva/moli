@@ -4926,64 +4926,30 @@ impl PageVm {
         inspector_session_id: Option<&str>,
         matches: Vec<dom_search::DocumentSearchMatch>,
     ) -> crate::RendererDomSearchRegistration {
-        let include_whitespace = self.document_dom_agent_includes_whitespace(inspector_session_id);
-        let document_handle = self
-            .vm()
-            .document_runtime
-            .dom_host()
-            .dom()
-            .document_node_id();
-        let document_is_published = self
-            .renderer_backend_node_id_for_live_handle(document_handle)
-            .is_some_and(|document_backend_node_id| {
-                self.document_has_frontend_node_id_for_backend_node_id(
-                    inspector_session_id,
-                    document_backend_node_id,
-                )
-            });
         let mut nodes = Vec::with_capacity(matches.len());
         for search_match in matches {
-            let (backend_node_id, is_whitespace_text) = match search_match {
+            let backend_node_id = match search_match {
                 dom_search::DocumentSearchMatch::Live(handle) => {
                     let Some(backend_node_id) =
                         self.renderer_backend_node_id_for_live_handle(handle)
                     else {
                         continue;
                     };
-                    let is_whitespace_text = super::page_dom::inspector_whitespace_text_node(
-                        self.vm().document_runtime.dom_host(),
-                        handle,
-                    );
-                    (backend_node_id, is_whitespace_text)
+                    backend_node_id
                 }
-                dom_search::DocumentSearchMatch::Generated {
-                    host,
-                    identity,
-                    is_whitespace_text,
-                } => {
+                dom_search::DocumentSearchMatch::Generated { host, identity, .. } => {
                     let Some(backend_node_id) =
                         self.renderer_backend_node_id_for_inspector_node(host, identity)
                     else {
                         continue;
                     };
-                    (backend_node_id, is_whitespace_text)
+                    backend_node_id
                 }
             };
-            let frontend_node_id = if document_is_published {
-                self.document_frontend_node_id_for_backend_node_id_in_whitespace_projection(
-                    inspector_session_id,
-                    backend_node_id,
-                    include_whitespace,
-                    is_whitespace_text,
-                )
-            } else {
-                // Chromium preserves the result count before a session has
-                // requested its document, but keeps every result unbound.
-                // Search must not become an implicit document publication path.
-                0
-            };
             nodes.push(crate::RendererDomSearchResultNode {
-                frontend_node_id,
+                // Finding a node is not a frontend publication. Bind its ID
+                // only when getSearchResults exposes its Inspector path.
+                frontend_node_id: 0,
                 backend_node_id,
             });
         }

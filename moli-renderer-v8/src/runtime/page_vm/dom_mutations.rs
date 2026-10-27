@@ -36,7 +36,9 @@ impl PageVm {
                     backend_node_id,
                     snapshot.child_count,
                 );
-                if remaining_depth != 0 || forced_single_text_child {
+                if snapshot.children.len() == snapshot.child_count
+                    && (remaining_depth != 0 || forced_single_text_child)
+                {
                     self.dom_agent_state.mark_children_requested(
                         inspector_session_id,
                         document_id,
@@ -45,17 +47,14 @@ impl PageVm {
                     );
                 }
             }
-            if remaining_depth == 0 {
-                if forced_single_text_child {
-                    stack.extend(snapshot.children.iter().rev().map(|child| (child, 0)));
-                }
-                continue;
-            }
             let next_depth = if remaining_depth > 0 {
                 remaining_depth - 1
             } else {
                 remaining_depth
             };
+            if let Some(associated) = snapshot.associated.as_deref() {
+                stack.push((associated.node(), next_depth));
+            }
             stack.extend(
                 snapshot
                     .shadow_roots
