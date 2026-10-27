@@ -29,6 +29,9 @@
 </p>
 
 <p align="center">
+  <a href="https://discord.gg/4eXGtdWWnq">
+    <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2" alt="Discord" />
+  </a>
   <a href="../assets/moli-feedback-wechat-group.png">
     <img src="https://img.shields.io/badge/WeChat-Join%20Community-07C160" alt="WeChat" />
   </a>
