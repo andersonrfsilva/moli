@@ -29,6 +29,12 @@
 </p>
 
 <p align="center">
+  <a href="../assets/moli-feedback-wechat-group.png">
+    <img src="https://img.shields.io/badge/WeChat-Join%20Community-07C160" alt="WeChat" />
+  </a>
+</p>
+
+<p align="center">
   <a href="https://trendshift.io/repositories/128243?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-128243" target="_blank" rel="noopener noreferrer">
     <img src="https://trendshift.io/api/badge/trendshift/repositories/128243/daily" alt="lexmount%2Fmoli | Trendshift" width="250" height="55" />
   </a>
