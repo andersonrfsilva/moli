@@ -107,3 +107,5 @@ mod event_target_prototype;
 mod named_node_map_receivers;
 mod node_native_aliases;
 mod range_bindings;
+
+mod window_focus;
