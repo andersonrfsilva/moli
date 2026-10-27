@@ -76,8 +76,8 @@ pub(super) fn normalize_cookie_param(
         param.partition_key_opaque.unwrap_or(false),
     ) {
         Ok(partition_key) => partition_key,
-        Err(reason) => {
-            rejection_reasons.push(reason);
+        Err(_) => {
+            rejection_reasons.push(StoredCookieSetRejectionReason::InvalidPartitionKey);
             None
         }
     };
@@ -194,12 +194,17 @@ pub(super) fn normalize_cookie_param(
     )
 }
 
+pub(crate) enum PartitionKeyError {
+    InvalidStructure,
+    InvalidSite,
+}
+
 pub(crate) fn normalize_partition_key(
     value: Option<&serde_json::Value>,
     partition_key_opaque: bool,
-) -> Result<Option<StoredCookiePartitionKey>, StoredCookieSetRejectionReason> {
+) -> Result<Option<StoredCookiePartitionKey>, PartitionKeyError> {
     if partition_key_opaque {
-        return Err(StoredCookieSetRejectionReason::InvalidPartitionKey);
+        return Err(PartitionKeyError::InvalidSite);
     }
     let Some(value) = value else {
         return Ok(None);
@@ -207,15 +212,14 @@ pub(crate) fn normalize_partition_key(
     let top_level_site = value
         .get("topLevelSite")
         .and_then(serde_json::Value::as_str)
-        .ok_or(StoredCookieSetRejectionReason::InvalidPartitionKey)?;
+        .ok_or(PartitionKeyError::InvalidStructure)?;
     let has_cross_site_ancestor = value
         .get("hasCrossSiteAncestor")
         .and_then(serde_json::Value::as_bool)
-        .ok_or(StoredCookieSetRejectionReason::InvalidPartitionKey)?;
-    let url = Url::parse(top_level_site)
-        .map_err(|_| StoredCookieSetRejectionReason::InvalidPartitionKey)?;
+        .ok_or(PartitionKeyError::InvalidStructure)?;
+    let url = Url::parse(top_level_site).map_err(|_| PartitionKeyError::InvalidSite)?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(StoredCookieSetRejectionReason::InvalidPartitionKey);
+        return Err(PartitionKeyError::InvalidSite);
     }
     Ok(Some(StoredCookiePartitionKey::site(
         moli_storage_key::site_for_url(&url),

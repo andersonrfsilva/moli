@@ -6,7 +6,8 @@
 
 use std::{fmt, str::FromStr, sync::Arc};
 
-use moli_cookie_jar::{StoredCookiePartitionKey, StoredCookieQueryReport};
+pub use moli_cookie_jar::StoredCookiePartitionFilter;
+use moli_cookie_jar::StoredCookieQueryReport;
 use moli_core::page::{
     DomScrollIntoViewRect, SelectedFile, SubresourceResourceType, is_renderer_backend_node_id,
 };
@@ -822,7 +823,7 @@ pub struct DevToolsDeleteCookiesCommand {
     pub url: Option<String>,
     pub domain: Option<String>,
     pub path: Option<String>,
-    pub partition_key: Option<StoredCookiePartitionKey>,
+    pub partition_filter: StoredCookiePartitionFilter,
     pub filter: Option<DevToolsCookieFilter>,
 }
 

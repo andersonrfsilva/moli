@@ -70,6 +70,9 @@ pub struct CookieDeleteFilter<'a> {
     /// When present, delete only cookies in this exact partition. `None` keeps
     /// the compatibility behavior of deleting all matching partitions.
     pub partition_key: Option<&'a crate::CookiePartitionKey>,
+    /// Exclude partitioned cookies. Defaults to false so an omitted partition
+    /// key continues to match all partitions unless explicitly constrained.
+    pub unpartitioned_only: bool,
 }
 
 /// Browser-oriented cookie store limits.

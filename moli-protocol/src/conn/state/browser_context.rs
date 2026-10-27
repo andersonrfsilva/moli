@@ -1499,19 +1499,31 @@ impl BrowserContext {
         path: Option<&str>,
         url_host: Option<&str>,
     ) {
-        self.delete_cookies_with_partition_key(name, domain, path, url_host, None);
+        self.delete_cookies_with_partition_filter(
+            name,
+            domain,
+            path,
+            url_host,
+            &moli_cookie_jar::StoredCookiePartitionFilter::All,
+        );
     }
 
-    pub(crate) fn delete_cookies_with_partition_key(
+    pub(crate) fn delete_cookies_with_partition_filter(
         &mut self,
         name: Option<&str>,
         domain: Option<&str>,
         path: Option<&str>,
         url_host: Option<&str>,
-        partition_key: Option<&moli_cookie_jar::StoredCookiePartitionKey>,
+        partition_filter: &moli_cookie_jar::StoredCookiePartitionFilter,
     ) {
         let mut cookie_store = self.storage_partition.cookie_store().lock();
-        cookie_store.delete_cookies_with_partition_key(name, domain, path, url_host, partition_key);
+        cookie_store.delete_cookies_with_partition_filter(
+            name,
+            domain,
+            path,
+            url_host,
+            partition_filter,
+        );
     }
 
     pub(crate) fn active_target_id(&self) -> Option<&str> {

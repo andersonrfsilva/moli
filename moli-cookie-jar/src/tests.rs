@@ -5,9 +5,9 @@ use super::test_support::{
 use super::{
     CookiePriority, CookieSource, NetworkCookieRequestContext, NetworkSiteContextMetadata,
     NetworkStorageAccessStatus, StoredCookie, StoredCookieAccessSemantics,
-    StoredCookieEffectiveSameSite, StoredCookieExclusionReason, StoredCookiePartitionKey,
-    StoredCookieQueryReport, StoredCookieRequestSameSiteContext, StoredCookieSameSite,
-    StoredCookieSameSiteContextDowngradeType, StoredCookieSameSiteHttpMethod,
+    StoredCookieEffectiveSameSite, StoredCookieExclusionReason, StoredCookiePartitionFilter,
+    StoredCookiePartitionKey, StoredCookieQueryReport, StoredCookieRequestSameSiteContext,
+    StoredCookieSameSite, StoredCookieSameSiteContextDowngradeType, StoredCookieSameSiteHttpMethod,
     StoredCookieSameSiteRedirectType, StoredCookieScopeSemantics, StoredCookieSetRejectionReason,
     StoredCookieSetWarningReason, StoredCookieSiteContextBasis, StoredCookieSourceScheme,
     StoredCookieStorageAccessStatus, StoredCookieWarningReason, advance_cookie_request_context,
@@ -4345,7 +4345,7 @@ fn third_party_response_cookie_is_scoped_to_top_level_site() {
 }
 
 #[test]
-fn delete_cookies_with_partition_key_keeps_other_top_level_sites() {
+fn cookie_deletion_distinguishes_partition_scopes() {
     let mut store = BrowserCookieStore::default();
     let response_url = parse("https://widget.example/resource");
     let top_a = parse("https://first.example/page");
@@ -4364,6 +4364,13 @@ fn delete_cookies_with_partition_key_keeps_other_top_level_sites() {
             context,
         );
     }
+    store.store_response_headers(
+        &response_url,
+        &[(
+            "set-cookie".to_owned(),
+            b"chip=global; Secure; Path=/".to_vec(),
+        )],
+    );
 
     let removed = store.delete_cookies_with_partition_key(
         Some("chip"),
@@ -4379,12 +4386,32 @@ fn delete_cookies_with_partition_key_keeps_other_top_level_sites() {
     assert_eq!(removed, 1);
     assert_eq!(
         store.cookie_header_for_request(&response_url, context_a),
-        None
+        Some("chip=global".to_owned())
     );
     assert_eq!(
         store.cookie_header_for_request(&response_url, context_b),
-        Some("chip=two".to_owned())
+        Some("chip=two; chip=global".to_owned())
     );
+
+    assert_eq!(
+        store.delete_cookies_with_partition_filter(
+            Some("chip"),
+            Some("widget.example"),
+            Some("/"),
+            None,
+            &StoredCookiePartitionFilter::Unpartitioned,
+        ),
+        1
+    );
+    assert_eq!(store.cookies().len(), 1);
+    assert_eq!(store.cookies()[0].value, "two");
+
+    // The existing API keeps its all-partitions meaning for None.
+    assert_eq!(
+        store.delete_cookies_with_partition_key(Some("chip"), None, None, None, None),
+        1
+    );
+    assert!(store.cookies().is_empty());
 }
 
 #[test]

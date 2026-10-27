@@ -80,7 +80,7 @@ pub fn delete_all_cookies_command(
         url: Some(current_url.into()),
         domain: None,
         path: None,
-        partition_key: None,
+        partition_filter: moli_protocol::automation::StoredCookiePartitionFilter::All,
         filter: None,
     })
 }
@@ -97,7 +97,7 @@ pub fn delete_cookie_command(
         url: Some(current_url.into()),
         domain: None,
         path: None,
-        partition_key: None,
+        partition_filter: moli_protocol::automation::StoredCookiePartitionFilter::All,
         filter: None,
     })
 }

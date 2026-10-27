@@ -5,7 +5,7 @@ mod reports;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use normalize::normalize_partition_key;
+pub(crate) use normalize::{PartitionKeyError, normalize_partition_key};
 
 #[cfg(test)]
 pub(crate) use ops::set_cookies_for_browser_context;

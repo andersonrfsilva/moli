@@ -1,3 +1,4 @@
+use moli_cookie_jar::StoredCookiePartitionFilter;
 use serde::Deserialize;
 use serde_json::Value;
 use url::Url;
@@ -8,7 +9,8 @@ use crate::automation::{
     DevToolsGetCookiesCommand, DevToolsSetCookiesCommand,
 };
 use crate::domains::storage::{
-    StorageCommandTaskStep, normalize_partition_key, start_devtools_storage_command,
+    PartitionKeyError, StorageCommandTaskStep, normalize_partition_key,
+    start_devtools_storage_command,
 };
 
 pub(super) fn start_get_cookies_command(
@@ -99,7 +101,7 @@ pub(super) fn start_clear_browser_cookies_command(
         url: None,
         domain: None,
         path: None,
-        partition_key: None,
+        partition_filter: StoredCookiePartitionFilter::All,
         filter: None,
     };
     start_devtools_storage_command(conn, cmd.id, AutomationCommand::DeleteCookies(command))
@@ -117,8 +119,16 @@ fn build_cdp_network_delete_cookies_command(
     // nothing, since no stored cookie can be in that partition. Puppeteer relies
     // on this: page.setCookie()/deleteCookie() send a malformed topLevelSite
     // (`https//example.com`) and fail outright if the command is rejected.
-    let Ok(partition_key) = normalize_partition_key(params.partition_key.as_ref(), false) else {
-        return Err(CommandOutputPlan::success());
+    // Read the raw field so an explicit null remains a structural error rather
+    // than being deserialized as an omitted Option.
+    let partition_key = cmd.params.and_then(|params| params.get("partitionKey"));
+    let partition_filter = match normalize_partition_key(partition_key, false) {
+        Ok(Some(key)) => StoredCookiePartitionFilter::Partition(key),
+        Ok(None) => StoredCookiePartitionFilter::Unpartitioned,
+        Err(PartitionKeyError::InvalidSite) => return Err(CommandOutputPlan::success()),
+        Err(PartitionKeyError::InvalidStructure) => {
+            return Err(CommandOutputPlan::error(-32602, "InvalidParams"));
+        }
     };
     let (_, target_id) = conn
         .target_owner_identity_for_session(cmd.session_id)
@@ -134,7 +144,7 @@ fn build_cdp_network_delete_cookies_command(
         url: params.url,
         domain: params.domain,
         path: params.path,
-        partition_key,
+        partition_filter,
         filter: None,
     })
 }
@@ -335,11 +345,13 @@ mod protocol_neutral_tests {
         assert_eq!(command.domain.as_deref(), Some("example.com"));
         assert_eq!(command.path.as_deref(), Some("/"));
         assert_eq!(
-            command.partition_key,
-            Some(moli_cookie_jar::StoredCookiePartitionKey::site(
-                "https://top.example".to_owned(),
-                true,
-            ))
+            command.partition_filter,
+            moli_cookie_jar::StoredCookiePartitionFilter::Partition(
+                moli_cookie_jar::StoredCookiePartitionKey::site(
+                    "https://top.example".to_owned(),
+                    true,
+                )
+            )
         );
     }
 
@@ -396,6 +408,55 @@ mod protocol_neutral_tests {
         let mut out = Vec::new();
         plan.emit_into(&mut out, cmd.id, cmd.session_id);
         assert_eq!(out, vec![json!({ "id": 149, "result": {} })]);
+    }
+
+    #[test]
+    fn cdp_network_delete_cookies_rejects_invalid_partition_key_structure() {
+        for partition_key in [
+            Value::Null,
+            json!("https://example.com"),
+            json!(42),
+            json!(false),
+            json!([]),
+            json!({}),
+            json!({ "topLevelSite": "https://example.com" }),
+            json!({ "hasCrossSiteAncestor": false }),
+            json!({ "topLevelSite": 42, "hasCrossSiteAncestor": false }),
+            json!({ "topLevelSite": null, "hasCrossSiteAncestor": false }),
+            json!({ "topLevelSite": "https://example.com", "hasCrossSiteAncestor": "false" }),
+            json!({ "topLevelSite": "https://example.com", "hasCrossSiteAncestor": null }),
+            // Structural errors take priority even when the site cannot be parsed.
+            json!({ "topLevelSite": "https//example.com" }),
+            json!({ "topLevelSite": "https//example.com", "hasCrossSiteAncestor": 0 }),
+        ] {
+            let mut conn = CdpConnection::new();
+            let params = json!({
+                "name": "sid",
+                "url": "https://example.com/",
+                "partitionKey": partition_key,
+            });
+            let cmd = Cmd::for_test(
+                Some(150),
+                "Network.deleteCookies",
+                &params,
+                Some("SID-network"),
+                r#"{"id":150,"method":"Network.deleteCookies"}"#,
+            );
+            let StorageCommandTaskStep::Complete(plan) =
+                start_delete_cookies_command(&mut conn, &cmd)
+            else {
+                panic!("invalid partitionKey structure must fail before storage dispatch");
+            };
+            let mut out = Vec::new();
+            plan.emit_into(&mut out, cmd.id, cmd.session_id);
+            assert_eq!(out[0]["error"]["code"], json!(-32602), "{params}");
+            assert_eq!(
+                out[0]["error"]["message"],
+                json!("InvalidParams"),
+                "{params}"
+            );
+            assert_eq!(out[0]["sessionId"], json!("SID-network"));
+        }
     }
 
     #[test]

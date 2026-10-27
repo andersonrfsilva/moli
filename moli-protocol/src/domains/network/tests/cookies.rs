@@ -1,5 +1,131 @@
 use super::*;
 
+#[tokio::test(flavor = "multi_thread")]
+async fn cookie_deletion_preserves_the_requested_partition_scope() {
+    for (method, params, mut expected_values) in [
+        (
+            "Network.deleteCookies",
+            json!({ "name": "sid", "url": "https://example.com/" }),
+            vec!["cross-site", "other-site", "same-site", "unrelated"],
+        ),
+        (
+            "Network.deleteCookies",
+            json!({ "name": "sid", "domain": "example.com" }),
+            vec!["cross-site", "other-site", "same-site", "unrelated"],
+        ),
+        (
+            "Network.deleteCookies",
+            json!({
+                "name": "sid", "url": "https://example.com/",
+                "partitionKey": {
+                    "topLevelSite": "https://site-a.com", "hasCrossSiteAncestor": true
+                }
+            }),
+            vec!["other-site", "same-site", "unpartitioned", "unrelated"],
+        ),
+        (
+            "Network.deleteCookies",
+            json!({
+                "name": "sid", "url": "https://example.com/",
+                "partitionKey": {
+                    "topLevelSite": "https://site-a.com", "hasCrossSiteAncestor": false
+                }
+            }),
+            vec!["cross-site", "other-site", "unpartitioned", "unrelated"],
+        ),
+        (
+            "Network.deleteCookies",
+            json!({
+                "name": "sid", "url": "https://example.com/",
+                "partitionKey": {
+                    "topLevelSite": "https//site-a.com", "hasCrossSiteAncestor": true
+                }
+            }),
+            vec![
+                "cross-site",
+                "other-site",
+                "same-site",
+                "unpartitioned",
+                "unrelated",
+            ],
+        ),
+        (
+            "Network.deleteCookies",
+            json!({
+                "name": "sid", "url": "https://example.com/",
+                "partitionKey": {
+                    "topLevelSite": "https://missing.com", "hasCrossSiteAncestor": true
+                }
+            }),
+            vec![
+                "cross-site",
+                "other-site",
+                "same-site",
+                "unpartitioned",
+                "unrelated",
+            ],
+        ),
+        (
+            "Storage.deleteCookies",
+            json!({ "name": "sid", "domain": "example.com" }),
+            vec!["unrelated"],
+        ),
+        ("Network.clearBrowserCookies", json!({}), vec![]),
+        ("Storage.clearCookies", json!({}), vec![]),
+    ] {
+        let mut ctx = TestContext::new();
+        ctx.conn.browser_context = Some(BrowserContext::new("BID-cookie-partitions".into()));
+        ctx.process_async(json!({
+            "id": 1,
+            "method": "Network.setCookies",
+            "params": { "cookies": [
+                { "name": "sid", "value": "unpartitioned", "url": "https://example.com/" },
+                {
+                    "name": "sid", "value": "same-site", "url": "https://example.com/",
+                    "secure": true, "sameSite": "None",
+                    "partitionKey": {
+                        "topLevelSite": "https://site-a.com", "hasCrossSiteAncestor": false
+                    }
+                },
+                {
+                    "name": "sid", "value": "cross-site", "url": "https://example.com/",
+                    "secure": true, "sameSite": "None",
+                    "partitionKey": {
+                        "topLevelSite": "https://site-a.com", "hasCrossSiteAncestor": true
+                    }
+                },
+                {
+                    "name": "sid", "value": "other-site", "url": "https://example.com/",
+                    "secure": true, "sameSite": "None",
+                    "partitionKey": {
+                        "topLevelSite": "https://site-b.com", "hasCrossSiteAncestor": true
+                    }
+                },
+                { "name": "other", "value": "unrelated", "url": "https://example.com/" }
+            ] }
+        }))
+        .await;
+        ctx.expect_result(1, json!({ "success": true }), None);
+
+        ctx.process_async(json!({ "id": 2, "method": method, "params": params }))
+            .await;
+        ctx.expect_result(2, json!({}), None);
+
+        ctx.process_async(json!({ "id": 3, "method": "Network.getAllCookies" }))
+            .await;
+        let response = ctx.take_response_by_id(3);
+        let mut values = response["result"]["cookies"]
+            .as_array()
+            .expect("all cookies")
+            .iter()
+            .map(|cookie| cookie["value"].as_str().expect("cookie value"))
+            .collect::<Vec<_>>();
+        values.sort_unstable();
+        expected_values.sort_unstable();
+        assert_eq!(values, expected_values, "{method}: {params}");
+    }
+}
+
 /// Network.getCookies returns an empty list.
 #[tokio::test(flavor = "multi_thread")]
 async fn get_cookies_returns_empty() {

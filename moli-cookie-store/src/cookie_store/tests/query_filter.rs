@@ -24,6 +24,7 @@ fn delete_matching_removes_matching_domain_cookie_but_not_host_only_cookie() {
         path: None,
         url_host: Some("deep.sub.example.com"),
         partition_key: None,
+        unpartitioned_only: false,
     });
 
     assert_eq!(removed, 1);
@@ -55,6 +56,7 @@ fn delete_matching_url_host_filter_respects_host_only_semantics() {
         path: None,
         url_host: Some("deep.sub.example.com"),
         partition_key: None,
+        unpartitioned_only: false,
     });
 
     assert_eq!(removed, 1);

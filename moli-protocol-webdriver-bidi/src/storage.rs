@@ -93,7 +93,7 @@ pub(crate) fn bidi_delete_cookies_command(
         url: None,
         domain: filter.as_ref().and_then(|filter| filter.domain.clone()),
         path: filter.as_ref().and_then(|filter| filter.path.clone()),
-        partition_key: None,
+        partition_filter: moli_protocol::automation::StoredCookiePartitionFilter::All,
         filter,
     })
 }

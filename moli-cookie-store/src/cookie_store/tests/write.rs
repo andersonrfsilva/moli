@@ -544,6 +544,7 @@ fn partitioned_cookies_coexist_and_query_by_exact_partition_key() {
             path: Some("/foo"),
             url_host: None,
             partition_key: Some(&key_a),
+            unpartitioned_only: false,
         }),
         1
     );

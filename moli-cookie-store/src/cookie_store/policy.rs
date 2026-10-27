@@ -93,6 +93,10 @@ pub(super) fn cookie_matches_delete_filter(
         return false;
     }
 
+    if filter.unpartitioned_only && cookie.partition_key().is_some() {
+        return false;
+    }
+
     if filter
         .partition_key
         .is_some_and(|wanted| cookie.partition_key() != Some(wanted))

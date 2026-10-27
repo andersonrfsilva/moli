@@ -20,6 +20,14 @@ pub enum StoredCookiePartitionKey {
     },
 }
 
+/// Partition scope for cookie deletion, independent of the calling protocol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoredCookiePartitionFilter {
+    All,
+    Unpartitioned,
+    Partition(StoredCookiePartitionKey),
+}
+
 impl StoredCookiePartitionKey {
     pub fn site(top_level_site: String, has_cross_site_ancestor: bool) -> Self {
         Self::Site {

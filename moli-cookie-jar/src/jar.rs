@@ -17,12 +17,13 @@ use url::Url;
 use super::model::{
     BrowserCookieFacadeContext, CookieSource, NetworkCookieRequestContext,
     NetworkCookieRequestType, NetworkSameSiteContext, NetworkSameSiteHttpMethod,
-    NetworkSameSiteRedirectType, StoredCookie, StoredCookieQueryReport, StoredCookieSameSite,
-    StoredCookieSetRejectionReason, StoredCookieSetReport, StoredCookieSetStatus,
-    StoredCookieSourceScheme, core_browser_site_context_from_facade,
-    core_cookie_partition_key_for_url, core_partition_key_from_stored,
-    core_same_site_context_metadata_from_stored, core_source_scheme_from_stored,
-    has_invalid_cookie_octets, stored_query_report_from_core, stored_set_report_from_core,
+    NetworkSameSiteRedirectType, StoredCookie, StoredCookiePartitionFilter,
+    StoredCookieQueryReport, StoredCookieSameSite, StoredCookieSetRejectionReason,
+    StoredCookieSetReport, StoredCookieSetStatus, StoredCookieSourceScheme,
+    core_browser_site_context_from_facade, core_cookie_partition_key_for_url,
+    core_partition_key_from_stored, core_same_site_context_metadata_from_stored,
+    core_source_scheme_from_stored, has_invalid_cookie_octets, stored_query_report_from_core,
+    stored_set_report_from_core,
 };
 
 /// Thread-shareable cookie store used by browser/runtime components.
@@ -384,14 +385,40 @@ impl BrowserCookieStore {
         url_host: Option<&str>,
         partition_key: Option<&super::model::StoredCookiePartitionKey>,
     ) -> usize {
+        let partition_filter = partition_key.cloned().map_or(
+            StoredCookiePartitionFilter::All,
+            StoredCookiePartitionFilter::Partition,
+        );
+        self.delete_cookies_with_partition_filter(name, domain, path, url_host, &partition_filter)
+    }
+
+    /// Deletes matching cookies in all partitions, only the unpartitioned
+    /// store, or one exact CHIPS partition.
+    pub fn delete_cookies_with_partition_filter(
+        &mut self,
+        name: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+        url_host: Option<&str>,
+        partition_filter: &StoredCookiePartitionFilter,
+    ) -> usize {
         self.purge_expired();
-        let partition_key = partition_key.map(core_partition_key_from_stored);
+        let partition_key = match partition_filter {
+            StoredCookiePartitionFilter::Partition(key) => {
+                Some(core_partition_key_from_stored(key))
+            }
+            _ => None,
+        };
         let removed = self.full_core.delete_matching(&CookieDeleteFilter {
             name,
             domain,
             path,
             url_host,
             partition_key: partition_key.as_ref(),
+            unpartitioned_only: matches!(
+                partition_filter,
+                StoredCookiePartitionFilter::Unpartitioned
+            ),
         });
         if removed > 0 {
             self.bump_document_cookie_generation();

@@ -94,7 +94,7 @@ async fn automation_command_executes_storage_cookie_commands_for_webdriver_conte
                 url: Some(cookie_url.clone()),
                 domain: None,
                 path: None,
-                partition_key: None,
+                partition_filter: moli_cookie_jar::StoredCookiePartitionFilter::All,
                 filter: None,
             },
         ))

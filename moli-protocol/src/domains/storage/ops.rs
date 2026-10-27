@@ -221,7 +221,7 @@ pub(crate) fn build_cdp_storage_clear_cookies_command(
         url: None,
         domain: None,
         path: None,
-        partition_key: None,
+        partition_filter: moli_cookie_jar::StoredCookiePartitionFilter::All,
         filter: None,
     })
 }
@@ -280,7 +280,10 @@ pub(crate) fn build_cdp_storage_delete_cookies_command(
         url: params.url,
         domain: params.domain,
         path: params.path,
-        partition_key,
+        partition_filter: partition_key.map_or(
+            moli_cookie_jar::StoredCookiePartitionFilter::All,
+            moli_cookie_jar::StoredCookiePartitionFilter::Partition,
+        ),
         filter: None,
     })
 }
@@ -1097,7 +1100,7 @@ pub(crate) fn complete_devtools_delete_cookies_result(
             command.filter.as_ref(),
         )
     } else {
-        delete_cookies_for_browser_context_with_normalized_partition_key(
+        delete_cookies_for_browser_context_with_partition_filter(
             conn,
             DeleteCookiesParams {
                 name: command.name,
@@ -1107,7 +1110,7 @@ pub(crate) fn complete_devtools_delete_cookies_result(
                 partition_key: None,
                 browser_context_id,
             },
-            command.partition_key,
+            command.partition_filter,
         )
     };
     match result {
@@ -1415,13 +1418,17 @@ pub(crate) fn delete_cookies_for_browser_context(
 ) -> Result<(), (i32, &'static str)> {
     let partition_key = normalize_partition_key(params.partition_key.as_ref(), false)
         .map_err(|_| (-32602, "InvalidParams"))?;
-    delete_cookies_for_browser_context_with_normalized_partition_key(conn, params, partition_key)
+    let partition_filter = partition_key.map_or(
+        moli_cookie_jar::StoredCookiePartitionFilter::All,
+        moli_cookie_jar::StoredCookiePartitionFilter::Partition,
+    );
+    delete_cookies_for_browser_context_with_partition_filter(conn, params, partition_filter)
 }
 
-fn delete_cookies_for_browser_context_with_normalized_partition_key(
+fn delete_cookies_for_browser_context_with_partition_filter(
     conn: &mut CdpConnection,
     params: DeleteCookiesParams,
-    partition_key: Option<moli_cookie_jar::StoredCookiePartitionKey>,
+    partition_filter: moli_cookie_jar::StoredCookiePartitionFilter,
 ) -> Result<(), (i32, &'static str)> {
     let bc = match params.browser_context_id.as_deref() {
         Some(wanted_id) => conn
@@ -1443,12 +1450,12 @@ fn delete_cookies_for_browser_context_with_normalized_partition_key(
             .and_then(|parsed| parsed.host_str().map(str::to_ascii_lowercase))
     });
 
-    bc.delete_cookies_with_partition_key(
+    bc.delete_cookies_with_partition_filter(
         params.name.as_deref(),
         normalized_domain.as_deref(),
         params.path.as_deref(),
         normalized_url_host.as_deref(),
-        partition_key.as_ref(),
+        &partition_filter,
     );
 
     Ok(())
@@ -1575,11 +1582,13 @@ mod protocol_neutral_tests {
         assert_eq!(command.domain.as_deref(), Some("example.com"));
         assert_eq!(command.path.as_deref(), Some("/"));
         assert_eq!(
-            command.partition_key,
-            Some(moli_cookie_jar::StoredCookiePartitionKey::site(
-                "https://top.example".to_owned(),
-                false,
-            ))
+            command.partition_filter,
+            moli_cookie_jar::StoredCookiePartitionFilter::Partition(
+                moli_cookie_jar::StoredCookiePartitionKey::site(
+                    "https://top.example".to_owned(),
+                    false,
+                )
+            )
         );
     }
 
