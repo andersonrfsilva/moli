@@ -113,6 +113,7 @@ pub(crate) use main_document_progress::{
     materialize_navigation_load_result, record_completed_main_document_response_body,
     record_failed_main_document_response_body, record_main_document_request_body,
     response_stage_main_document_navigation_network_progress,
+    resumed_request_stage_main_document_navigation_network_progress,
     start_observed_main_document_navigation_progress_background_events,
 };
 pub(crate) use output::{

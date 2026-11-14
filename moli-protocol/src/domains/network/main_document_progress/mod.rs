@@ -1612,6 +1612,32 @@ pub(crate) fn response_stage_main_document_navigation_network_progress(
     )
 }
 
+/// Progress for a navigation resumed from a request-stage Fetch pause. Its
+/// `Network.requestWillBeSent` went out with the pause, so only the response
+/// side remains; unlike a response-stage continue, nothing has emitted
+/// `Network.responseReceivedExtraInfo` yet, so the response is reported in full.
+pub(crate) fn resumed_request_stage_main_document_navigation_network_progress(
+    conn: &mut CdpConnection,
+    state: &NavigationDispatchState,
+    initial_request_cookie_report: Option<&StoredCookieQueryReport>,
+) -> MainDocumentBodyProgressSource {
+    if !main_document_network_observed(conn, state.session_id.as_deref()) {
+        return MainDocumentBodyProgressSource::default();
+    }
+    let session_ids = main_document_network_event_session_ids(conn, state.session_id.as_deref());
+    record_pending_main_document_response_body(conn, state, &session_ids);
+    let live_source = MainDocumentLiveNetworkProgressSource::from_navigation_dispatch_state(
+        conn.background_event_sender(),
+        session_ids,
+        state,
+        initial_request_cookie_report,
+    );
+    MainDocumentBodyProgressSource::from_live_source(
+        live_source,
+        MainDocumentResponseVisibility::Immediate,
+    )
+}
+
 fn observed_navigation_failure_event(
     conn: &CdpConnection,
     state: &NavigationDispatchState,

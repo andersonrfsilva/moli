@@ -255,9 +255,9 @@ pub(super) fn build_cdp_print_to_pdf_command(
     if params.prefer_css_page_size.unwrap_or(false) {
         return Err(unsupported_cdp_print_to_pdf_option("preferCSSPageSize"));
     }
-    if params.generate_tagged_pdf.unwrap_or(false) {
-        return Err(unsupported_cdp_print_to_pdf_option("generateTaggedPDF"));
-    }
+    // `generateTaggedPDF` defaults to the embedder's choice in Chromium, and
+    // Puppeteer's page.pdf() sends `true` by default. Treat it as a preference
+    // that this embedder declines: the PDF is produced without a structure tree.
     if params.generate_document_outline.unwrap_or(false) {
         return Err(unsupported_cdp_print_to_pdf_option(
             "generateDocumentOutline",

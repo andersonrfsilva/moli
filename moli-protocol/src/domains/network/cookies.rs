@@ -113,8 +113,13 @@ fn build_cdp_network_delete_cookies_command(
         Ok(Some(params)) => params,
         _ => return Err(CommandOutputPlan::error(-32602, "InvalidParams")),
     };
-    let partition_key = normalize_partition_key(params.partition_key.as_ref(), false)
-        .map_err(|_| CommandOutputPlan::error(-32602, "InvalidParams"))?;
+    // Chromium answers a partitionKey it cannot parse with success and deletes
+    // nothing, since no stored cookie can be in that partition. Puppeteer relies
+    // on this: page.setCookie()/deleteCookie() send a malformed topLevelSite
+    // (`https//example.com`) and fail outright if the command is rejected.
+    let Ok(partition_key) = normalize_partition_key(params.partition_key.as_ref(), false) else {
+        return Err(CommandOutputPlan::success());
+    };
     let (_, target_id) = conn
         .target_owner_identity_for_session(cmd.session_id)
         .map(|(_, target_id)| ((), target_id))
@@ -360,6 +365,37 @@ mod protocol_neutral_tests {
         assert_eq!(out[0]["id"], json!(148));
         assert_eq!(out[0]["error"]["code"], json!(-31998));
         assert_eq!(out[0]["error"]["message"], json!("BrowserContextNotLoaded"));
+    }
+
+    #[test]
+    fn cdp_network_delete_cookies_with_unparseable_partition_key_succeeds_without_deleting() {
+        let mut conn = CdpConnection::new();
+        // Shape sent by Puppeteer's page.setCookie()/deleteCookie().
+        let params = json!({
+            "name": "sid",
+            "url": "https://example.com/",
+            "partitionKey": {
+                "topLevelSite": "https//example.com",
+                "hasCrossSiteAncestor": false
+            }
+        });
+        let cmd = Cmd::for_test(
+            Some(149),
+            "Network.deleteCookies",
+            &params,
+            None,
+            r#"{"id":149,"method":"Network.deleteCookies"}"#,
+        );
+
+        let step = start_delete_cookies_command(&mut conn, &cmd);
+
+        // Completes on the spot: no delete reaches the cookie store.
+        let StorageCommandTaskStep::Complete(plan) = step else {
+            panic!("an unparseable partitionKey should complete without a storage command");
+        };
+        let mut out = Vec::new();
+        plan.emit_into(&mut out, cmd.id, cmd.session_id);
+        assert_eq!(out, vec![json!({ "id": 149, "result": {} })]);
     }
 
     #[test]

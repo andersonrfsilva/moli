@@ -1,9 +1,11 @@
 use crate::automation::{DevToolsNetworkInterceptId, DevToolsNetworkResourceType};
 use crate::conn::{
-    CdpConnection, CommandOwnerScope, DocumentBodySource, DocumentNavigationToken,
-    FetchAuthChallenge, NavigationDispatchState, NavigationLoadOutcome, PendingFetchNavigation,
-    PendingSubresourceFetchAuthStage, PendingSubresourceFetchAuthStageChain,
-    PendingSubresourceFetchOwnerKind, PendingSubresourceFetchRequest, decode_data_url_response,
+    BackgroundNavigationBodyCompletionSink, BackgroundNavigationClaimError, CdpConnection,
+    CommandOwnerScope, DocumentBodySource, DocumentNavigationToken, FetchAuthChallenge,
+    NavigationDispatchState, NavigationLoadOutcome, PendingFetchNavigation,
+    PendingStreamingDocumentResponseNavigation, PendingSubresourceFetchAuthStage,
+    PendingSubresourceFetchAuthStageChain, PendingSubresourceFetchOwnerKind,
+    PendingSubresourceFetchRequest, decode_data_url_response,
 };
 use crate::domains::{command_output::CommandOutputBuffer, network, page};
 use moli_cookie_jar::StoredCookieQueryReport;
@@ -83,7 +85,10 @@ pub(crate) async fn load_or_pause_navigation_for_auth_into_buffer_async(
 
     if should_handle_auth {
         let has_auth_credentials = auth.is_some();
-        if pending.intercept_response && navigation_response_stage_auth_can_stream(auth.as_ref()) {
+        // Stream whenever no libcurl Digest replay is involved: the streaming path
+        // still pauses on 401/407 and commits in the background, so an intercepted
+        // parser-blocking subresource cannot wedge the connection.
+        if navigation_response_stage_auth_can_stream(auth.as_ref()) {
             match conn
                 .fetch_navigation_streaming_raw_response_for_navigation_async(
                     &pending.navigation,
@@ -131,26 +136,17 @@ pub(crate) async fn load_or_pause_navigation_for_auth_into_buffer_async(
             return;
         }
 
-        let response = if let Some(auth) = auth {
-            // Digest auth retries are still driven by libcurl internally. The
-            // streaming collector sees the intermediate 401 response head
-            // before libcurl has completed the credential retry, so keep
-            // credential replay on the buffered path until the fetch runtime
-            // can mark intermediate auth responses separately.
-            conn.fetch_navigation_auth_raw_response_for_navigation_async(&pending.navigation, auth)
-                .await
-        } else {
-            match conn
-                .fetch_navigation_streaming_raw_response_for_navigation_async(
-                    &pending.navigation,
-                    auth,
-                )
-                .await
-            {
-                Ok(response) => collect_navigation_streaming_response(conn, response).await,
-                Err(message) => Err(message),
-            }
+        let Some(auth) = auth else {
+            unreachable!("navigation without credentials takes the streaming path above");
         };
+        // Digest auth retries are still driven by libcurl internally. The
+        // streaming collector sees the intermediate 401 response head
+        // before libcurl has completed the credential retry, so keep
+        // credential replay on the buffered path until the fetch runtime
+        // can mark intermediate auth responses separately.
+        let response = conn
+            .fetch_navigation_auth_raw_response_for_navigation_async(&pending.navigation, auth)
+            .await;
         match response {
             Ok(response) => {
                 let response =
@@ -235,6 +231,52 @@ pub(crate) async fn load_or_pause_navigation_for_auth_into_buffer_async(
         return;
     }
 
+    // Resume on the background completion path, like Page.navigate. Loading
+    // inline waits for DCL/load while this command owns the connection, so a
+    // parser-blocking subresource that is itself intercepted could never
+    // publish its Fetch.requestPaused, wedging the whole server.
+    if let Some(token) = pending.document_navigation_token.clone()
+        && let Some(sender) =
+            conn.background_navigation_completion_sender_for_owner(&navigate_owner)
+    {
+        let body_progress_source =
+            network::resumed_request_stage_main_document_navigation_network_progress(
+                conn,
+                &pending.navigation,
+                pending.request_cookie_report.as_ref(),
+            );
+        let navigation = pending.navigation;
+        match conn.background_navigation_load_job_for_navigation(
+            &token,
+            &navigation,
+            body_progress_source,
+            None,
+        ) {
+            Ok(job) => {
+                tokio::task::spawn_local(async move {
+                    let body_completion_sink = BackgroundNavigationBodyCompletionSink::new(
+                        sender.clone(),
+                        token.clone(),
+                        navigation.clone(),
+                    );
+                    let (result, _) = job.run(Some(body_completion_sink)).await;
+                    let _ = sender.send(page::BackgroundNavigationCompletion::new(
+                        token, navigation, result,
+                    ));
+                });
+            }
+            // The original job owns both completion and the command reply.
+            Err(BackgroundNavigationClaimError::AlreadyClaimed) => {}
+            Err(BackgroundNavigationClaimError::Stale) => {
+                let _ = sender.send(page::BackgroundNavigationCompletion::new(
+                    token,
+                    navigation,
+                    Err(moli_fetch::FetchCancelled.into()),
+                ));
+            }
+        }
+        return;
+    }
     let navigation = conn
         .load_navigation_request_via_runtime_with_network_events_for_navigation_async(
             pending.document_navigation_token.as_ref(),
@@ -511,6 +553,37 @@ async fn handle_streaming_response_head_for_navigation_into_buffer_async(
     }
 
     if !prepare_navigation_response_stage(conn, &mut pending, &response_head.final_url) {
+        // Commit on the background completion path, like Page.navigate and
+        // Fetch.continueResponse. Building inline waits for DCL/load while this
+        // command owns the connection, so a parser-blocking subresource that is
+        // itself intercepted could never publish its Fetch.requestPaused.
+        if let Some(document_navigation_token) = pending.document_navigation_token.clone()
+            && let Some(sender) =
+                conn.background_navigation_completion_sender_for_owner(&pending.navigation.owner)
+        {
+            let body_progress_source =
+                network::resumed_request_stage_main_document_navigation_network_progress(
+                    conn,
+                    &pending.navigation,
+                    pending.request_cookie_report.as_ref(),
+                );
+            let (response, network_observation_journal) =
+                response.into_parts_with_observation_journal();
+            super::commands::continue_streaming_document_response_in_background(
+                conn,
+                sender,
+                PendingStreamingDocumentResponseNavigation {
+                    document_navigation_token,
+                    navigation: pending.navigation,
+                    response,
+                    network_observation_journal,
+                    body_progress_source,
+                },
+                None,
+                Vec::new(),
+            );
+            return;
+        }
         let navigation = conn
             .build_navigation_from_streaming_raw_response_for_navigation_async(
                 pending.document_navigation_token.as_ref(),
